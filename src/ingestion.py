@@ -9,6 +9,7 @@ import faiss
 import numpy as np
 
 from src.embedding_backend import EmbeddingBackend, BGEM3SparseEmbeddingBackend
+from src.text_normalization import tokenize_for_bm25
 
 
 class BM25Ingestor:
@@ -17,7 +18,7 @@ class BM25Ingestor:
 
     def create_bm25_index(self, chunks: List[str]) -> BM25Okapi:
         """Create a BM25 index from a list of text chunks."""
-        tokenized_chunks = [chunk.split() for chunk in chunks]
+        tokenized_chunks = [tokenize_for_bm25(chunk) for chunk in chunks]
         return BM25Okapi(tokenized_chunks)
     
     def process_reports(self, all_reports_dir: Path, output_dir: Path):

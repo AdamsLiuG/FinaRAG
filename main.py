@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from src.pipeline import Pipeline, configs, preprocess_configs
+from src.pipeline import Pipeline, configs, load_run_config, preprocess_configs
 
 @click.group()
 def cli():
@@ -37,24 +37,26 @@ def serialize_tables(max_workers):
 
 @cli.command()
 @click.option('--config', type=click.Choice(['ser_tab', 'no_ser_tab']), default='no_ser_tab', help='选择配置预设')
-def process_reports(config):
+@click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
+def process_reports(config, config_path):
     """执行文档处理流水线（合并、切块、向量化）"""
     root_path = Path.cwd()
-    run_config = preprocess_configs[config]
+    run_config = load_run_config(config_path) if config_path else preprocess_configs[config]
     pipeline = Pipeline(root_path, run_config=run_config)
     
-    click.echo(f"处理研报文档 (config={config})...")
+    click.echo(f"处理研报文档 (config={config_path or config})...")
     pipeline.process_parsed_reports()
 
 @cli.command()
 @click.option('--config', type=click.Choice(['qwen_base', 'qwen_vector_rerank', 'qwen_rerank', 'qwen_sparse_rerank', 'qwen_ser_vector_rerank', 'qwen_ser_rerank', 'qwen_ser_sparse_rerank']), default='qwen_base', help='选择配置预设')
-def process_questions(config):
+@click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
+def process_questions(config, config_path):
     """基于指定配置处理问答"""
     root_path = Path.cwd()
-    run_config = configs[config]
+    run_config = load_run_config(config_path) if config_path else configs[config]
     pipeline = Pipeline(root_path, run_config=run_config)
     
-    click.echo(f"处理问答 (config={config})...")
+    click.echo(f"处理问答 (config={config_path or config})...")
     pipeline.process_questions()
 
 if __name__ == '__main__':

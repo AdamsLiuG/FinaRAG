@@ -1,0 +1,14 @@
+use_serialized_tables: true
+parent_document_retrieval: true
+use_vector_dbs: true
+use_bm25_db: true
+use_sparse_lexical_db: true
+llm_reranking: true
+llm_reranking_sample_size: 8
+top_n_retrieval: 4
+parallel_requests: 1
+pipeline_details: "Docling解析 + 表格序列化 + 结构感知切块 + 混合召回 + Rerank + Query Rewrite + 引用溯源"
+full_context: false
+api_provider: "qwen"
+answering_model: "Qwen/Qwen2.5-72B-Instruct"
+config_suffix: "_qwen_ser_rerank"

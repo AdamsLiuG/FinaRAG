@@ -1,0 +1,14 @@
+use_serialized_tables: false
+parent_document_retrieval: true
+use_vector_dbs: true
+use_bm25_db: false
+use_sparse_lexical_db: false
+llm_reranking: false
+llm_reranking_sample_size: 8
+top_n_retrieval: 4
+parallel_requests: 1
+pipeline_details: "Docling解析 + 结构感知切块 + 向量召回 + Query Rewrite + 引用溯源"
+full_context: false
+api_provider: "qwen"
+answering_model: "Qwen/Qwen2.5-72B-Instruct"
+config_suffix: "_qwen_base"

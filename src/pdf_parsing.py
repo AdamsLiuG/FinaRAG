@@ -62,7 +62,9 @@ class PDFParser:
                 # Handle both old and new CSV formats for company name
                 company_name = row.get('company_name', row.get('name', '')).strip('"')
                 metadata_lookup[row['sha1']] = {
-                    'company_name': company_name
+                    'company_name': company_name,
+                    'currency': row.get('cur'),
+                    'major_industry': row.get('major_industry'),
                 }
         return metadata_lookup
 
@@ -278,6 +280,8 @@ class JsonReportProcessor:
         if self.metadata_lookup and sha1_name in self.metadata_lookup:
             csv_meta = self.metadata_lookup[sha1_name]
             metainfo['company_name'] = csv_meta['company_name']
+            metainfo['currency'] = csv_meta.get('currency')
+            metainfo['major_industry'] = csv_meta.get('major_industry')
             
         return metainfo
 

@@ -624,6 +624,8 @@ class APIProcessor:
 
     def get_answer_from_rag_context(self, question, rag_context, schema, model):
         system_prompt, response_format, user_prompt = self._build_rag_context_prompts(schema)
+        if not isinstance(rag_context, str):
+            rag_context = json.dumps(rag_context, ensure_ascii=False, indent=2)
         
         answer_dict = self.processor.send_message(
             model=model,
@@ -669,7 +671,7 @@ class APIProcessor:
             raise ValueError(f"Unsupported schema: {schema}")
         return system_prompt, response_format, user_prompt
 
-    def get_rephrased_questions(self, original_question: str, companies: List[str]) -> Dict[str, str]:
+    def get_rephrased_questions(self, original_question: str, companies: List[str], model: Optional[str] = None) -> Dict[str, str]:
         """Use LLM to break down a comparative question into individual questions."""
         use_schema_prompt = self.provider in {"ibm", "gemini", "qwen"}
         system_prompt = (
@@ -677,6 +679,7 @@ class APIProcessor:
             if use_schema_prompt else prompts.RephrasedQuestionsPrompt.system_prompt
         )
         answer_dict = self.processor.send_message(
+            model=model or self.processor.default_model,
             system_content=system_prompt,
             human_content=prompts.RephrasedQuestionsPrompt.user_prompt.format(
                 question=original_question,

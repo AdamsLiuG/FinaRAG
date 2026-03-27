@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from eval.metrics import compare_answers, load_answers_bundle, summarize_answers
+from src.pipeline import Pipeline, configs, load_run_config
+
+
+def _default_reference_answers(dataset_dir: Path) -> Path | None:
+    candidates = [
+        dataset_dir / "answers_max_nst_o3m.json",
+        dataset_dir / "answers_1st_place_o3-mini.json",
+        dataset_dir / "answers_1st_place_llama_70b.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def evaluate_answers_file(answers_file: Path, reference_answers: Path | None = None) -> dict:
+    pred_answers, payload = load_answers_bundle(answers_file)
+    metrics = summarize_answers(pred_answers)
+
+    if reference_answers is not None and reference_answers.exists():
+        ref_answers, _ = load_answers_bundle(reference_answers)
+        metrics.update(compare_answers(pred_answers, ref_answers))
+
+    return {
+        "answers_file": str(answers_file),
+        "details": payload.get("details"),
+        "metrics": metrics,
+    }
+
+
+def run_pipeline(dataset_dir: Path, config_name: str | None, config_path: Path | None) -> Path:
+    if config_path is not None:
+        run_config = load_run_config(config_path)
+    elif config_name is not None:
+        run_config = configs[config_name]
+    else:
+        raise ValueError("Either config_name or config_path is required when --run-pipeline is used.")
+
+    pipeline = Pipeline(dataset_dir, run_config=run_config)
+    return pipeline.process_questions()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate FinaRAG answers files or run the pipeline and evaluate the results.")
+    parser.add_argument("--dataset-dir", type=Path, default=Path("data/test_set"))
+    parser.add_argument("--answers-file", type=Path, default=None)
+    parser.add_argument("--reference-answers", type=Path, default=None)
+    parser.add_argument("--config", default="qwen_base")
+    parser.add_argument("--config-path", type=Path, default=None)
+    parser.add_argument("--run-pipeline", action="store_true")
+    parser.add_argument("--output", type=Path, default=None)
+    args = parser.parse_args()
+
+    answers_file = args.answers_file
+    if args.run_pipeline:
+        answers_file = run_pipeline(args.dataset_dir, args.config, args.config_path)
+    if answers_file is None:
+        raise ValueError("--answers-file is required when --run-pipeline is not used.")
+
+    reference_answers = args.reference_answers or _default_reference_answers(args.dataset_dir)
+    report = evaluate_answers_file(answers_file, reference_answers)
+
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as file:
+            json.dump(report, file, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    main()

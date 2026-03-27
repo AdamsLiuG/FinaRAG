@@ -5,6 +5,7 @@ import logging
 import os
 import json
 import pandas as pd
+import yaml
 
 from src.pdf_parsing import PDFParser
 from src.parsed_reports_merging import PageTextPreparation
@@ -67,6 +68,35 @@ class RunConfig:
     api_provider: str = "qwen"
     answering_model: str = "Qwen/Qwen2.5-72B-Instruct"
     config_suffix: str = ""
+
+
+def run_config_from_dict(data: dict) -> RunConfig:
+    allowed_fields = {
+        "use_serialized_tables",
+        "parent_document_retrieval",
+        "use_vector_dbs",
+        "use_bm25_db",
+        "use_sparse_lexical_db",
+        "llm_reranking",
+        "llm_reranking_sample_size",
+        "top_n_retrieval",
+        "parallel_requests",
+        "pipeline_details",
+        "full_context",
+        "api_provider",
+        "answering_model",
+        "config_suffix",
+    }
+    payload = {key: value for key, value in data.items() if key in allowed_fields}
+    return RunConfig(**payload)
+
+
+def load_run_config(config_path: Path) -> RunConfig:
+    with open(config_path, "r", encoding="utf-8") as file:
+        data = yaml.safe_load(file) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Config file {config_path} must define a mapping.")
+    return run_config_from_dict(data)
 
 class Pipeline:
     def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "questions.json", pdf_reports_dir_name: str = "pdf_reports", run_config: RunConfig = RunConfig()):
@@ -307,6 +337,7 @@ class Pipeline:
             pipeline_details=self.run_config.pipeline_details
         )
         print(f"Answers saved to {output_path}")
+        return output_path
 
 
 preprocess_configs = {

@@ -8,7 +8,9 @@ import numpy as np
 import os
 
 from src.embedding_backend import EmbeddingBackend, BGEM3SparseEmbeddingBackend
+from src.retrieval_filters import RetrievalFilters, apply_retrieval_filters, build_result_metadata
 from src.reranking import LLMReranker, FlagEmbeddingReranker
+from src.text_normalization import tokenize_for_bm25
 
 _log = logging.getLogger(__name__)
 
@@ -34,6 +36,21 @@ def _make_result_key(result: Dict) -> Tuple[int, str]:
 
 def _reciprocal_rank_fusion_score(rank: int, k: int) -> float:
     return 1.0 / (k + rank)
+
+
+def _build_retrieval_result(document_meta: Dict, chunk: Dict, text: str, page: int, score: float, source_name: str) -> Dict:
+    metadata = build_result_metadata(document_meta, chunk)
+    return {
+        "distance": round(float(score), 4),
+        "page": page,
+        "text": text,
+        "metadata": metadata,
+        "chunk_id": metadata.get("chunk_id"),
+        "chunk_type": metadata.get("chunk_type"),
+        "section_title": metadata.get("section_title"),
+        "table_id": metadata.get("table_id"),
+        "retrieval_sources": [source_name],
+    }
 
 class BM25Retriever:
     def __init__(self, bm25_db_dir: Path, documents_dir: Path):
@@ -73,7 +90,14 @@ class BM25Retriever:
 
         raise ValueError(f"No report found with '{company_name}' company name.")
         
-    def retrieve_by_company_name(self, company_name: str, query: str, top_n: int = 3, return_parent_pages: bool = False) -> List[Dict]:
+    def retrieve_by_company_name(
+        self,
+        company_name: str,
+        query: str,
+        top_n: int = 3,
+        return_parent_pages: bool = False,
+        filters: Optional[RetrievalFilters] = None,
+    ) -> List[Dict]:
         document_entry = self._get_document_by_company_name(company_name)
         document = document_entry["document"]
             
@@ -90,7 +114,7 @@ class BM25Retriever:
         pages = document["content"]["pages"]
         
         # Get BM25 scores for the query
-        tokenized_query = query.split()
+        tokenized_query = tokenize_for_bm25(query)
         scores = bm25_index.get_scores(tokenized_query)
         
         actual_top_n = min(top_n, len(scores))
@@ -107,21 +131,27 @@ class BM25Retriever:
             if return_parent_pages:
                 if parent_page["page"] not in seen_pages:
                     seen_pages.add(parent_page["page"])
-                    result = {
-                        "distance": score,
-                        "page": parent_page["page"],
-                        "text": parent_page["text"]
-                    }
+                    result = _build_retrieval_result(
+                        document["metainfo"],
+                        chunk,
+                        parent_page["text"],
+                        parent_page["page"],
+                        score,
+                        "bm25",
+                    )
                     retrieval_results.append(result)
             else:
-                result = {
-                    "distance": score,
-                    "page": chunk["page"],
-                    "text": chunk["text"]
-                }
+                result = _build_retrieval_result(
+                    document["metainfo"],
+                    chunk,
+                    chunk["text"],
+                    chunk["page"],
+                    score,
+                    "bm25",
+                )
                 retrieval_results.append(result)
         
-        return retrieval_results
+        return apply_retrieval_filters(retrieval_results, filters)
 
 
 class BGEM3SparseRetriever:
@@ -163,7 +193,14 @@ class BGEM3SparseRetriever:
 
         raise ValueError(f"No report found with '{company_name}' company name.")
 
-    def retrieve_by_company_name(self, company_name: str, query: str, top_n: int = 3, return_parent_pages: bool = False) -> List[Dict]:
+    def retrieve_by_company_name(
+        self,
+        company_name: str,
+        query: str,
+        top_n: int = 3,
+        return_parent_pages: bool = False,
+        filters: Optional[RetrievalFilters] = None,
+    ) -> List[Dict]:
         document_entry = self._get_document_by_company_name(company_name)
         document = document_entry["document"]
 
@@ -197,21 +234,27 @@ class BGEM3SparseRetriever:
             if return_parent_pages:
                 if parent_page["page"] not in seen_pages:
                     seen_pages.add(parent_page["page"])
-                    result = {
-                        "distance": score,
-                        "page": parent_page["page"],
-                        "text": parent_page["text"]
-                    }
+                    result = _build_retrieval_result(
+                        document["metainfo"],
+                        chunk,
+                        parent_page["text"],
+                        parent_page["page"],
+                        score,
+                        "sparse",
+                    )
                     retrieval_results.append(result)
             else:
-                result = {
-                    "distance": score,
-                    "page": chunk["page"],
-                    "text": chunk["text"]
-                }
+                result = _build_retrieval_result(
+                    document["metainfo"],
+                    chunk,
+                    chunk["text"],
+                    chunk["page"],
+                    score,
+                    "sparse",
+                )
                 retrieval_results.append(result)
 
-        return retrieval_results
+        return apply_retrieval_filters(retrieval_results, filters)
 
 
 class VectorRetriever:
@@ -266,7 +309,15 @@ class VectorRetriever:
         similarity_score = round(similarity_score, 4)
         return similarity_score
 
-    def retrieve_by_company_name(self, company_name: str, query: str, llm_reranking_sample_size: int = None, top_n: int = 3, return_parent_pages: bool = False) -> List[Tuple[str, float]]:
+    def retrieve_by_company_name(
+        self,
+        company_name: str,
+        query: str,
+        llm_reranking_sample_size: int = None,
+        top_n: int = 3,
+        return_parent_pages: bool = False,
+        filters: Optional[RetrievalFilters] = None,
+    ) -> List[Tuple[str, float]]:
         target_report = None
         for report in self.all_dbs:
             document = report.get("document", {})
@@ -302,23 +353,29 @@ class VectorRetriever:
             if return_parent_pages:
                 if parent_page["page"] not in seen_pages:
                     seen_pages.add(parent_page["page"])
-                    result = {
-                        "distance": distance,
-                        "page": parent_page["page"],
-                        "text": parent_page["text"]
-                    }
+                    result = _build_retrieval_result(
+                        document["metainfo"],
+                        chunk,
+                        parent_page["text"],
+                        parent_page["page"],
+                        distance,
+                        "vector",
+                    )
                     retrieval_results.append(result)
             else:
-                result = {
-                    "distance": distance,
-                    "page": chunk["page"],
-                    "text": chunk["text"]
-                }
+                result = _build_retrieval_result(
+                    document["metainfo"],
+                    chunk,
+                    chunk["text"],
+                    chunk["page"],
+                    distance,
+                    "vector",
+                )
                 retrieval_results.append(result)
             
-        return retrieval_results
+        return apply_retrieval_filters(retrieval_results, filters)
 
-    def retrieve_all(self, company_name: str) -> List[Dict]:
+    def retrieve_all(self, company_name: str, filters: Optional[RetrievalFilters] = None) -> List[Dict]:
         target_report = None
         for report in self.all_dbs:
             document = report.get("document", {})
@@ -341,11 +398,13 @@ class VectorRetriever:
             result = {
                 "distance": 0.5,
                 "page": page["page"],
-                "text": page["text"]
+                "text": page["text"],
+                "metadata": build_result_metadata(document["metainfo"], {"page": page["page"], "chunk_type": "page"}),
+                "retrieval_sources": ["vector_full_context"],
             }
             all_pages.append(result)
             
-        return all_pages
+        return apply_retrieval_filters(all_pages, filters)
 
 
 class HybridRetriever:
@@ -427,6 +486,7 @@ class HybridRetriever:
                 item["distance"] = item["average_score"]
             else:
                 item["distance"] = round(float(item["rrf_score"]), 6)
+            item["ranking_score"] = item["distance"]
 
         merged_results = list(candidates.values())
         merged_results.sort(key=lambda item: item["distance"], reverse=True)
@@ -438,6 +498,7 @@ class HybridRetriever:
         query: str,
         top_n: int = 28,
         return_parent_pages: bool = False,
+        filters: Optional[RetrievalFilters] = None,
     ) -> List[Dict]:
         vector_results: List[Dict] = []
         bm25_results: List[Dict] = []
@@ -449,6 +510,7 @@ class HybridRetriever:
                 query=query,
                 top_n=top_n,
                 return_parent_pages=return_parent_pages,
+                filters=filters,
             )
 
         if self.bm25_retriever is not None:
@@ -457,6 +519,7 @@ class HybridRetriever:
                 query=query,
                 top_n=top_n,
                 return_parent_pages=return_parent_pages,
+                filters=filters,
             )
 
         if self.sparse_retriever is not None:
@@ -465,6 +528,7 @@ class HybridRetriever:
                 query=query,
                 top_n=top_n,
                 return_parent_pages=return_parent_pages,
+                filters=filters,
             )
 
         active_results = {}
@@ -490,7 +554,8 @@ class HybridRetriever:
         documents_batch_size: int = 2,
         top_n: int = 6,
         llm_weight: float = 0.7,
-        return_parent_pages: bool = False
+        return_parent_pages: bool = False,
+        filters: Optional[RetrievalFilters] = None,
     ) -> List[Dict]:
         """
         Retrieve and rerank documents using hybrid approach.
@@ -511,7 +576,8 @@ class HybridRetriever:
             company_name=company_name,
             query=query,
             top_n=llm_reranking_sample_size,
-            return_parent_pages=return_parent_pages
+            return_parent_pages=return_parent_pages,
+            filters=filters,
         )
 
         # Rerank results using LLM
