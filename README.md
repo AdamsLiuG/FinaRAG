@@ -1,6 +1,6 @@
 # FinaRAG
 
-面向金融研报与年报场景的 RAG 智能问答系统。项目重点不是“把 PDF 塞进向量库”，而是围绕金融文档的真实难点做增量优化：复杂 PDF 解析、表格语义化、结构感知切块、混合检索、可选 rerank、引用溯源、置信度输出，以及多公司对比问答路由。
+面向金融研报与年报场景的 RAG 智能问答系统。项目重点不是“把 PDF 塞进向量库”，而是围绕金融文档的真实难点做增量优化：复杂 PDF 解析、表格语义化、结构感知切块、混合检索、metadata-aware 路由、可选 rerank、引用溯源、答案校验、置信度输出，以及多公司对比问答路由。
 
 ## 项目背景 / 业务痛点
 
@@ -33,12 +33,15 @@ PDF Reports
 
 - 复杂 PDF 解析：使用 Docling 处理多栏、表格、图片和 OCR 场景
 - 表格序列化：把表格转换成更适合检索的自然语言信息块
-- 结构感知切块：保留标题、页面、section、table 等 metadata
+- 结构感知切块：保留标题、页面、section、table、parent block 等 metadata
 - 多路召回：支持向量检索、BM25、bge-m3 sparse lexical 混合召回
-- Query Rewrite：针对财务指标问答做术语扩展、币种与年份抽取
-- Metadata Filter：支持 company / currency / year / question kind 等过滤约束
+- Query Plan：针对财务指标问答做术语扩展、币种与年份抽取、topic flag 识别
+- Metadata Filter：支持 company / currency / year / report type / topic flags 等过滤约束
+- Metadata-aware Routing：无显式公司名时，根据 `subset.csv` 中的 topic flags、币种、年份和行业信息推断候选公司
 - 多公司对比问答：自动拆分 comparative question，再汇总比较答案
-- 引用溯源：返回页码 references、chunk 级 citations 和 confidence
+- 引用溯源：返回页码 references、chunk 级 citations、retrieval debug 和 confidence
+- 答案校验：对 currency / year / citation coverage / numeric table grounding 做后处理校验，必要时拒答
+- 误差分析：基于 debug bundle 输出 routing / retrieval / generation / validation 四类失败归因
 
 ## RAG Pipeline 说明
 
@@ -49,7 +52,7 @@ PDF Reports
 - 作用：
   - 解析 PDF 页面结构
   - 提取文本、表格、图片
-  - 把 `subset.csv` 中的 `company_name`、`currency`、`major_industry` 注入文档元信息
+  - 把 `subset.csv` 中的 `company_name`、`currency`、`major_industry` 和 topic flags 注入文档元信息
 
 ### 2. 表格处理
 
@@ -76,6 +79,10 @@ PDF Reports
   - `table_id`
   - `currency`
   - `report_year`
+  - `parent_block_id`
+  - `report_section`
+  - `evidence_type`
+  - `has_table_context`
 
 ### 4. 检索与重排
 
@@ -89,8 +96,9 @@ PDF Reports
   - bge-m3 sparse lexical retrieval
   - RRF / average fusion
 - 增强：
-  - Query rewrite
+  - Query plan
   - Metadata filter
+  - Metadata-aware routing
   - Optional rerank
 
 ### 5. 生成与后处理
@@ -99,6 +107,7 @@ PDF Reports
   - [src/questions_processing.py](/media/main/lgd/llm/FinaRAG/src/questions_processing.py)
   - [src/prompts.py](/media/main/lgd/llm/FinaRAG/src/prompts.py)
   - [src/citation_formatter.py](/media/main/lgd/llm/FinaRAG/src/citation_formatter.py)
+  - [src/answer_validation.py](/media/main/lgd/llm/FinaRAG/src/answer_validation.py)
 - 输出结构：
   - `final_answer`
   - `reasoning_summary`
@@ -106,6 +115,9 @@ PDF Reports
   - `references`
   - `citations`
   - `confidence`
+  - `confidence_reason`
+  - `validation_flags`
+  - `route_info`
 
 ## 金融场景优化
 
@@ -137,6 +149,17 @@ Prompt 明确约束：
 - 校验模型返回的页码必须来自检索结果
 - 回填 chunk 级 evidence snippet
 - 根据检索得分和证据完整度输出 `high / medium / low` confidence
+- 对 currency / year / numeric grounding 做一致性检查，必要时强制降级或拒答
+
+### Metadata-aware Routing
+
+当问题里没有显式公司名时，系统不会直接报错，而是结合：
+
+- query rewrite 抽取出的 `currency` / `year`
+- 问题中的 topic flags，例如并购、股息政策、管理层变动
+- `subset.csv` 中已有的行业与事件标签
+
+对候选公司做打分路由，再进入单公司检索和生成流程。
 
 ## 项目结构
 
@@ -151,9 +174,11 @@ FinaRAG/
 │   └── streamlit_app.py
 ├── eval/
 │   ├── compare_configs.py
+│   ├── error_analysis.py
 │   ├── metrics.py
 │   └── run_eval.py
 ├── src/
+│   ├── answer_validation.py
 │   ├── api_requests.py
 │   ├── citation_formatter.py
 │   ├── embedding_backend.py
@@ -162,9 +187,11 @@ FinaRAG/
 │   ├── pdf_parsing.py
 │   ├── pipeline.py
 │   ├── prompts.py
+│   ├── query_plan.py
 │   ├── query_rewrite.py
 │   ├── questions_processing.py
 │   ├── reranking.py
+│   ├── report_catalog.py
 │   ├── retrieval.py
 │   ├── retrieval_filters.py
 │   ├── tables_serialization.py
@@ -230,8 +257,14 @@ python ../../main.py process-questions --config-path ../../config/qwen_ser_reran
 - `avg_references_per_answer`
 - `confidence_distribution`
 - `reference_exact_match`
+- `reference_page_hit`
+- `citation_page_hit`
+- `retrieval_hit_at_k`
+- `avg_citation_page_precision`
+- `question_type_breakdown`
+- `confidence_calibration`
 
-其中 `reference_exact_match` 默认使用数据目录下的参考答案文件做对齐评估。它更适合做 **配置间对比 / 回归检查**，不等价于严格 benchmark ground truth。
+其中 `reference_exact_match` 默认使用数据目录下的参考答案文件做对齐评估。它更适合做 **配置间对比 / 回归检查**，不等价于严格 benchmark ground truth。`run_eval.py` 会自动读取同名 `_debug.json`，因此评测还能覆盖检索命中和误差归因。
 
 ### 运行单配置评测
 
@@ -249,18 +282,20 @@ python eval/run_eval.py \
 python eval/compare_configs.py \
   --dataset-dir data/test_set \
   --configs qwen_base,qwen_rerank,qwen_ser_rerank \
-  --output eval/results/compare_test_set.json
+  --output eval/results/compare_test_set.json \
+  --markdown-output eval/results/compare_test_set.md
 ```
 
-### 结果表模板
+### 误差分析
 
-| Config | Answer Rate | Citation Coverage | Reference Exact Match |
-| --- | --- | --- | --- |
-| `qwen_base` | local run | local run | local run |
-| `qwen_rerank` | local run | local run | local run |
-| `qwen_ser_rerank` | local run | local run | local run |
+```bash
+python eval/error_analysis.py \
+  --answers-file data/test_set/answers_qwen_base.json \
+  --debug-file data/test_set/answers_qwen_base_debug.json \
+  --reference-answers data/test_set/answers_max_nst_o3m.json
+```
 
-本仓库不预置虚构指标，建议直接运行上面的脚本生成真实结果后填表。
+`compare_configs.py` 现在可以直接输出 Markdown 表；README 不再保留 `local run` 占位表，避免文档亮点先于证据落地。
 
 ## Demo
 
@@ -273,11 +308,14 @@ streamlit run demo_app/streamlit_app.py
 Demo 展示内容：
 
 - 输入问题
-- config 切换
+- 显式选择 question kind
 - 结构化答案
+- route info / query plan
+- retrieval pages / retrieval results
 - references
 - citations
 - confidence
+- confidence reason / validation flags
 - model/debug metadata
 
 ## 难点与解决方案
@@ -290,22 +328,26 @@ Demo 展示内容：
 
 新增结构感知切块，保留标题、table、page、currency、year 等 metadata，降低财务指标问答时的上下文断裂。
 
-### 3. 不能只返回页码，要返回证据
+### 3. 不能只返回页码，要返回证据和校验结果
 
-新增 citation formatter，把检索结果中的 chunk 信息映射成 citation 列表和 evidence snippet。
+新增 citation formatter，把检索结果中的 chunk 信息映射成 citation 列表和 evidence snippet；同时增加 answer validation，对 currency / year / numeric grounding 做后处理校验。
 
-### 4. 只堆功能不够，必须能做 ablation
+### 4. 不能只靠显式公司名做路由
 
-新增最小 eval 框架，对不同 config 做 reference-alignment 对比，形成评测闭环。
+新增 metadata-aware routing，在问题未提公司名时，结合 topic flags、币种、年份和行业信息做候选公司推断。
+
+### 5. 只堆功能不够，必须能做 ablation 和 error analysis
+
+扩展 eval 框架，对不同 config 做 reference-alignment、retrieval hit、citation page hit 对比，并补充 error analysis 脚本做失败归因。
 
 ## 可以直接写进简历的 Bullet
 
 - 设计并实现面向金融研报场景的 RAG 问答系统，基于 Docling 完成复杂 PDF 解析、表格语义化、结构感知切块与混合检索，支持引用溯源与置信度输出。
-- 在问答链路中加入 Query Rewrite、metadata filter、Parent Page Retrieval 与可选 rerank，提升数字类与多公司比较问题的检索相关性和答案可解释性。
-- 搭建评测闭环，支持对 `base / rerank / table-serialization` 等配置进行 reference-alignment 对比，为 README 和简历输出可量化实验结果。
-- 实现多公司 comparative QA 路由，将比较问题拆解为单公司子问题并汇总为统一比较答案，增强项目的业务真实感和面试可追问性。
+- 在问答链路中加入 Query Plan、metadata-aware routing、metadata filter、Parent Page Retrieval 与可选 rerank，提升数字类、事件类和无显式公司名问题的检索相关性与可解释性。
+- 搭建评测闭环，支持对 `base / rerank / table-serialization` 等配置进行 reference-alignment、retrieval hit、citation page hit 和 error analysis 对比，为 README 和简历输出可量化实验结果。
+- 实现多公司 comparative QA 路由，并加入 answer validation 与 evidence-grounded citation 输出，增强项目的业务真实感、拒答能力和面试可追问性。
 
 ## 当前状态
 
-- 已完成：comparative QA 修复、结构感知切块、query rewrite、metadata filter、citation/confidence、config YAML、demo 脚手架、最小 eval、单元测试
-- 待继续补强：真实跑分结果、更多过滤字段、更多 benchmark case、生产级 API/Web UI
+- 已完成：comparative QA 修复、结构感知切块、query plan、metadata-aware routing、answer validation、citation/confidence、config YAML、demo、扩展 eval、误差分析脚本、单元测试
+- 待继续补强：真实多配置跑分结果、多报告时序检索、更多 benchmark case、生产级 API/Web UI

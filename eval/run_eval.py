@@ -8,6 +8,7 @@ import sys
 if __package__ in {None, ""}:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from eval.error_analysis import summarize_error_analysis
 from eval.metrics import compare_answers, load_answers_bundle, summarize_answers
 from src.pipeline import Pipeline, configs, load_run_config
 
@@ -24,18 +25,32 @@ def _default_reference_answers(dataset_dir: Path) -> Path | None:
     return None
 
 
+def _default_debug_bundle(answers_file: Path) -> Path | None:
+    debug_candidate = answers_file.with_name(answers_file.stem + "_debug" + answers_file.suffix)
+    return debug_candidate if debug_candidate.exists() else None
+
+
 def evaluate_answers_file(answers_file: Path, reference_answers: Path | None = None) -> dict:
     pred_answers, payload = load_answers_bundle(answers_file)
+    debug_payload = None
+    debug_path = _default_debug_bundle(answers_file)
+    if debug_path is not None:
+        _, debug_payload = load_answers_bundle(debug_path)
     metrics = summarize_answers(pred_answers)
 
     if reference_answers is not None and reference_answers.exists():
         ref_answers, _ = load_answers_bundle(reference_answers)
-        metrics.update(compare_answers(pred_answers, ref_answers))
+        metrics.update(compare_answers(pred_answers, ref_answers, debug_payload=debug_payload))
+        error_analysis = summarize_error_analysis(pred_answers, ref_answers, debug_payload=debug_payload)
+    else:
+        error_analysis = summarize_error_analysis(pred_answers, [], debug_payload=debug_payload)
 
     return {
         "answers_file": str(answers_file),
         "details": payload.get("details"),
+        "debug_bundle": str(debug_path) if debug_path is not None else None,
         "metrics": metrics,
+        "error_analysis": error_analysis,
     }
 
 

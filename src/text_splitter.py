@@ -93,6 +93,13 @@ class TextSplitter():
             
         return tables_by_page
 
+    def _report_topic_flags(self, report_meta: Dict[str, any]) -> List[str]:
+        return sorted(
+            key
+            for key, value in report_meta.items()
+            if key.startswith(("has_", "mentions_")) and str(value).strip().lower() == "true"
+        )
+
     def _split_report(self, file_content: Dict[str, any], serialized_tables_report_path: Optional[Path] = None) -> Dict[str, any]:
         """Split report into chunks, preserving markdown tables in content and optionally including serialized tables."""
         chunks = []
@@ -110,7 +117,8 @@ class TextSplitter():
             tables_by_page = self._get_serialized_tables_by_page(parsed_report.get('tables', []))
         
         for page in pages:
-            page_chunks = self._split_page(page, report_meta)
+            page_has_table_context = bool(tables_by_page and page['page'] in tables_by_page)
+            page_chunks = self._split_page(page, report_meta, has_table_context=page_has_table_context)
             for chunk in page_chunks:
                 chunk['id'] = chunk_id
                 chunk['chunk_id'] = chunk_id
@@ -128,6 +136,13 @@ class TextSplitter():
                     table['report_year'] = report_meta.get("report_year")
                     table['currency'] = report_meta.get("currency")
                     table['company_name'] = report_meta.get("company_name")
+                    table['major_industry'] = report_meta.get("major_industry")
+                    table['report_type'] = report_meta.get("report_type")
+                    table['topic_flags'] = self._report_topic_flags(report_meta)
+                    table['parent_block_id'] = f"page{page['page']}_table{table['table_id']}"
+                    table['report_section'] = table['section_title']
+                    table['evidence_type'] = 'table'
+                    table['has_table_context'] = True
                     chunk_id += 1
                     chunks.append(table)
         
@@ -175,13 +190,24 @@ class TextSplitter():
                 "report_year": report_meta.get("report_year"),
                 "currency": report_meta.get("currency"),
                 "company_name": report_meta.get("company_name"),
+                "major_industry": report_meta.get("major_industry"),
+                "report_type": report_meta.get("report_type"),
+                "topic_flags": self._report_topic_flags(report_meta),
+                "parent_block_id": block.get("parent_block_id"),
+                "report_section": block.get("report_section", block.get("section_title")),
+                "evidence_type": block.get("evidence_type", "narrative"),
+                "has_table_context": bool(block.get("has_table_context")),
             })
         return chunks_with_meta
 
-    def _split_page(self, page: Dict[str, any], report_meta: Dict[str, any]) -> List[Dict[str, any]]:
+    def _split_page(self, page: Dict[str, any], report_meta: Dict[str, any], has_table_context: bool = False) -> List[Dict[str, any]]:
         """Split page text into structure-aware chunks."""
         all_chunks: List[Dict[str, any]] = []
-        for block in self._extract_structural_blocks(page):
+        for index, block in enumerate(self._extract_structural_blocks(page)):
+            block["parent_block_id"] = f"page{page['page']}_block{index}"
+            block["report_section"] = block.get("section_title")
+            block["evidence_type"] = "narrative"
+            block["has_table_context"] = has_table_context
             all_chunks.extend(self._split_structural_block(block, report_meta))
         return all_chunks
 

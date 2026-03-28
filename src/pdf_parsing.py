@@ -15,6 +15,20 @@ from docling.datamodel.document import ConversionResult
 
 _log = logging.getLogger(__name__)
 
+
+def _coerce_csv_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        lowered = stripped.lower()
+        if lowered in {"true", "false"}:
+            return lowered == "true"
+        if stripped == "":
+            return None
+        return stripped
+    return value
+
 def _process_chunk(pdf_paths, pdf_backend, output_dir, num_threads, metadata_lookup, debug_data_path):
     """Helper function to process a chunk of PDFs in a separate process."""
     # Create a new parser instance for this process
@@ -61,11 +75,15 @@ class PDFParser:
             for row in reader:
                 # Handle both old and new CSV formats for company name
                 company_name = row.get('company_name', row.get('name', '')).strip('"')
-                metadata_lookup[row['sha1']] = {
-                    'company_name': company_name,
-                    'currency': row.get('cur'),
-                    'major_industry': row.get('major_industry'),
+                normalized_row = {
+                    key: _coerce_csv_value(value)
+                    for key, value in row.items()
+                    if value not in (None, "")
                 }
+                normalized_row['company_name'] = company_name
+                if 'cur' in normalized_row and 'currency' not in normalized_row:
+                    normalized_row['currency'] = normalized_row['cur']
+                metadata_lookup[row['sha1']] = normalized_row
         return metadata_lookup
 
     def _create_document_converter(self) -> "DocumentConverter": # type: ignore
@@ -279,9 +297,9 @@ class JsonReportProcessor:
         # Add CSV metadata if available
         if self.metadata_lookup and sha1_name in self.metadata_lookup:
             csv_meta = self.metadata_lookup[sha1_name]
+            metainfo.update(csv_meta)
             metainfo['company_name'] = csv_meta['company_name']
             metainfo['currency'] = csv_meta.get('currency')
-            metainfo['major_industry'] = csv_meta.get('major_industry')
             
         return metainfo
 

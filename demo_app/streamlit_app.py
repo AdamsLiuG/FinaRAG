@@ -11,7 +11,7 @@ from src.questions_processing import QuestionsProcessor
 
 st.set_page_config(page_title="FinaRAG Demo", layout="wide")
 st.title("FinaRAG Demo")
-st.caption("A financial-report RAG demo with query rewrite, citations, and confidence labels.")
+st.caption("A financial-report RAG demo with metadata-aware routing, grounded citations, and validation-aware confidence labels.")
 
 project_root = Path(__file__).resolve().parents[1]
 default_dataset = project_root / "data" / "test_set"
@@ -24,6 +24,7 @@ question = st.text_area(
     value="Did Mercia Asset Management PLC mention any mergers or acquisitions in the annual report?",
     height=120,
 )
+question_kind = st.selectbox("Question Kind", ["boolean", "number", "name"], index=0)
 
 if st.button("Run Question"):
     run_config = load_run_config(config_path)
@@ -45,9 +46,9 @@ if st.button("Run Question"):
         answering_model=run_config.answering_model,
         full_context=run_config.full_context,
     )
-    result = processor.process_question(question, "boolean" if question.lower().startswith("did ") else "number")
+    result = processor.process_question(question, question_kind)
 
-    left, right = st.columns([1.2, 1])
+    left, middle, right = st.columns([1.2, 1, 1])
     with left:
         st.subheader("Answer")
         st.json(
@@ -56,8 +57,26 @@ if st.button("Run Question"):
                 "reasoning_summary": result.get("reasoning_summary"),
                 "relevant_pages": result.get("relevant_pages"),
                 "confidence": result.get("confidence"),
+                "confidence_reason": result.get("confidence_reason"),
+                "validation_flags": result.get("validation_flags"),
                 "references": result.get("references"),
                 "citations": result.get("citations"),
+            }
+        )
+    with middle:
+        st.subheader("Routing And Query Plan")
+        st.json(
+            {
+                "route_info": result.get("route_info"),
+                "query_plan": result.get("query_plan"),
+                "search_queries": result.get("search_queries"),
+            }
+        )
+        st.subheader("Retrieval Evidence")
+        st.json(
+            {
+                "retrieval_pages": result.get("retrieval_pages"),
+                "retrieval_results": result.get("retrieval_results"),
             }
         )
     with right:

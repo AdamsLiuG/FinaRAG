@@ -9,9 +9,12 @@ from typing import Dict, List, Optional, Union
 import pandas as pd
 from tqdm import tqdm
 
+from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.citation_formatter import build_citations, compute_confidence, dedupe_citations, dedupe_references
+from src.query_plan import QueryPlan
 from src.query_rewrite import QuestionRewriter
+from src.report_catalog import ReportCatalog
 from src.retrieval import BM25Retriever, BGEM3SparseRetriever, HybridRetriever, VectorRetriever
 
 
@@ -67,6 +70,7 @@ class QuestionsProcessor:
         self._lock = threading.Lock()
         self.question_rewriter = QuestionRewriter()
         self.companies_df: Optional[pd.DataFrame] = None
+        self.report_catalog = ReportCatalog(self.subset_path, self.documents_dir) if self.subset_path else None
 
     def _load_questions(self, questions_file_path: Optional[Union[str, Path]]) -> List[Dict[str, str]]:
         if questions_file_path is None:
@@ -119,11 +123,51 @@ class QuestionsProcessor:
 
         return "\n\n---\n\n".join(context_parts)
 
-    def _extract_references(self, pages_list: List[int], company_name: str) -> List[Dict]:
-        companies_df = self._load_companies_df()
-        matching_rows = companies_df[companies_df['company_name'] == company_name]
-        company_sha1 = "" if matching_rows.empty else matching_rows.iloc[0]['sha1']
+    def _extract_references(self, pages_list: List[int], company_name: str, pdf_sha1: Optional[str] = None) -> List[Dict]:
+        company_sha1 = pdf_sha1 or ""
+        if not company_sha1:
+            companies_df = self._load_companies_df()
+            matching_rows = companies_df[companies_df['company_name'] == company_name]
+            company_sha1 = "" if matching_rows.empty else matching_rows.iloc[0]['sha1']
         return [{"pdf_sha1": company_sha1, "page_index": page} for page in pages_list]
+
+    def _build_query_plan(
+        self,
+        question: str,
+        schema: str,
+        company_name: Optional[str] = None,
+        mentioned_companies: Optional[List[str]] = None,
+        route_mode: Optional[str] = None,
+    ) -> QueryPlan:
+        query_plan = self.question_rewriter.rewrite(
+            question,
+            schema=schema,
+            company_name=company_name,
+            mentioned_companies=mentioned_companies,
+        )
+        if company_name:
+            query_plan.filters.company_name = company_name
+        if route_mode:
+            query_plan.route_mode = route_mode
+        return query_plan
+
+    def _serialize_retrieval_result(self, result: Dict) -> Dict:
+        metadata = result.get("metadata", {})
+        return {
+            "page": result.get("page"),
+            "chunk_id": metadata.get("chunk_id"),
+            "chunk_type": metadata.get("chunk_type"),
+            "section_title": metadata.get("section_title"),
+            "report_section": metadata.get("report_section"),
+            "company_name": metadata.get("company_name"),
+            "currency": metadata.get("currency"),
+            "report_year": metadata.get("report_year"),
+            "report_type": metadata.get("report_type"),
+            "topic_flags": metadata.get("topic_flags", []),
+            "retrieval_sources": result.get("retrieval_sources", []),
+            "score": round(_result_score(result), 4),
+            "text_preview": " ".join((result.get("text") or "").split())[:220],
+        }
 
     def _validate_page_references(self, claimed_pages: List[int], retrieval_results: List[Dict], min_pages: int = 2, max_pages: int = 8) -> List[int]:
         if claimed_pages is None:
@@ -246,11 +290,90 @@ class QuestionsProcessor:
             return "medium"
         return "low"
 
-    def get_answer_for_company(self, company_name: str, question: str, schema: str) -> Dict:
+    def route_question(self, question: str, schema: str) -> Dict:
+        extracted_companies = self._extract_companies_from_subset(question)
+
+        if len(extracted_companies) > 1:
+            query_plan = self._build_query_plan(
+                question,
+                schema=schema,
+                mentioned_companies=extracted_companies,
+                route_mode="comparative_explicit",
+            )
+            return {
+                "companies": extracted_companies,
+                "query_plan": query_plan,
+                "route_info": {
+                    "route_mode": "comparative_explicit",
+                    "selected_company": None,
+                    "candidate_companies": extracted_companies,
+                    "selection_reasons": ["multiple_companies_mentioned_in_question"],
+                },
+                "is_comparative": True,
+            }
+
+        if len(extracted_companies) == 1:
+            company_name = extracted_companies[0]
+            query_plan = self._build_query_plan(
+                question,
+                schema=schema,
+                company_name=company_name,
+                mentioned_companies=extracted_companies,
+                route_mode="explicit_company",
+            )
+            return {
+                "company_name": company_name,
+                "companies": extracted_companies,
+                "query_plan": query_plan,
+                "route_info": {
+                    "route_mode": "explicit_company",
+                    "selected_company": company_name,
+                    "candidate_companies": extracted_companies,
+                    "selection_reasons": ["company_mentioned_in_question"],
+                },
+                "is_comparative": False,
+            }
+
+        if self.report_catalog is None:
+            raise ValueError("No company name found in the question.")
+
+        query_plan = self._build_query_plan(
+            question,
+            schema=schema,
+            mentioned_companies=[],
+            route_mode="metadata_inference",
+        )
+        company_name, route_info = self.report_catalog.resolve_single_company(query_plan)
+        query_plan.filters.company_name = company_name
+        query_plan.mentioned_companies = [company_name]
+        query_plan.route_mode = route_info.get("route_mode", "metadata_inference")
+        return {
+            "company_name": company_name,
+            "companies": [company_name],
+            "query_plan": query_plan,
+            "route_info": route_info,
+            "is_comparative": False,
+        }
+
+    def get_answer_for_company(
+        self,
+        company_name: str,
+        question: str,
+        schema: str,
+        query_plan: Optional[QueryPlan] = None,
+        route_info: Optional[Dict] = None,
+    ) -> Dict:
         if not self.use_vector_dbs and not self.use_bm25_db and not self.use_sparse_lexical_db:
             raise ValueError("At least one retrieval backend must be enabled.")
 
-        rewrite_result = self.question_rewriter.rewrite(question, schema=schema, company_name=company_name)
+        rewrite_result = query_plan or self._build_query_plan(
+            question,
+            schema=schema,
+            company_name=company_name,
+            mentioned_companies=[company_name],
+            route_mode="explicit_company",
+        )
+        rewrite_result.filters.company_name = company_name
         retriever, mode = self._build_retriever()
 
         if mode == "full_context":
@@ -273,41 +396,63 @@ class QuestionsProcessor:
             schema=schema,
             model=self.answering_model
         )
-        self.response_data = self.api_processor.response_data
+        self.response_data = dict(self.api_processor.response_data)
 
         pages = answer_dict.get("relevant_pages", [])
         validated_pages = self._validate_page_references(pages, retrieval_results)
+        selected_report = (route_info or {}).get("selected_report") or {}
         answer_dict["relevant_pages"] = validated_pages
-        answer_dict["references"] = self._extract_references(validated_pages, company_name)
+        answer_dict["references"] = self._extract_references(
+            validated_pages,
+            company_name,
+            pdf_sha1=selected_report.get("sha1"),
+        )
         answer_dict["citations"] = build_citations(retrieval_results, validated_pages)
         answer_dict["confidence"] = compute_confidence(answer_dict, retrieval_results)
         answer_dict["search_queries"] = rewrite_result.search_queries
-        return answer_dict
+        answer_dict["query_plan"] = rewrite_result.to_dict()
+        answer_dict["route_info"] = route_info or {
+            "route_mode": rewrite_result.route_mode,
+            "selected_company": company_name,
+            "candidate_companies": [company_name],
+        }
+        answer_dict["retrieval_pages"] = [result.get("page") for result in retrieval_results]
+        answer_dict["retrieval_results"] = [self._serialize_retrieval_result(result) for result in retrieval_results]
+        answer_dict["response_data"] = self.response_data
+        validated_answer = validate_answer(answer_dict, retrieval_results, rewrite_result)
+        return validated_answer.answer
 
     def _extract_companies_from_subset(self, question_text: str) -> List[str]:
-        companies_df = self._load_companies_df()
-        found_companies = []
-        company_names = sorted(companies_df['company_name'].unique(), key=len, reverse=True)
+        if self.report_catalog is not None:
+            return self.report_catalog.extract_companies_from_question(question_text)
 
+        companies_df = self._load_companies_df()
+        company_names = sorted(companies_df['company_name'].unique(), key=len, reverse=True)
+        found_companies = []
         for company in company_names:
             escaped_company = re.escape(company)
             pattern = rf'{escaped_company}(?:\W|$)'
             if re.search(pattern, question_text, re.IGNORECASE):
                 found_companies.append(company)
                 question_text = re.sub(pattern, '', question_text, flags=re.IGNORECASE)
-
         return found_companies
 
     def process_question(self, question: str, schema: str):
-        extracted_companies = self._extract_companies_from_subset(question)
+        route_decision = self.route_question(question, schema)
+        if route_decision["is_comparative"]:
+            return self.process_comparative_question(
+                question,
+                route_decision["companies"],
+                schema,
+            )
 
-        if len(extracted_companies) == 0:
-            raise ValueError("No company name found in the question.")
-
-        if len(extracted_companies) == 1:
-            company_name = extracted_companies[0]
-            return self.get_answer_for_company(company_name=company_name, question=question, schema=schema)
-        return self.process_comparative_question(question, extracted_companies, schema)
+        return self.get_answer_for_company(
+            company_name=route_decision["company_name"],
+            question=question,
+            schema=schema,
+            query_plan=route_decision["query_plan"],
+            route_info=route_decision["route_info"],
+        )
 
     def _create_answer_detail_ref(self, answer_dict: Dict, question_index: int) -> str:
         ref_id = f"#/answer_details/{question_index}"
@@ -318,8 +463,14 @@ class QuestionsProcessor:
                 "relevant_pages": answer_dict.get('relevant_pages'),
                 "citations": answer_dict.get("citations", []),
                 "confidence": answer_dict.get("confidence", "low"),
+                "confidence_reason": answer_dict.get("confidence_reason", ""),
+                "validation_flags": answer_dict.get("validation_flags", []),
                 "search_queries": answer_dict.get("search_queries", []),
-                "response_data": self.response_data,
+                "query_plan": answer_dict.get("query_plan", {}),
+                "route_info": answer_dict.get("route_info", {}),
+                "retrieval_pages": answer_dict.get("retrieval_pages", []),
+                "retrieval_results": answer_dict.get("retrieval_results", []),
+                "response_data": answer_dict.get("response_data", {}),
                 "self": ref_id
             }
         return ref_id
@@ -391,6 +542,9 @@ class QuestionsProcessor:
                     "references": [],
                     "citations": [],
                     "confidence": "low",
+                    "confidence_reason": answer_dict.get("confidence_reason", ""),
+                    "validation_flags": answer_dict.get("validation_flags", []),
+                    "route_info": answer_dict.get("route_info", {}),
                     "error": answer_dict["error"],
                     "answer_details": {"$ref": detail_ref}
                 }
@@ -403,6 +557,9 @@ class QuestionsProcessor:
                 "references": answer_dict.get("references", []),
                 "citations": answer_dict.get("citations", []),
                 "confidence": answer_dict.get("confidence", "low"),
+                "confidence_reason": answer_dict.get("confidence_reason", ""),
+                "validation_flags": answer_dict.get("validation_flags", []),
+                "route_info": answer_dict.get("route_info", {}),
                 "answer_details": {"$ref": detail_ref}
             }
         except Exception as err:
@@ -433,6 +590,9 @@ class QuestionsProcessor:
             "references": [],
             "citations": [],
             "confidence": "low",
+            "confidence_reason": f"{type(err).__name__}: {error_message}",
+            "validation_flags": ["processing_error"],
+            "route_info": {},
             "error": f"{type(err).__name__}: {error_message}",
             "answer_details": {"$ref": error_ref}
         }
@@ -447,6 +607,9 @@ class QuestionsProcessor:
             references = q.get("references", [])
             citations = q.get("citations", [])
             confidence = q.get("confidence", "low")
+            confidence_reason = q.get("confidence_reason", "")
+            validation_flags = q.get("validation_flags", [])
+            route_info = q.get("route_info", {})
 
             answer_details_ref = q.get("answer_details", {}).get("$ref", "")
             step_by_step_analysis = None
@@ -477,6 +640,9 @@ class QuestionsProcessor:
                 "references": references,
                 "citations": citations,
                 "confidence": confidence,
+                "confidence_reason": confidence_reason,
+                "validation_flags": validation_flags,
+                "route_info": route_info,
             }
 
             if step_by_step_analysis:
@@ -564,9 +730,28 @@ class QuestionsProcessor:
             schema="comparative",
             model=self.answering_model
         )
-        self.response_data = self.api_processor.response_data
+        self.response_data = dict(self.api_processor.response_data)
         comparative_answer["references"] = dedupe_references(aggregated_references)
         comparative_answer["citations"] = dedupe_citations(aggregated_citations)
         comparative_answer["confidence"] = self._confidence_from_individual_answers(individual_answers)
+        comparative_answer["confidence_reason"] = "Aggregated from per-company answers in comparative QA mode."
+        comparative_answer["validation_flags"] = []
         comparative_answer["search_queries"] = [question]
+        comparative_answer["query_plan"] = self._build_query_plan(
+            question,
+            schema="comparative",
+            mentioned_companies=companies,
+            route_mode="comparative_explicit",
+        ).to_dict()
+        comparative_answer["route_info"] = {
+            "route_mode": "comparative_explicit",
+            "selected_company": None,
+            "candidate_companies": companies,
+            "selection_reasons": ["multiple_companies_mentioned_in_question"],
+        }
+        comparative_answer["retrieval_pages"] = sorted(
+            {citation.get("page") for citation in aggregated_citations if citation.get("page") is not None}
+        )
+        comparative_answer["retrieval_results"] = []
+        comparative_answer["response_data"] = self.response_data
         return comparative_answer
