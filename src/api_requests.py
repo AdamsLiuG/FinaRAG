@@ -32,7 +32,7 @@ class BaseCompatibleProcessor:
         self.default_model = self._get_env_value(
             f"{self.provider.upper()}_MODEL",
             "LLM_MODEL",
-            default="Qwen/Qwen2.5-72B-Instruct"
+            default="Qwen3.5-35B-A3B-AWQ-4bit"
         )
         max_tokens = self._get_env_value(
             f"{self.provider.upper()}_MAX_TOKENS",
@@ -622,13 +622,14 @@ class APIProcessor:
             **kwargs
         )
 
-    def get_answer_from_rag_context(self, question, rag_context, schema, model):
+    def get_answer_from_rag_context(self, question, rag_context, schema, model, temperature: float = 0):
         system_prompt, response_format, user_prompt = self._build_rag_context_prompts(schema)
         if not isinstance(rag_context, str):
             rag_context = json.dumps(rag_context, ensure_ascii=False, indent=2)
         
         answer_dict = self.processor.send_message(
             model=model,
+            temperature=temperature,
             system_content=system_prompt,
             human_content=user_prompt.format(context=rag_context, question=question),
             is_structured=True,

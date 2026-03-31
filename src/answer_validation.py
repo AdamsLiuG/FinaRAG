@@ -27,6 +27,14 @@ def _union_metadata_flags(retrieval_results: List[Dict[str, Any]]) -> set[str]:
     return topic_flags
 
 
+def _period_matches(requested_period: str | None, observed_period: str | None) -> bool:
+    if not requested_period or not observed_period:
+        return True
+    requested = str(requested_period).lower()
+    observed = str(observed_period).lower()
+    return requested in observed or observed in requested
+
+
 @dataclass
 class ValidatedAnswer:
     answer: Dict[str, Any]
@@ -46,7 +54,10 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
     retrieval_metadata = [result.get("metadata") or {} for result in retrieval_results]
     currencies = {metadata.get("currency") for metadata in retrieval_metadata if metadata.get("currency")}
     years = {metadata.get("report_year") for metadata in retrieval_metadata if metadata.get("report_year") is not None}
+    doc_source_types = {metadata.get("doc_source_type") for metadata in retrieval_metadata if metadata.get("doc_source_type")}
+    periods = {metadata.get("period") for metadata in retrieval_metadata if metadata.get("period")}
     topic_flags = _union_metadata_flags(retrieval_results)
+    table_grounding_result = answer.get("table_grounding_result") or {}
 
     if final_answer not in (None, "N/A", []):
         if not citations:
@@ -73,13 +84,50 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
         answer["relevant_pages"] = []
         confidence = "low"
 
+    if query_plan.filters.doc_source_type and doc_source_types and query_plan.filters.doc_source_type not in doc_source_types:
+        validation_flags.append("doc_source_type_mismatch")
+        confidence = _downgrade_confidence(confidence)
+
+    if query_plan.filters.period and periods and not any(_period_matches(query_plan.filters.period, period) for period in periods):
+        validation_flags.append("period_filter_weak_match")
+        confidence = _downgrade_confidence(confidence)
+
     if query_plan.topic_flags and topic_flags and not (set(query_plan.topic_flags) & topic_flags):
         validation_flags.append("topic_filter_weak_match")
         confidence = _downgrade_confidence(confidence)
 
     if query_plan.expected_answer_type == "numeric" and final_answer not in (None, "N/A"):
-        if not any((citation.get("chunk_type") in {"serialized_table", "table"}) for citation in citations):
-            validation_flags.append("numeric_answer_without_table_evidence")
+        grounded_period = table_grounding_result.get("period")
+        grounded_unit = str(table_grounding_result.get("unit") or "")
+
+        if table_grounding_result:
+            if table_grounding_result.get("normalized_value") is None:
+                validation_flags.append("numeric_grounding_missing_value")
+                answer["final_answer"] = "N/A"
+                answer["references"] = []
+                answer["citations"] = []
+                answer["relevant_pages"] = []
+                confidence = "low"
+            if query_plan.filters.period and grounded_period and not _period_matches(query_plan.filters.period, grounded_period):
+                validation_flags.append("numeric_grounding_period_mismatch")
+                answer["final_answer"] = "N/A"
+                answer["references"] = []
+                answer["citations"] = []
+                answer["relevant_pages"] = []
+                confidence = "low"
+            if query_plan.filters.currency and grounded_unit:
+                normalized_unit = grounded_unit.upper()
+                if query_plan.filters.currency not in normalized_unit and not (
+                    query_plan.filters.currency == "CNY" and "人民币" in grounded_unit
+                ):
+                    validation_flags.append("numeric_grounding_currency_mismatch")
+                    answer["final_answer"] = "N/A"
+                    answer["references"] = []
+                    answer["citations"] = []
+                    answer["relevant_pages"] = []
+                    confidence = "low"
+        elif not any((citation.get("chunk_type") in {"serialized_table", "table", "table_grounding"}) for citation in citations):
+            validation_flags.append("numeric_answer_without_table_grounding")
             confidence = _downgrade_confidence(confidence)
 
     if not retrieval_results:

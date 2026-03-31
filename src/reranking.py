@@ -213,7 +213,7 @@ class LLMReranker:
     def __init__(self, provider: str = "qwen", model: str = None):
         load_dotenv()
         self.provider = provider
-        self.model = model or os.getenv("RERANKING_MODEL") or os.getenv("LLM_MODEL") or "Qwen/Qwen2.5-72B-Instruct"
+        self.model = model or os.getenv("RERANKING_MODEL") or os.getenv("LLM_MODEL") or "Qwen3.5-35B-A3B-AWQ-4bit"
         self.processor = APIProcessor(provider=provider)
         self.system_prompt_rerank_single_block = prompts.RerankingPrompt.system_prompt_rerank_single_block
         self.system_prompt_rerank_multiple_blocks = prompts.RerankingPrompt.system_prompt_rerank_multiple_blocks

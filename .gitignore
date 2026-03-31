@@ -176,3 +176,7 @@ proj_ref.md
 # 历史输出文件
 data/test_set/answers_*.json
 data/erc2_set/answers_*.json
+
+# Local large datasets (do not commit)
+data/chinese_benchmark/
+data/chinese_annual_reports_2024/

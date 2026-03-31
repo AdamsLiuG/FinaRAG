@@ -1,5 +1,6 @@
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Iterable, List
 
@@ -18,6 +19,34 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_devices(value: str | None, default: str = "cpu") -> List[str]:
+    if value is None:
+        return [default]
+
+    parts = [part.strip() for part in str(value).split(",") if part.strip()]
+    if not parts:
+        return [default]
+
+    devices: List[str] = []
+    for part in parts:
+        normalized = part.lower()
+        if part.isdigit():
+            devices.append(f"cuda:{part}")
+        elif normalized in {"cuda", "cpu", "mps"}:
+            devices.append(normalized)
+        elif normalized.startswith(("cuda:", "cpu", "mps", "npu:", "musa:")):
+            devices.append(part)
+        else:
+            devices.append(f"cuda:{part}")
+    return devices
+
+
+def _split_indexed_items(indexed_items: List[tuple], num_buckets: int) -> List[List[tuple]]:
+    if num_buckets <= 1:
+        return [indexed_items]
+    return [indexed_items[index::num_buckets] for index in range(num_buckets)]
 
 
 # ---------------------------------------------------------------------------
@@ -158,35 +187,67 @@ class EmbeddingBackend:
     def __init__(self, model_name: str = None, device: str = None, batch_size: int = None):
         load_dotenv()
         self.model_name = model_name or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
-        self.device = device or os.getenv("EMBEDDING_DEVICE", "")
+        raw_device = device if device is not None else os.getenv("EMBEDDING_DEVICE", "")
+        self.devices = _parse_devices(raw_device, default="cpu")
+        self.device = self.devices[0]
         self.batch_size = batch_size or int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
         self.trust_remote_code = _env_flag("EMBEDDING_TRUST_REMOTE_CODE", default=False)
-        self.model = _load_model(self.model_name, self.device, self.trust_remote_code)
+        self.models = [
+            _load_model(self.model_name, target_device, self.trust_remote_code)
+            for target_device in self.devices
+        ]
+        self.model = self.models[0]
 
-    def embed_texts(self, texts: Iterable[str]) -> List[List[float]]:
-        text_list = [text for text in texts if text and text.strip()]
-        if not text_list:
-            return []
-
-        embeddings = self.model.encode(
-            text_list,
+    def _encode_batch(self, model: SentenceTransformer, texts: List[str]) -> np.ndarray:
+        embeddings = model.encode(
+            texts,
             batch_size=self.batch_size,
             convert_to_numpy=True,
             normalize_embeddings=True,
             show_progress_bar=False,
         )
-        return np.asarray(embeddings, dtype=np.float32).tolist()
+        embeddings_array = np.asarray(embeddings, dtype=np.float32)
+        if embeddings_array.ndim == 1:
+            embeddings_array = embeddings_array.reshape(1, -1)
+        return embeddings_array
+
+    def embed_texts(self, texts: Iterable[str]) -> List[List[float]]:
+        text_list = [text for text in texts if text and text.strip()]
+        if not text_list:
+            return []
+        if len(self.models) == 1:
+            return self._encode_batch(self.model, text_list).tolist()
+
+        indexed_texts = list(enumerate(text_list))
+        chunks = _split_indexed_items(indexed_texts, len(self.models))
+        ordered_embeddings: List[np.ndarray | None] = [None] * len(text_list)
+
+        def encode_chunk(model: SentenceTransformer, chunk: List[tuple]) -> List[tuple]:
+            if not chunk:
+                return []
+            indices = [index for index, _ in chunk]
+            chunk_texts = [text for _, text in chunk]
+            chunk_embeddings = self._encode_batch(model, chunk_texts)
+            return list(zip(indices, chunk_embeddings))
+
+        with ThreadPoolExecutor(max_workers=len(self.models)) as executor:
+            futures = [
+                executor.submit(encode_chunk, model, chunk)
+                for model, chunk in zip(self.models, chunks)
+            ]
+            for future in futures:
+                for index, embedding in future.result():
+                    ordered_embeddings[index] = embedding
+
+        if any(embedding is None for embedding in ordered_embeddings):
+            raise RuntimeError("Dense embedding sharding produced incomplete results.")
+        return [np.asarray(embedding, dtype=np.float32).tolist() for embedding in ordered_embeddings]
 
     def embed_query(self, text: str) -> np.ndarray:
         if not text or not text.strip():
             raise ValueError("Query text cannot be empty.")
 
-        embedding = self.model.encode(
-            text,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
+        embedding = self.model.encode(text, convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=False)
         return np.asarray(embedding, dtype=np.float32)
 
 
@@ -205,35 +266,69 @@ class BGEM3SparseEmbeddingBackend:
             or os.getenv("EMBEDDING_SPARSE_MODEL_NAME")
             or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
         )
-        self.device = device or os.getenv("EMBEDDING_SPARSE_DEVICE") or os.getenv("EMBEDDING_DEVICE", "cpu")
+        raw_device = device or os.getenv("EMBEDDING_SPARSE_DEVICE") or os.getenv("EMBEDDING_DEVICE", "cpu")
+        self.devices = _parse_devices(raw_device, default="cpu")
+        self.device = self.devices[0]
         self.batch_size = batch_size or int(os.getenv("EMBEDDING_SPARSE_BATCH_SIZE", "32"))
         self.query_max_length = query_max_length or int(os.getenv("EMBEDDING_SPARSE_QUERY_MAX_LENGTH", "256"))
         self.passage_max_length = passage_max_length or int(os.getenv("EMBEDDING_SPARSE_PASSAGE_MAX_LENGTH", "512"))
-        use_fp16_default = self.device.startswith("cuda")
+        use_fp16_default = any(device_name.startswith("cuda") for device_name in self.devices)
         self.use_fp16 = _env_flag("EMBEDDING_SPARSE_USE_FP16", default=use_fp16_default)
-        self.model = _load_bgem3_model(
-            model_name=self.model_name,
-            device=self.device,
-            use_fp16=self.use_fp16,
-            batch_size=self.batch_size,
-            query_max_length=self.query_max_length,
-            passage_max_length=self.passage_max_length,
-        )
+        self.models = [
+            _load_bgem3_model(
+                model_name=self.model_name,
+                device=target_device,
+                use_fp16=self.use_fp16,
+                batch_size=self.batch_size,
+                query_max_length=self.query_max_length,
+                passage_max_length=self.passage_max_length,
+            )
+            for target_device in self.devices
+        ]
+        self.model = self.models[0]
 
-    def encode_texts(self, texts: Iterable[str]) -> List[dict]:
-        text_list = [text for text in texts if text and text.strip()]
-        if not text_list:
-            return []
-
-        outputs = self.model.encode(
-            text_list,
+    def _encode_sparse_batch(self, model: "BGEM3FlagModel", texts: List[str], max_length: int) -> List[dict]:
+        outputs = model.encode(
+            texts,
             batch_size=self.batch_size,
-            max_length=self.passage_max_length,
+            max_length=max_length,
             return_dense=False,
             return_sparse=True,
             return_colbert_vecs=False,
         )
         return list(outputs["lexical_weights"])
+
+    def encode_texts(self, texts: Iterable[str]) -> List[dict]:
+        text_list = [text for text in texts if text and text.strip()]
+        if not text_list:
+            return []
+        if len(self.models) == 1:
+            return self._encode_sparse_batch(self.model, text_list, self.passage_max_length)
+
+        indexed_texts = list(enumerate(text_list))
+        chunks = _split_indexed_items(indexed_texts, len(self.models))
+        ordered_weights: List[dict | None] = [None] * len(text_list)
+
+        def encode_chunk(model: "BGEM3FlagModel", chunk: List[tuple]) -> List[tuple]:
+            if not chunk:
+                return []
+            indices = [index for index, _ in chunk]
+            chunk_texts = [text for _, text in chunk]
+            chunk_weights = self._encode_sparse_batch(model, chunk_texts, self.passage_max_length)
+            return list(zip(indices, chunk_weights))
+
+        with ThreadPoolExecutor(max_workers=len(self.models)) as executor:
+            futures = [
+                executor.submit(encode_chunk, model, chunk)
+                for model, chunk in zip(self.models, chunks)
+            ]
+            for future in futures:
+                for index, lexical_weight in future.result():
+                    ordered_weights[index] = lexical_weight
+
+        if any(weight is None for weight in ordered_weights):
+            raise RuntimeError("Sparse embedding sharding produced incomplete results.")
+        return list(ordered_weights)
 
     def encode_query(self, text: str) -> dict:
         if not text or not text.strip():

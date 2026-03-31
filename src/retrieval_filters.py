@@ -28,8 +28,13 @@ class RetrievalFilters:
     currency: Optional[str] = None
     year: Optional[int] = None
     report_type: Optional[str] = None
+    doc_source_type: Optional[str] = None
     major_industry: Optional[str] = None
+    security_code: Optional[str] = None
+    broker_name: Optional[str] = None
+    period: Optional[str] = None
     required_topic_flags: Optional[List[str]] = None
+    candidate_doc_ids: Optional[List[str]] = None
     question_kind: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,8 +43,13 @@ class RetrievalFilters:
             "currency": self.currency,
             "year": self.year,
             "report_type": self.report_type,
+            "doc_source_type": self.doc_source_type,
             "major_industry": self.major_industry,
+            "security_code": self.security_code,
+            "broker_name": self.broker_name,
+            "period": self.period,
             "required_topic_flags": list(self.required_topic_flags or []),
+            "candidate_doc_ids": list(self.candidate_doc_ids or []),
             "question_kind": self.question_kind,
         }
 
@@ -47,12 +57,31 @@ class RetrievalFilters:
 def build_result_metadata(document_meta: Dict, chunk: Dict | None = None) -> Dict:
     chunk = chunk or {}
     topic_flags = sorted(set(_extract_topic_flags(document_meta)) | set(chunk.get("topic_flags") or []))
+    node_type = chunk.get("node_type")
+    if not node_type:
+        if chunk.get("chunk_type") == "page":
+            node_type = "page"
+        elif chunk.get("parent_chunk_id") is not None:
+            node_type = "child"
+        elif chunk.get("child_chunk_ids") is not None:
+            node_type = "parent"
+        else:
+            node_type = "child"
     return {
         "company_name": document_meta.get("company_name"),
+        "company_aliases": list(document_meta.get("company_aliases") or []),
+        "security_code": document_meta.get("security_code"),
+        "broker_name": document_meta.get("broker_name"),
         "currency": normalize_currency_token(document_meta.get("currency")),
         "major_industry": document_meta.get("major_industry"),
         "report_year": chunk.get("report_year", document_meta.get("report_year")),
         "report_type": chunk.get("report_type", document_meta.get("report_type")),
+        "doc_source_type": chunk.get("doc_source_type", document_meta.get("doc_source_type")),
+        "report_date": chunk.get("report_date", document_meta.get("report_date")),
+        "fiscal_year": chunk.get("fiscal_year", document_meta.get("fiscal_year")),
+        "period": chunk.get("period", document_meta.get("period")),
+        "unit_hint": chunk.get("unit_hint", document_meta.get("unit_hint")),
+        "language": chunk.get("language", document_meta.get("language")),
         "topic_flags": topic_flags,
         "chunk_id": chunk.get("chunk_id", chunk.get("id")),
         "chunk_type": chunk.get("chunk_type", chunk.get("type", "content")),
@@ -60,6 +89,9 @@ def build_result_metadata(document_meta: Dict, chunk: Dict | None = None) -> Dic
         "report_section": chunk.get("report_section", chunk.get("section_title")),
         "table_id": chunk.get("table_id"),
         "parent_block_id": chunk.get("parent_block_id"),
+        "parent_chunk_id": chunk.get("parent_chunk_id"),
+        "child_chunk_ids": list(chunk.get("child_chunk_ids") or []),
+        "node_type": node_type,
         "evidence_type": chunk.get("evidence_type"),
         "has_table_context": bool(chunk.get("has_table_context")),
         "sha1_name": document_meta.get("sha1_name"),
@@ -79,11 +111,22 @@ def _matches_filters(result: Dict, filters: RetrievalFilters | None) -> bool:
         return False
     if filters.report_type and metadata.get("report_type") and metadata.get("report_type") != filters.report_type:
         return False
+    if filters.doc_source_type and metadata.get("doc_source_type") and metadata.get("doc_source_type") != filters.doc_source_type:
+        return False
     if filters.major_industry and metadata.get("major_industry") and metadata.get("major_industry") != filters.major_industry:
+        return False
+    if filters.security_code and metadata.get("security_code") and str(metadata.get("security_code")) != str(filters.security_code):
+        return False
+    if filters.broker_name and metadata.get("broker_name") and metadata.get("broker_name") != filters.broker_name:
+        return False
+    if filters.period and metadata.get("period") and metadata.get("period") != filters.period:
         return False
     if filters.required_topic_flags:
         available_flags = set(metadata.get("topic_flags") or [])
         if not set(filters.required_topic_flags).issubset(available_flags):
+            return False
+    if filters.candidate_doc_ids:
+        if metadata.get("sha1_name") not in set(filters.candidate_doc_ids):
             return False
     return True
 

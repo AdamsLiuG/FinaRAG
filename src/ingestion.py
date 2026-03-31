@@ -78,8 +78,30 @@ class SparseLexicalIngestor:
         print(f"Processed {len(all_report_paths)} reports")
 
 class VectorDBIngestor:
-    def __init__(self):
+    def __init__(
+        self,
+        index_type: str = "flat",
+        ivf_nlist: int = 32,
+        hnsw_m: int = 32,
+        hnsw_ef_construction: int = 200,
+    ):
         self.embedding_backend = EmbeddingBackend()
+        self.index_type = self._normalize_index_type(index_type)
+        self.ivf_nlist = max(1, int(ivf_nlist))
+        self.hnsw_m = max(2, int(hnsw_m))
+        self.hnsw_ef_construction = max(1, int(hnsw_ef_construction))
+
+    @staticmethod
+    def _normalize_index_type(index_type: str) -> str:
+        normalized = (index_type or "flat").strip().lower()
+        if normalized not in {"flat", "ivf", "hnsw"}:
+            raise ValueError(f"Unsupported vector index type '{index_type}'. Expected one of: ['flat', 'ivf', 'hnsw'].")
+        return normalized
+
+    def _resolve_ivf_nlist(self, num_embeddings: int) -> int:
+        if num_embeddings <= 0:
+            raise ValueError("Cannot create an IVF index without embeddings.")
+        return min(self.ivf_nlist, num_embeddings)
 
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.embedding_backend.embed_texts(texts)
@@ -90,7 +112,16 @@ class VectorDBIngestor:
     def _create_vector_db(self, embeddings: List[float]):
         embeddings_array = np.array(embeddings, dtype=np.float32)
         dimension = len(embeddings[0])
-        index = faiss.IndexFlatIP(dimension)  # Cosine distance
+        if self.index_type == "ivf":
+            actual_nlist = self._resolve_ivf_nlist(len(embeddings_array))
+            quantizer = faiss.IndexFlatIP(dimension)
+            index = faiss.IndexIVFFlat(quantizer, dimension, actual_nlist, faiss.METRIC_INNER_PRODUCT)
+            index.train(embeddings_array)
+        elif self.index_type == "hnsw":
+            index = faiss.IndexHNSWFlat(dimension, self.hnsw_m, faiss.METRIC_INNER_PRODUCT)
+            index.hnsw.efConstruction = self.hnsw_ef_construction
+        else:
+            index = faiss.IndexFlatIP(dimension)  # Cosine distance
         index.add(embeddings_array)
         return index
     

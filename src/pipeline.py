@@ -30,6 +30,7 @@ class PipelineConfig:
         suffix = "_ser_tab" if serialized else ""
 
         self.subset_path = root_path / subset_name
+        self.document_manifest_path = self._resolve_manifest_path(root_path, self.subset_path)
         self.questions_file_path = root_path / questions_file_name
         self.pdf_reports_dir = root_path / pdf_reports_dir_name
         
@@ -52,11 +53,33 @@ class PipelineConfig:
         self.merged_reports_path = self.debug_data_path / self.merged_reports_dirname
         self.reports_markdown_path = self.debug_data_path / self.reports_markdown_dirname
 
+    @staticmethod
+    def _resolve_manifest_path(root_path: Path, subset_path: Path) -> Path:
+        candidates = [
+            root_path / "document_manifest.csv",
+            root_path / "document_manifest.json",
+            subset_path,
+            root_path / "subset.json",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return subset_path
+
 @dataclass
 class RunConfig:
     use_serialized_tables: bool = False
     parent_document_retrieval: bool = False
+    parent_retrieval_mode: str = "page"
     use_vector_dbs: bool = True
+    vector_index_type: str = "flat"
+    vector_search_k: int = 0
+    vector_ivf_nlist: int = 32
+    vector_ivf_nprobe: int = 8
+    vector_hnsw_m: int = 32
+    vector_hnsw_ef_construction: int = 200
+    vector_hnsw_ef_search: int = 64
+    retriever_cache_enabled: bool = True
     use_bm25_db: bool = False
     use_sparse_lexical_db: bool = False
     llm_reranking: bool = False
@@ -66,15 +89,30 @@ class RunConfig:
     pipeline_details: str = ""
     full_context: bool = False
     api_provider: str = "qwen"
-    answering_model: str = "Qwen/Qwen2.5-72B-Instruct"
+    answering_model: str = "Qwen3.5-35B-A3B-AWQ-4bit"
     config_suffix: str = ""
+    document_language: str = "en"
+    ocr_mode: str = "docling_rapidocr"
+    doc_router_enabled: bool = False
+    candidate_doc_top_k: int = 5
+    numeric_grounding_enabled: bool = False
+    reasoning_debug_enabled: bool = True
 
 
 def run_config_from_dict(data: dict) -> RunConfig:
     allowed_fields = {
         "use_serialized_tables",
         "parent_document_retrieval",
+        "parent_retrieval_mode",
         "use_vector_dbs",
+        "vector_index_type",
+        "vector_search_k",
+        "vector_ivf_nlist",
+        "vector_ivf_nprobe",
+        "vector_hnsw_m",
+        "vector_hnsw_ef_construction",
+        "vector_hnsw_ef_search",
+        "retriever_cache_enabled",
         "use_bm25_db",
         "use_sparse_lexical_db",
         "llm_reranking",
@@ -86,6 +124,12 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "api_provider",
         "answering_model",
         "config_suffix",
+        "document_language",
+        "ocr_mode",
+        "doc_router_enabled",
+        "candidate_doc_top_k",
+        "numeric_grounding_enabled",
+        "reasoning_debug_enabled",
     }
     payload = {key: value for key, value in data.items() if key in allowed_fields}
     return RunConfig(**payload)
@@ -143,19 +187,25 @@ class Pipeline:
         parser = PDFParser(output_dir=here())
         parser.parse_and_export(input_doc_paths=[here() / "src/dummy_report.pdf"])
 
-    def parse_pdf_reports_sequential(self):
+    def parse_pdf_reports_sequential(self, cuda_devices: str | None = None):
         logging.basicConfig(level=logging.DEBUG)
+        if cuda_devices:
+            first_device = str(cuda_devices).split(",", 1)[0].strip()
+            if first_device:
+                os.environ["CUDA_VISIBLE_DEVICES"] = first_device
         
         pdf_parser = PDFParser(
             output_dir=self.paths.parsed_reports_path,
-            csv_metadata_path=self.paths.subset_path
+            csv_metadata_path=self.paths.document_manifest_path,
+            document_language=self.run_config.document_language,
+            ocr_mode=self.run_config.ocr_mode,
         )
         pdf_parser.debug_data_path = self.paths.parsed_reports_debug_path
             
         pdf_parser.parse_and_export(doc_dir=self.paths.pdf_reports_dir)
         print(f"PDF reports parsed and saved to {self.paths.parsed_reports_path}")
 
-    def parse_pdf_reports_parallel(self, chunk_size: int = 2, max_workers: int = 10):
+    def parse_pdf_reports_parallel(self, chunk_size: int = 2, max_workers: int = 10, cuda_devices: str | None = None):
         """Parse PDF reports in parallel using multiple processes.
         
         Args:
@@ -166,7 +216,9 @@ class Pipeline:
         
         pdf_parser = PDFParser(
             output_dir=self.paths.parsed_reports_path,
-            csv_metadata_path=self.paths.subset_path
+            csv_metadata_path=self.paths.document_manifest_path,
+            document_language=self.run_config.document_language,
+            ocr_mode=self.run_config.ocr_mode,
         )
         pdf_parser.debug_data_path = self.paths.parsed_reports_debug_path
 
@@ -175,7 +227,8 @@ class Pipeline:
         pdf_parser.parse_and_export_parallel(
             input_doc_paths=input_doc_paths,
             optimal_workers=max_workers,
-            chunk_size=chunk_size
+            chunk_size=chunk_size,
+            cuda_devices=cuda_devices,
         )
         print(f"PDF reports parsed and saved to {self.paths.parsed_reports_path}")
 
@@ -228,7 +281,12 @@ class Pipeline:
         input_dir = self.paths.documents_dir
         output_dir = self.paths.vector_db_dir
         
-        vdb_ingestor = VectorDBIngestor()
+        vdb_ingestor = VectorDBIngestor(
+            index_type=self.run_config.vector_index_type,
+            ivf_nlist=self.run_config.vector_ivf_nlist,
+            hnsw_m=self.run_config.vector_hnsw_m,
+            hnsw_ef_construction=self.run_config.vector_hnsw_ef_construction,
+        )
         vdb_ingestor.process_reports(input_dir, output_dir)
         print(f"Vector databases created in {output_dir}")
     
@@ -250,11 +308,11 @@ class Pipeline:
         sparse_ingestor.process_reports(input_dir, output_dir)
         print(f"Sparse lexical databases created in {output_dir}")
     
-    def parse_pdf_reports(self, parallel: bool = True, chunk_size: int = 2, max_workers: int = 10):
+    def parse_pdf_reports(self, parallel: bool = True, chunk_size: int = 2, max_workers: int = 10, cuda_devices: str | None = None):
         if parallel:
-            self.parse_pdf_reports_parallel(chunk_size=chunk_size, max_workers=max_workers)
+            self.parse_pdf_reports_parallel(chunk_size=chunk_size, max_workers=max_workers, cuda_devices=cuda_devices)
         else:
-            self.parse_pdf_reports_sequential()
+            self.parse_pdf_reports_sequential(cuda_devices=cuda_devices)
     
     def process_parsed_reports(self):
         """Process already parsed PDF reports through the pipeline:
@@ -316,18 +374,28 @@ class Pipeline:
             sparse_db_dir=self.paths.sparse_db_dir,
             documents_dir=self.paths.documents_dir,
             questions_file_path=self.paths.questions_file_path,
-            subset_path=self.paths.subset_path,
+            subset_path=self.paths.document_manifest_path,
             parent_document_retrieval=self.run_config.parent_document_retrieval,
+            parent_retrieval_mode=self.run_config.parent_retrieval_mode,
             use_vector_dbs=self.run_config.use_vector_dbs,
             use_bm25_db=self.run_config.use_bm25_db,
             use_sparse_lexical_db=self.run_config.use_sparse_lexical_db,
             llm_reranking=self.run_config.llm_reranking,
             llm_reranking_sample_size=self.run_config.llm_reranking_sample_size,
             top_n_retrieval=self.run_config.top_n_retrieval,
+            vector_search_k=self.run_config.vector_search_k,
+            vector_ivf_nprobe=self.run_config.vector_ivf_nprobe,
+            vector_hnsw_ef_search=self.run_config.vector_hnsw_ef_search,
+            retriever_cache_enabled=self.run_config.retriever_cache_enabled,
             parallel_requests=self.run_config.parallel_requests,
             api_provider=self.run_config.api_provider,
             answering_model=self.run_config.answering_model,
-            full_context=self.run_config.full_context            
+            full_context=self.run_config.full_context,
+            document_language=self.run_config.document_language,
+            doc_router_enabled=self.run_config.doc_router_enabled,
+            candidate_doc_top_k=self.run_config.candidate_doc_top_k,
+            numeric_grounding_enabled=self.run_config.numeric_grounding_enabled,
+            reasoning_debug_enabled=self.run_config.reasoning_debug_enabled,
         )
         
         output_path = self._get_next_available_filename(self.paths.answers_file_path)
@@ -358,111 +426,235 @@ preprocess_configs = {
 # 从 .env 读取模型名称，修改 QWEN_MODEL 即可切换模型，无需改代码
 from dotenv import load_dotenv as _load_dotenv
 _load_dotenv()
-_qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+_qwen_model = os.getenv("QWEN_MODEL", "Qwen3.5-35B-A3B-AWQ-4bit")
 _qwen_parallel_requests = int(os.getenv("QWEN_PARALLEL_REQUESTS", "1"))
 _qwen_parent_document_retrieval = _env_flag("QWEN_PARENT_DOCUMENT_RETRIEVAL", default=False)
+_qwen_parent_retrieval_mode = os.getenv("QWEN_PARENT_RETRIEVAL_MODE", "block").strip().lower()
 _qwen_top_n_retrieval = int(os.getenv("QWEN_TOP_N_RETRIEVAL", "4"))
 _qwen_llm_reranking_sample_size = int(os.getenv("QWEN_LLM_RERANKING_SAMPLE_SIZE", "8"))
+_qwen_document_language = os.getenv("QWEN_DOCUMENT_LANGUAGE", "en")
+_qwen_ocr_mode = os.getenv("QWEN_OCR_MODE", "docling_rapidocr")
+_qwen_doc_router_enabled = _env_flag("QWEN_DOC_ROUTER_ENABLED", default=False)
+_qwen_candidate_doc_top_k = int(os.getenv("QWEN_CANDIDATE_DOC_TOP_K", "5"))
+_qwen_numeric_grounding_enabled = _env_flag("QWEN_NUMERIC_GROUNDING_ENABLED", default=False)
+_qwen_reasoning_debug_enabled = _env_flag("QWEN_REASONING_DEBUG_ENABLED", default=True)
+_qwen_vector_index_type = os.getenv("QWEN_VECTOR_INDEX_TYPE", os.getenv("VECTOR_INDEX_TYPE", "flat")).strip().lower()
+_qwen_vector_search_k = int(os.getenv("QWEN_VECTOR_SEARCH_K", os.getenv("VECTOR_SEARCH_K", "0")))
+_qwen_vector_ivf_nlist = int(os.getenv("QWEN_VECTOR_IVF_NLIST", os.getenv("VECTOR_IVF_NLIST", "32")))
+_qwen_vector_ivf_nprobe = int(os.getenv("QWEN_VECTOR_IVF_NPROBE", os.getenv("VECTOR_IVF_NPROBE", "8")))
+_qwen_vector_hnsw_m = int(os.getenv("QWEN_VECTOR_HNSW_M", os.getenv("VECTOR_HNSW_M", "32")))
+_qwen_vector_hnsw_ef_construction = int(
+    os.getenv("QWEN_VECTOR_HNSW_EF_CONSTRUCTION", os.getenv("VECTOR_HNSW_EF_CONSTRUCTION", "200"))
+)
+_qwen_vector_hnsw_ef_search = int(
+    os.getenv("QWEN_VECTOR_HNSW_EF_SEARCH", os.getenv("VECTOR_HNSW_EF_SEARCH", "64"))
+)
+_qwen_retriever_cache_enabled = _env_flag("QWEN_RETRIEVER_CACHE_ENABLED", default=True)
 
 qwen_base_config = RunConfig(
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 本地Embedding + 父文档检索 + CoT推理",
+    pipeline_details="PDF解析 + 本地Embedding + Parent-Child检索 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_base"
+    config_suffix="_qwen_base",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_vector_rerank_config = RunConfig(
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 本地Embedding + 父文档检索 + 向量召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 本地Embedding + Parent-Child检索 + 向量召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_vector_rerank"
+    config_suffix="_qwen_vector_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_rerank_config = RunConfig(
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=True,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 本地Embedding + BM25 + 父文档检索 + 混合召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 本地Embedding + BM25 + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_rerank"
+    config_suffix="_qwen_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_sparse_rerank_config = RunConfig(
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     use_sparse_lexical_db=True,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 本地Embedding + bge-m3 sparse lexical + 父文档检索 + 混合召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 本地Embedding + bge-m3 sparse lexical + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_sparse_rerank"
+    config_suffix="_qwen_sparse_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_ser_vector_rerank_config = RunConfig(
     use_serialized_tables=True,
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + 父文档检索 + 向量召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + Parent-Child检索 + 向量召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_ser_vector_rerank"
+    config_suffix="_qwen_ser_vector_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_ser_rerank_config = RunConfig(
     use_serialized_tables=True,
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=True,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + BM25 + 父文档检索 + 混合召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + BM25 + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_ser_rerank"
+    config_suffix="_qwen_ser_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 qwen_ser_sparse_rerank_config = RunConfig(
     use_serialized_tables=True,
     parent_document_retrieval=_qwen_parent_document_retrieval,
+    parent_retrieval_mode=_qwen_parent_retrieval_mode,
     use_vector_dbs=True,
+    vector_index_type=_qwen_vector_index_type,
+    vector_search_k=_qwen_vector_search_k,
+    vector_ivf_nlist=_qwen_vector_ivf_nlist,
+    vector_ivf_nprobe=_qwen_vector_ivf_nprobe,
+    vector_hnsw_m=_qwen_vector_hnsw_m,
+    vector_hnsw_ef_construction=_qwen_vector_hnsw_ef_construction,
+    vector_hnsw_ef_search=_qwen_vector_hnsw_ef_search,
+    retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     use_sparse_lexical_db=True,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
     parallel_requests=_qwen_parallel_requests,
-    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + bge-m3 sparse lexical + 父文档检索 + 混合召回 + LLM重排 + CoT推理",
+    pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + bge-m3 sparse lexical + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
     answering_model=_qwen_model,
-    config_suffix="_qwen_ser_sparse_rerank"
+    config_suffix="_qwen_ser_sparse_rerank",
+    document_language=_qwen_document_language,
+    ocr_mode=_qwen_ocr_mode,
+    doc_router_enabled=_qwen_doc_router_enabled,
+    candidate_doc_top_k=_qwen_candidate_doc_top_k,
+    numeric_grounding_enabled=_qwen_numeric_grounding_enabled,
+    reasoning_debug_enabled=_qwen_reasoning_debug_enabled,
 )
 
 configs = {

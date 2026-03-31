@@ -1,4 +1,4 @@
-use_serialized_tables: false
+use_serialized_tables: true
 parent_document_retrieval: true
 parent_retrieval_mode: block
 use_vector_dbs: true
@@ -10,20 +10,20 @@ vector_hnsw_m: 32
 vector_hnsw_ef_construction: 200
 vector_hnsw_ef_search: 64
 retriever_cache_enabled: true
-use_bm25_db: false
-use_sparse_lexical_db: false
-llm_reranking: false
+use_bm25_db: true
+use_sparse_lexical_db: true
+llm_reranking: true
 llm_reranking_sample_size: 8
-top_n_retrieval: 4
+top_n_retrieval: 5
 parallel_requests: 1
-pipeline_details: "Docling解析 + 结构感知切块 + 向量召回 + Query Rewrite + 引用溯源"
+pipeline_details: "中文Docling解析 + 中英OCR + 结构感知切块 + 文档候选路由 + 混合召回 + Rerank + Table Grounding"
 full_context: false
-document_language: "en"
+document_language: "zh"
 ocr_mode: "docling_rapidocr"
 doc_router_enabled: true
 candidate_doc_top_k: 5
-numeric_grounding_enabled: false
+numeric_grounding_enabled: true
 reasoning_debug_enabled: false
 api_provider: "qwen"
 answering_model: "Qwen3.5-35B-A3B-AWQ-4bit"
-config_suffix: "_qwen_base"
+config_suffix: "_qwen_zh_finance"

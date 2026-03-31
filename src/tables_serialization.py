@@ -32,7 +32,7 @@ class TableSerializer:
         load_dotenv()
         self.preserve_temp_files = preserve_temp_files
         self.provider = provider or os.getenv("TABLE_SERIALIZER_PROVIDER") or os.getenv("LLM_PROVIDER") or "qwen"
-        self.model = model or os.getenv("TABLE_SERIALIZER_MODEL") or os.getenv("LLM_MODEL") or "Qwen/Qwen2.5-72B-Instruct"
+        self.model = model or os.getenv("TABLE_SERIALIZER_MODEL") or os.getenv("LLM_MODEL") or "Qwen3.5-35B-A3B-AWQ-4bit"
         self.processor = APIProcessor(provider=self.provider)
         os.makedirs('./temp', exist_ok=True)
         

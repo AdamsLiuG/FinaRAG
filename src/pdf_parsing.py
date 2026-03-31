@@ -5,13 +5,15 @@ import re
 import json
 from tabulate import tabulate
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
-# from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
 from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
 # from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import ConversionStatus
 from docling.datamodel.document import ConversionResult
+
+from src.document_manifest import load_document_manifest
 
 _log = logging.getLogger(__name__)
 
@@ -29,14 +31,76 @@ def _coerce_csv_value(value):
         return stripped
     return value
 
-def _process_chunk(pdf_paths, pdf_backend, output_dir, num_threads, metadata_lookup, debug_data_path):
+
+def _is_invalid_code_point_error(error: Exception | None) -> bool:
+    return error is not None and "invalid code point" in str(error).lower()
+
+
+class _DoclingRecoverableWarningFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "docling.pipeline.base_pipeline":
+            return True
+        if "encountered an error during conversion of document" not in record.getMessage().lower():
+            return True
+        if not record.exc_info:
+            return True
+        return not _is_invalid_code_point_error(record.exc_info[1])
+
+
+def _install_docling_warning_filter():
+    logger = logging.getLogger("docling.pipeline.base_pipeline")
+    if any(isinstance(existing_filter, _DoclingRecoverableWarningFilter) for existing_filter in logger.filters):
+        return
+    # We emit our own concise fallback warning for this known recoverable docling v2 failure.
+    logger.addFilter(_DoclingRecoverableWarningFilter())
+
+
+_install_docling_warning_filter()
+
+
+def _parse_cuda_devices(value: Optional[str]) -> List[str]:
+    if value is None:
+        return []
+
+    parts = [part.strip() for part in str(value).split(",") if part.strip()]
+    if not parts:
+        return []
+
+    normalized_devices: List[str] = []
+    for part in parts:
+        if part.isdigit():
+            normalized_devices.append(part)
+        elif part.startswith("cuda:"):
+            normalized_devices.append(part.split(":", 1)[1])
+        else:
+            normalized_devices.append(part)
+    return normalized_devices
+
+
+def _assign_chunks_to_devices(chunks: List[List[Path]], cuda_devices: List[str]) -> List[tuple[List[Path], str]]:
+    if not cuda_devices:
+        return [(chunk, "") for chunk in chunks]
+    return [
+        (chunk, cuda_devices[index % len(cuda_devices)])
+        for index, chunk in enumerate(chunks)
+    ]
+
+
+def _worker_initializer(cuda_visible_devices: str):
+    if cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+
+
+def _process_chunk(pdf_paths, pdf_backend, output_dir, num_threads, metadata_lookup, debug_data_path, document_language, ocr_mode):
     """Helper function to process a chunk of PDFs in a separate process."""
     # Create a new parser instance for this process
     parser = PDFParser(
         pdf_backend=pdf_backend,
         output_dir=output_dir,
         num_threads=num_threads,
-        csv_metadata_path=None  # Metadata lookup is passed directly
+        csv_metadata_path=None,  # Metadata lookup is passed directly
+        document_language=document_language,
+        ocr_mode=ocr_mode,
     )
     parser.metadata_lookup = metadata_lookup
     parser.debug_data_path = debug_data_path
@@ -50,8 +114,12 @@ class PDFParser:
         output_dir: Path = Path("./parsed_pdfs"),
         num_threads: int = None,
         csv_metadata_path: Path = None,
+        document_language: str = "en",
+        ocr_mode: str = "docling_rapidocr",
     ):
         self.pdf_backend = pdf_backend
+        self.document_language = (document_language or "en").strip().lower()
+        self.ocr_mode = self._normalize_ocr_mode(ocr_mode)
         self.output_dir = output_dir
         self.doc_converter = self._create_document_converter()
         self.num_threads = num_threads
@@ -64,38 +132,120 @@ class PDFParser:
         if self.num_threads is not None:
             os.environ["OMP_NUM_THREADS"] = str(self.num_threads)
 
+    def _build_fallback_parser(self, pdf_backend) -> "PDFParser":
+        parser = PDFParser(
+            pdf_backend=pdf_backend,
+            output_dir=self.output_dir,
+            num_threads=self.num_threads,
+            csv_metadata_path=None,
+            document_language=self.document_language,
+            ocr_mode=self.ocr_mode,
+        )
+        parser.metadata_lookup = self.metadata_lookup
+        parser.debug_data_path = self.debug_data_path
+        return parser
+
+    def _should_retry_with_legacy_backend(self, error: Exception) -> bool:
+        return self.pdf_backend is DoclingParseV2DocumentBackend and _is_invalid_code_point_error(error)
+
+    def _parse_single_document(self, pdf_path: Path):
+        conv_results = self.convert_documents([pdf_path])
+        success_count, failure_count = self.process_documents(conv_results=conv_results)
+        if failure_count > 0:
+            raise RuntimeError(f"Failed converting 1 out of 1 documents: {pdf_path}")
+        return success_count
+
+    def parse_documents(self, input_doc_paths: List[Path]) -> tuple[int, int]:
+        total_docs = len(input_doc_paths)
+        _log.info(f"Starting to process {total_docs} documents")
+        start_time = time.time()
+        success_count = 0
+
+        for pdf_path in input_doc_paths:
+            try:
+                success_count += self._parse_single_document(pdf_path)
+            except Exception as err:
+                if not self._should_retry_with_legacy_backend(err):
+                    raise
+                _log.warning(
+                    "Docling v2 failed for %s with '%s'. Retrying with legacy docling_parse v1 backend.",
+                    pdf_path,
+                    err,
+                )
+                fallback_parser = self._build_fallback_parser(DoclingParseDocumentBackend)
+                success_count += fallback_parser._parse_single_document(pdf_path)
+
+        elapsed_time = time.time() - start_time
+        _log.info(
+            f"{'#'*50}\nCompleted in {elapsed_time:.2f} seconds. Successfully converted {success_count}/{total_docs} documents.\n{'#'*50}"
+        )
+        return success_count, total_docs - success_count
+
     @staticmethod
     def _parse_csv_metadata(csv_path: Path) -> dict:
-        """Parse CSV file and create a lookup dictionary with sha1 as key."""
-        import csv
-        metadata_lookup = {}
-        
-        with open(csv_path, 'r', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                # Handle both old and new CSV formats for company name
-                company_name = row.get('company_name', row.get('name', '')).strip('"')
-                normalized_row = {
-                    key: _coerce_csv_value(value)
-                    for key, value in row.items()
-                    if value not in (None, "")
-                }
-                normalized_row['company_name'] = company_name
-                if 'cur' in normalized_row and 'currency' not in normalized_row:
-                    normalized_row['currency'] = normalized_row['cur']
-                metadata_lookup[row['sha1']] = normalized_row
-        return metadata_lookup
+        """Parse a manifest-like file and create a lookup dictionary with doc_id/sha1 as key."""
+        return load_document_manifest(csv_path)
+
+    def _build_ocr_languages(self) -> List[str]:
+        if self.ocr_mode == "docling_rapidocr":
+            if self.document_language in {"zh", "bilingual"}:
+                return ["english", "chinese"]
+            return ["english"]
+        if self.document_language == "zh":
+            return ["ch_sim", "en"]
+        if self.document_language == "bilingual":
+            return ["en", "ch_sim"]
+        return ["en"]
+
+    @staticmethod
+    def _normalize_ocr_mode(ocr_mode: str | None) -> str:
+        normalized = (ocr_mode or "docling_rapidocr").strip().lower()
+        alias_map = {
+            "docling_only": "docling_rapidocr",
+            "rapidocr": "docling_rapidocr",
+            "docling_rapidocr": "docling_rapidocr",
+            "easyocr": "docling_easyocr",
+            "docling_easyocr": "docling_easyocr",
+            # Backward-compatible alias for older configs in this repo.
+            "docling_paddle_fallback": "docling_rapidocr",
+        }
+        resolved = alias_map.get(normalized)
+        if resolved is None:
+            _log.warning(
+                "Unknown OCR mode '%s'; falling back to Docling RapidOCR.",
+                normalized,
+            )
+            return "docling_rapidocr"
+        if normalized == "docling_paddle_fallback":
+            _log.warning(
+                "OCR mode 'docling_paddle_fallback' is deprecated; using Docling RapidOCR instead."
+            )
+        return resolved
 
     def _create_document_converter(self) -> "DocumentConverter": # type: ignore
         """Creates and returns a DocumentConverter with default pipeline options."""
         from docling.document_converter import DocumentConverter, FormatOption
-        from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode, EasyOcrOptions
+        from docling.datamodel.pipeline_options import (
+            EasyOcrOptions,
+            PdfPipelineOptions,
+            RapidOcrOptions,
+            TableFormerMode,
+        )
         from docling.datamodel.base_models import InputFormat
         from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
         
         pipeline_options = PdfPipelineOptions()
         pipeline_options.do_ocr = True
-        ocr_options = EasyOcrOptions(lang=['en'], force_full_page_ocr=False)
+        if self.ocr_mode == "docling_easyocr":
+            ocr_options = EasyOcrOptions(
+                lang=self._build_ocr_languages(),
+                force_full_page_ocr=False,
+            )
+        else:
+            ocr_options = RapidOcrOptions(
+                lang=self._build_ocr_languages(),
+                force_full_page_ocr=False,
+            )
         pipeline_options.ocr_options = ocr_options
         pipeline_options.do_table_structure = True
         pipeline_options.table_structure_options.do_cell_matching = True
@@ -124,7 +274,12 @@ class PDFParser:
         for conv_res in conv_results:
             if conv_res.status == ConversionStatus.SUCCESS:
                 success_count += 1
-                processor = JsonReportProcessor(metadata_lookup=self.metadata_lookup, debug_data_path=self.debug_data_path)
+                processor = JsonReportProcessor(
+                    metadata_lookup=self.metadata_lookup,
+                    debug_data_path=self.debug_data_path,
+                    default_language=self.document_language,
+                    ocr_mode=self.ocr_mode,
+                )
                 
                 # Normalize the document data to ensure sequential pages
                 data = conv_res.document.export_to_dict()
@@ -174,16 +329,11 @@ class PDFParser:
         return normalized_data
 
     def parse_and_export(self, input_doc_paths: List[Path] = None, doc_dir: Path = None):
-        start_time = time.time()
         if input_doc_paths is None and doc_dir is not None:
             input_doc_paths = list(doc_dir.glob("*.pdf"))
-        
+
         total_docs = len(input_doc_paths)
-        _log.info(f"Starting to process {total_docs} documents")
-        
-        conv_results = self.convert_documents(input_doc_paths)
-        success_count, failure_count = self.process_documents(conv_results=conv_results)
-        elapsed_time = time.time() - start_time
+        _, failure_count = self.parse_documents(input_doc_paths)
 
         if failure_count > 0:
             error_message = f"Failed converting {failure_count} out of {total_docs} documents."
@@ -192,14 +342,13 @@ class PDFParser:
             _log.error(failed_docs)
             raise RuntimeError(error_message)
 
-        _log.info(f"{'#'*50}\nCompleted in {elapsed_time:.2f} seconds. Successfully converted {success_count}/{total_docs} documents.\n{'#'*50}")
-
     def parse_and_export_parallel(
         self,
         input_doc_paths: List[Path] = None,
         doc_dir: Path = None,
         optimal_workers: int = 10,
-        chunk_size: int = None
+        chunk_size: int = None,
+        cuda_devices: Optional[str] = None,
     ):
         """Parse PDF files in parallel using multiple processes.
         
@@ -233,44 +382,121 @@ class PDFParser:
             input_doc_paths[i : i + chunk_size]
             for i in range(0, total_pdfs, chunk_size)
         ]
+        parsed_cuda_devices = _parse_cuda_devices(cuda_devices)
 
         start_time = time.time()
         processed_count = 0
-        
-        # Use ProcessPoolExecutor for parallel processing
-        with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
-            # Schedule all tasks
-            futures = [
-                executor.submit(
-                    _process_chunk,
-                    chunk,
-                    self.pdf_backend,
-                    self.output_dir,
-                    self.num_threads,
-                    self.metadata_lookup,
-                    self.debug_data_path
-                )
-                for chunk in chunks
-            ]
-            
-            # Wait for completion and log results
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    processed_count += int(result.split()[1])  # Extract number from "Processed X PDFs"
-                    _log.info(f"{'#'*50}\n{result} ({processed_count}/{total_pdfs} total)\n{'#'*50}")
-                except Exception as e:
-                    _log.error(f"Error processing chunk: {str(e)}")
-                    raise
+
+        if not parsed_cuda_devices:
+            # Use ProcessPoolExecutor for parallel processing
+            with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
+                futures = [
+                    executor.submit(
+                        _process_chunk,
+                        chunk,
+                        self.pdf_backend,
+                        self.output_dir,
+                        self.num_threads,
+                        self.metadata_lookup,
+                        self.debug_data_path,
+                        self.document_language,
+                        self.ocr_mode,
+                    )
+                    for chunk in chunks
+                ]
+
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        processed_count += int(result.split()[1])
+                        _log.info(f"{'#'*50}\n{result} ({processed_count}/{total_pdfs} total)\n{'#'*50}")
+                    except Exception as e:
+                        _log.error(f"Error processing chunk: {str(e)}")
+                        raise
+        else:
+            spawn_context = multiprocessing.get_context("spawn")
+            active_cuda_devices = parsed_cuda_devices[: max(1, min(optimal_workers, len(parsed_cuda_devices)))]
+            tasks_by_device: dict[str, List[List[Path]]] = {device: [] for device in active_cuda_devices}
+            for chunk, device in _assign_chunks_to_devices(chunks, active_cuda_devices):
+                tasks_by_device[device].append(chunk)
+
+            total_requested_workers = max(1, optimal_workers)
+            max_workers_by_device: dict[str, int] = {}
+            remaining_workers = total_requested_workers
+            for index, device in enumerate(active_cuda_devices):
+                remaining_devices = len(active_cuda_devices) - index
+                device_task_count = len(tasks_by_device.get(device, []))
+                if device_task_count <= 0:
+                    max_workers_by_device[device] = 0
+                    continue
+                allocated_workers = max(1, remaining_workers // max(1, remaining_devices))
+                max_workers_by_device[device] = min(device_task_count, allocated_workers)
+                remaining_workers = max(0, remaining_workers - max_workers_by_device[device])
+
+            futures = []
+            executors: List[ProcessPoolExecutor] = []
+            try:
+                for device in active_cuda_devices:
+                    device_tasks = tasks_by_device.get(device, [])
+                    device_workers = max_workers_by_device.get(device, 0)
+                    if not device_tasks or device_workers <= 0:
+                        continue
+                    executor = ProcessPoolExecutor(
+                        max_workers=device_workers,
+                        mp_context=spawn_context,
+                        initializer=_worker_initializer,
+                        initargs=(device,),
+                    )
+                    executors.append(executor)
+                    _log.info(
+                        "Starting %s parse workers on visible CUDA device(s) '%s' for %s chunk(s).",
+                        device_workers,
+                        device,
+                        len(device_tasks),
+                    )
+                    futures.extend(
+                        executor.submit(
+                            _process_chunk,
+                            chunk,
+                            self.pdf_backend,
+                            self.output_dir,
+                            self.num_threads,
+                            self.metadata_lookup,
+                            self.debug_data_path,
+                            self.document_language,
+                            self.ocr_mode,
+                        )
+                        for chunk in device_tasks
+                    )
+
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        processed_count += int(result.split()[1])
+                        _log.info(f"{'#'*50}\n{result} ({processed_count}/{total_pdfs} total)\n{'#'*50}")
+                    except Exception as e:
+                        _log.error(f"Error processing chunk: {str(e)}")
+                        raise
+            finally:
+                for executor in executors:
+                    executor.shutdown(wait=True)
 
         elapsed_time = time.time() - start_time
         _log.info(f"Parallel processing completed in {elapsed_time:.2f} seconds.")
 
 
 class JsonReportProcessor:
-    def __init__(self, metadata_lookup: dict = None, debug_data_path: Path = None):
+    def __init__(
+        self,
+        metadata_lookup: dict = None,
+        debug_data_path: Path = None,
+        default_language: str = "en",
+        ocr_mode: str = "docling_rapidocr",
+    ):
         self.metadata_lookup = metadata_lookup or {}
         self.debug_data_path = debug_data_path
+        self.default_language = default_language
+        self.ocr_mode = ocr_mode
 
     def assemble_report(self, conv_result, normalized_data=None):
         """Assemble the report using either normalized data or raw conversion result."""
@@ -287,12 +513,14 @@ class JsonReportProcessor:
         metainfo = {}
         sha1_name = data['origin']['filename'].rsplit('.', 1)[0]
         metainfo['sha1_name'] = sha1_name
+        metainfo['doc_id'] = sha1_name
         metainfo['pages_amount'] = len(data.get('pages', []))
         metainfo['text_blocks_amount'] = len(data.get('texts', []))
         metainfo['tables_amount'] = len(data.get('tables', []))
         metainfo['pictures_amount'] = len(data.get('pictures', []))
         metainfo['equations_amount'] = len(data.get('equations', []))
         metainfo['footnotes_amount'] = len([t for t in data.get('texts', []) if t.get('label') == 'footnote'])
+        metainfo['language'] = self.default_language
         
         # Add CSV metadata if available
         if self.metadata_lookup and sha1_name in self.metadata_lookup:
@@ -300,6 +528,19 @@ class JsonReportProcessor:
             metainfo.update(csv_meta)
             metainfo['company_name'] = csv_meta['company_name']
             metainfo['currency'] = csv_meta.get('currency')
+            metainfo['company_aliases'] = csv_meta.get('company_aliases', [csv_meta['company_name']])
+            metainfo['security_code'] = csv_meta.get('security_code')
+            metainfo['doc_source_type'] = csv_meta.get('doc_source_type')
+            metainfo['report_date'] = csv_meta.get('report_date')
+            metainfo['fiscal_year'] = csv_meta.get('fiscal_year')
+            metainfo['report_title'] = csv_meta.get('report_title')
+            metainfo['broker_name'] = csv_meta.get('broker_name')
+            metainfo['language'] = csv_meta.get('language', metainfo['language'])
+        else:
+            metainfo['company_aliases'] = [sha1_name]
+        
+        metainfo['ocr_mode'] = self.ocr_mode
+        metainfo['is_low_text_density'] = metainfo['text_blocks_amount'] <= max(1, metainfo['pages_amount'] // 2)
             
         return metainfo
 

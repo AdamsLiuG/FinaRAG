@@ -4,54 +4,43 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
-import pandas as pd
-
+from src.document_manifest import load_document_manifest
 from src.query_plan import QueryPlan
-from src.text_normalization import normalize_currency_token, normalize_text
-
-
-_TOPIC_PREFIXES = ("has_", "mentions_")
-_TRUTHY = {"1", "true", "yes", "y", "on"}
-
-
-def _coerce_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    return str(value).strip().lower() in _TRUTHY
-
-
-def _extract_topic_flags(row: Dict[str, Any]) -> List[str]:
-    return sorted(
-        key
-        for key, value in row.items()
-        if key.startswith(_TOPIC_PREFIXES) and _coerce_bool(value)
-    )
+from src.text_normalization import extract_security_codes, normalize_text
 
 
 @dataclass
 class CompanyReport:
     sha1: str
     company_name: str
+    company_aliases: List[str]
     currency: Optional[str]
     major_industry: Optional[str]
     report_year: Optional[int]
     report_type: Optional[str]
-    topic_flags: List[str]
+    doc_source_type: Optional[str]
+    broker_name: Optional[str]
+    security_code: Optional[str]
+    report_title: Optional[str]
+    language: str
     metadata: Dict[str, Any]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "sha1": self.sha1,
             "company_name": self.company_name,
+            "company_aliases": self.company_aliases,
             "currency": self.currency,
             "major_industry": self.major_industry,
             "report_year": self.report_year,
             "report_type": self.report_type,
-            "topic_flags": self.topic_flags,
+            "doc_source_type": self.doc_source_type,
+            "broker_name": self.broker_name,
+            "security_code": self.security_code,
+            "report_title": self.report_title,
+            "language": self.language,
         }
 
 
@@ -74,7 +63,7 @@ class ReportCatalog:
                 continue
 
             metainfo = document.get("metainfo") or {}
-            sha1 = metainfo.get("sha1_name")
+            sha1 = metainfo.get("sha1_name") or metainfo.get("doc_id")
             if not sha1:
                 continue
             report_meta[sha1] = metainfo
@@ -87,36 +76,37 @@ class ReportCatalog:
             self._reports = []
             return self._reports
 
-        companies_df = pd.read_csv(self.subset_path)
+        manifest_rows = load_document_manifest(self.subset_path)
         document_meta = self._load_document_meta()
         reports: List[CompanyReport] = []
 
-        for row in companies_df.to_dict(orient="records"):
-            sha1 = str(row.get("sha1") or "").strip()
-            document_entry = document_meta.get(sha1, {})
-            company_name = str(row.get("company_name") or row.get("name") or "").strip('" ')
-            currency = normalize_currency_token(row.get("cur") or row.get("currency"))
-            report_year = document_entry.get("report_year")
-            report_type = (
-                row.get("report_type")
-                or row.get("doc_type")
-                or row.get("filing_type")
-                or document_entry.get("report_type")
-            )
-            major_industry = row.get("major_industry") or document_entry.get("major_industry")
-
-            metadata = {key: value for key, value in row.items() if pd.notna(value)}
+        for doc_id, row in manifest_rows.items():
+            document_entry = document_meta.get(doc_id, {})
+            metadata = {key: value for key, value in row.items() if value is not None}
             metadata.update({key: value for key, value in document_entry.items() if value is not None})
+            company_name = str(metadata.get("company_name") or "").strip('" ')
+            aliases = list(metadata.get("company_aliases") or ([] if not company_name else [company_name]))
+            if company_name and company_name not in aliases:
+                aliases.insert(0, company_name)
+
+            report_year = metadata.get("report_year") or metadata.get("fiscal_year")
+            if isinstance(report_year, str) and report_year.isdigit():
+                report_year = int(report_year)
 
             reports.append(
                 CompanyReport(
-                    sha1=sha1,
+                    sha1=str(doc_id),
                     company_name=company_name,
-                    currency=currency,
-                    major_industry=major_industry,
+                    company_aliases=aliases,
+                    currency=metadata.get("currency"),
+                    major_industry=metadata.get("major_industry"),
                     report_year=report_year if isinstance(report_year, int) else None,
-                    report_type=str(report_type).strip() if report_type else None,
-                    topic_flags=_extract_topic_flags(metadata),
+                    report_type=str(metadata.get("report_type")).strip() if metadata.get("report_type") else None,
+                    doc_source_type=metadata.get("doc_source_type"),
+                    broker_name=metadata.get("broker_name"),
+                    security_code=str(metadata.get("security_code")).strip() if metadata.get("security_code") else None,
+                    report_title=metadata.get("report_title"),
+                    language=str(metadata.get("language") or "en"),
                     metadata=metadata,
                 )
             )
@@ -128,7 +118,7 @@ class ReportCatalog:
         return list(self._load_reports())
 
     def get_company_names(self) -> List[str]:
-        return [report.company_name for report in self._load_reports()]
+        return sorted({report.company_name for report in self._load_reports() if report.company_name})
 
     def get_report_by_company_name(self, company_name: str) -> CompanyReport | None:
         for report in self._load_reports():
@@ -137,55 +127,77 @@ class ReportCatalog:
         return None
 
     def extract_companies_from_question(self, question_text: str) -> List[str]:
+        normalized_question = normalize_text(question_text)
         found_companies: List[str] = []
-        company_names = sorted(self.get_company_names(), key=len, reverse=True)
-        question_buffer = question_text
-
-        for company in company_names:
-            escaped_company = re.escape(company)
-            pattern = rf"{escaped_company}(?:\W|$)"
-            if re.search(pattern, question_buffer, re.IGNORECASE):
-                found_companies.append(company)
-                question_buffer = re.sub(pattern, "", question_buffer, flags=re.IGNORECASE)
-
+        seen = set()
+        for report in self._load_reports():
+            aliases = sorted(set(report.company_aliases), key=len, reverse=True)
+            if report.security_code:
+                aliases.append(report.security_code)
+            if any(alias and normalize_text(alias) in normalized_question for alias in aliases):
+                if report.company_name and report.company_name not in seen:
+                    seen.add(report.company_name)
+                    found_companies.append(report.company_name)
         return found_companies
 
     def _score_report(self, report: CompanyReport, query_plan: QueryPlan) -> tuple[float, List[str]]:
         score = 0.0
         reasons: List[str] = []
-        question_text = query_plan.original_query
-        normalized_question = normalize_text(question_text)
+        normalized_question = normalize_text(query_plan.original_query)
+        security_codes = query_plan.route_hints.get("security_codes") or extract_security_codes(query_plan.original_query)
 
-        if query_plan.filters.currency and report.currency == normalize_currency_token(query_plan.filters.currency):
-            score += 2.0
-            reasons.append("currency_match")
+        if report.company_name and normalize_text(report.company_name) in normalized_question:
+            score += 6.0
+            reasons.append("company_name_match")
 
-        if query_plan.filters.year is not None and report.report_year == query_plan.filters.year:
+        matched_aliases = [
+            alias
+            for alias in report.company_aliases
+            if alias and normalize_text(alias) in normalized_question and normalize_text(alias) != normalize_text(report.company_name)
+        ]
+        if matched_aliases:
+            score += 5.0
+            reasons.append(f"company_alias:{matched_aliases[0]}")
+
+        if report.security_code and any(str(report.security_code) == str(code) for code in security_codes):
+            score += 5.5
+            reasons.append("security_code_match")
+
+        if query_plan.filters.doc_source_type and report.doc_source_type == query_plan.filters.doc_source_type:
             score += 2.5
-            reasons.append("year_match")
+            reasons.append("doc_source_type_match")
 
-        if query_plan.filters.major_industry and report.major_industry:
-            if normalize_text(report.major_industry) == normalize_text(query_plan.filters.major_industry):
-                score += 1.5
-                reasons.append("industry_filter_match")
-
-        if report.major_industry and normalize_text(report.major_industry) in normalized_question:
-            score += 1.0
-            reasons.append("industry_mention_match")
-
-        matched_topic_flags = sorted(set(query_plan.topic_flags) & set(report.topic_flags))
-        if matched_topic_flags:
-            score += 3.0 + len(matched_topic_flags)
-            reasons.append(f"topic_flags:{','.join(matched_topic_flags)}")
-
-        if query_plan.route_hints.get("report_type") and report.report_type:
-            if normalize_text(report.report_type) == normalize_text(query_plan.route_hints["report_type"]):
+        if query_plan.filters.report_type and report.report_type:
+            if normalize_text(report.report_type) == normalize_text(query_plan.filters.report_type):
                 score += 1.5
                 reasons.append("report_type_match")
 
+        if query_plan.filters.year is not None and report.report_year == query_plan.filters.year:
+            score += 2.0
+            reasons.append("year_match")
+
+        if query_plan.filters.currency and report.currency and report.currency == query_plan.filters.currency:
+            score += 1.0
+            reasons.append("currency_match")
+
+        if report.major_industry and normalize_text(report.major_industry) in normalized_question:
+            score += 1.0
+            reasons.append("industry_match")
+
+        if report.broker_name and normalize_text(report.broker_name) in normalized_question:
+            score += 1.5
+            reasons.append("broker_match")
+
+        if report.report_title and normalize_text(report.report_title) in normalized_question:
+            score += 2.0
+            reasons.append("report_title_match")
+
+        if report.language == "zh":
+            score += 0.2
+
         return score, reasons
 
-    def rank_candidate_reports(self, query_plan: QueryPlan) -> List[Dict[str, Any]]:
+    def rank_candidate_reports(self, query_plan: QueryPlan, limit: int = 5) -> List[Dict[str, Any]]:
         candidates: List[Dict[str, Any]] = []
         for report in self._load_reports():
             score, reasons = self._score_report(report, query_plan)
@@ -200,26 +212,15 @@ class ReportCatalog:
         candidates.sort(
             key=lambda item: (
                 item["score"],
-                len(item["report"].topic_flags),
+                item["report"].report_year or -1,
                 item["report"].company_name,
             ),
             reverse=True,
         )
-        return candidates
+        return candidates[:limit]
 
-    def resolve_single_company(self, query_plan: QueryPlan) -> tuple[str, Dict[str, Any]]:
-        if query_plan.mentioned_companies:
-            company_name = query_plan.mentioned_companies[0]
-            report = self.get_report_by_company_name(company_name)
-            return company_name, {
-                "route_mode": "explicit_company",
-                "selected_company": company_name,
-                "candidate_companies": [company_name],
-                "selected_report": report.to_dict() if report else None,
-                "selection_reasons": ["company_mentioned_in_question"],
-            }
-
-        ranked_candidates = self.rank_candidate_reports(query_plan)
+    def resolve_single_company(self, query_plan: QueryPlan, limit: int = 5) -> tuple[str, Dict[str, Any]]:
+        ranked_candidates = self.rank_candidate_reports(query_plan, limit=max(limit, 5))
         non_zero = [candidate for candidate in ranked_candidates if candidate["score"] > 0]
         if not non_zero:
             available = self._load_reports()
@@ -229,31 +230,36 @@ class ReportCatalog:
                     "route_mode": "only_report_available",
                     "selected_company": report.company_name,
                     "candidate_companies": [report.company_name],
+                    "candidate_doc_ids": [report.sha1],
                     "selected_report": report.to_dict(),
                     "selection_reasons": ["only_available_report"],
                 }
-            raise ValueError("No company name found in the question and metadata routing found no confident candidate.")
+            raise ValueError("No company name found in the question and document catalog routing found no confident candidate.")
 
         selected = non_zero[0]
-        second_score = non_zero[1]["score"] if len(non_zero) > 1 else None
-        if second_score is not None and selected["score"] <= second_score:
-            raise ValueError(
-                "No company name found in the question and metadata routing remained ambiguous."
-            )
-
         report: CompanyReport = selected["report"]
+        candidate_doc_ids = [item["report"].sha1 for item in non_zero[:limit]]
+        candidate_companies = []
+        for item in non_zero[:limit]:
+            company_name = item["report"].company_name
+            if company_name and company_name not in candidate_companies:
+                candidate_companies.append(company_name)
+
         return report.company_name, {
-            "route_mode": "metadata_inference",
+            "route_mode": "document_catalog",
             "selected_company": report.company_name,
-            "candidate_companies": [item["report"].company_name for item in non_zero[:5]],
+            "candidate_companies": candidate_companies,
+            "candidate_doc_ids": candidate_doc_ids,
             "selected_report": report.to_dict(),
             "selection_reasons": selected["reasons"],
             "candidate_scores": [
                 {
                     "company_name": item["report"].company_name,
+                    "doc_id": item["report"].sha1,
+                    "doc_source_type": item["report"].doc_source_type,
                     "score": item["score"],
                     "reasons": item["reasons"],
                 }
-                for item in non_zero[:5]
+                for item in non_zero[:limit]
             ],
         }

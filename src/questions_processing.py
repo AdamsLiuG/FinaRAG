@@ -12,14 +12,29 @@ from tqdm import tqdm
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.citation_formatter import build_citations, compute_confidence, dedupe_citations, dedupe_references
+from src.document_manifest import load_document_manifest
 from src.query_plan import QueryPlan
 from src.query_rewrite import QuestionRewriter
 from src.report_catalog import ReportCatalog
 from src.retrieval import BM25Retriever, BGEM3SparseRetriever, HybridRetriever, VectorRetriever
+from src.table_grounding import TableGrounder
 
 
 def _result_score(result: Dict) -> float:
     return float(result.get("combined_score", result.get("ranking_score", result.get("distance", 0.0))))
+
+
+def _result_merge_key(result: Dict) -> tuple:
+    metadata = result.get("metadata") or {}
+    source_name = metadata.get("sha1_name")
+    result_scope = result.get("result_scope") or metadata.get("node_type") or "child"
+    chunk_id = result.get("chunk_id") or metadata.get("chunk_id")
+
+    if result_scope == "page":
+        return source_name, result_scope, result.get("page")
+    if chunk_id is not None:
+        return source_name, result_scope, chunk_id
+    return source_name, result_scope, result.get("page"), result.get("text")
 
 
 class QuestionsProcessor:
@@ -32,16 +47,27 @@ class QuestionsProcessor:
         questions_file_path: Optional[Union[str, Path]] = None,
         subset_path: Optional[Union[str, Path]] = None,
         parent_document_retrieval: bool = False,
+        parent_retrieval_mode: str = "page",
         use_vector_dbs: bool = True,
         use_bm25_db: bool = False,
         use_sparse_lexical_db: bool = False,
         llm_reranking: bool = False,
         llm_reranking_sample_size: int = 20,
         top_n_retrieval: int = 10,
+        vector_search_k: Optional[int] = None,
+        vector_ivf_nprobe: int = 8,
+        vector_hnsw_ef_search: int = 64,
+        retriever_cache_enabled: bool = True,
         parallel_requests: int = 10,
         api_provider: str = "qwen",
-        answering_model: str = "Qwen/Qwen2.5-72B-Instruct",
-        full_context: bool = False
+        answering_model: str = "Qwen3.5-35B-A3B-AWQ-4bit",
+        answer_temperature: float = 0.0,
+        full_context: bool = False,
+        document_language: str = "en",
+        doc_router_enabled: bool = False,
+        candidate_doc_top_k: int = 5,
+        numeric_grounding_enabled: bool = False,
+        reasoning_debug_enabled: bool = True,
     ):
         self.questions = self._load_questions(questions_file_path)
         self.documents_dir = Path(documents_dir)
@@ -50,27 +76,42 @@ class QuestionsProcessor:
         self.sparse_db_dir = Path(sparse_db_dir) if sparse_db_dir else None
         self.subset_path = Path(subset_path) if subset_path else None
 
-        self.return_parent_pages = parent_document_retrieval
+        resolved_parent_mode = (parent_retrieval_mode or "page").strip().lower()
+        if resolved_parent_mode not in {"page", "block"}:
+            raise ValueError("parent_retrieval_mode must be either 'page' or 'block'.")
+        self.parent_retrieval_mode = resolved_parent_mode if parent_document_retrieval else "child"
         self.use_vector_dbs = use_vector_dbs
         self.use_bm25_db = use_bm25_db
         self.use_sparse_lexical_db = use_sparse_lexical_db
         self.llm_reranking = llm_reranking
         self.llm_reranking_sample_size = llm_reranking_sample_size
         self.top_n_retrieval = top_n_retrieval
+        self.vector_search_k = max(1, int(vector_search_k)) if vector_search_k else None
+        self.vector_ivf_nprobe = max(1, int(vector_ivf_nprobe))
+        self.vector_hnsw_ef_search = max(1, int(vector_hnsw_ef_search))
+        self.retriever_cache_enabled = retriever_cache_enabled
         self.answering_model = answering_model
+        self.answer_temperature = float(answer_temperature)
         self.parallel_requests = parallel_requests
         self.api_provider = api_provider
         self.api_processor = APIProcessor(provider=api_provider)
         self.full_context = full_context
+        self.document_language = document_language
+        self.doc_router_enabled = doc_router_enabled
+        self.candidate_doc_top_k = max(1, candidate_doc_top_k)
+        self.numeric_grounding_enabled = numeric_grounding_enabled
+        self.reasoning_debug_enabled = reasoning_debug_enabled
         self.max_context_chars = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "8000"))
         self.max_doc_chars = int(os.getenv("RAG_MAX_DOC_CHARS", "2500"))
 
         self.answer_details: List[Optional[Dict]] = []
         self.response_data = {}
         self._lock = threading.Lock()
+        self._retriever_cache = threading.local()
         self.question_rewriter = QuestionRewriter()
         self.companies_df: Optional[pd.DataFrame] = None
         self.report_catalog = ReportCatalog(self.subset_path, self.documents_dir) if self.subset_path else None
+        self.table_grounder = TableGrounder(self.documents_dir) if self.numeric_grounding_enabled else None
 
     def _load_questions(self, questions_file_path: Optional[Union[str, Path]]) -> List[Dict[str, str]]:
         if questions_file_path is None:
@@ -82,7 +123,17 @@ class QuestionsProcessor:
         if self.companies_df is None:
             if self.subset_path is None:
                 raise ValueError("subset_path must be provided to use company metadata.")
-            self.companies_df = pd.read_csv(self.subset_path)
+            manifest = load_document_manifest(self.subset_path)
+            if manifest:
+                self.companies_df = pd.DataFrame(list(manifest.values()))
+            else:
+                self.companies_df = pd.read_csv(self.subset_path)
+
+            if not self.companies_df.empty:
+                if "sha1" not in self.companies_df.columns and "doc_id" in self.companies_df.columns:
+                    self.companies_df["sha1"] = self.companies_df["doc_id"]
+                if "sha1_name" not in self.companies_df.columns and "sha1" in self.companies_df.columns:
+                    self.companies_df["sha1_name"] = self.companies_df["sha1"]
         return self.companies_df
 
     def _format_retrieval_results(self, retrieval_results: List[Dict]) -> str:
@@ -97,6 +148,7 @@ class QuestionsProcessor:
             metadata = result.get("metadata", {})
             section_title = metadata.get("section_title")
             chunk_type = metadata.get("chunk_type")
+            node_type = metadata.get("node_type")
 
             if self.max_doc_chars > 0 and len(text) > self.max_doc_chars:
                 text = text[: self.max_doc_chars].rstrip() + "\n...[truncated]"
@@ -106,6 +158,8 @@ class QuestionsProcessor:
                 label += f" | section: {section_title}"
             if chunk_type:
                 label += f" | chunk_type: {chunk_type}"
+            if node_type:
+                label += f" | node_type: {node_type}"
 
             part = f'{label}: \n"""\n{text}\n"""'
 
@@ -126,9 +180,19 @@ class QuestionsProcessor:
     def _extract_references(self, pages_list: List[int], company_name: str, pdf_sha1: Optional[str] = None) -> List[Dict]:
         company_sha1 = pdf_sha1 or ""
         if not company_sha1:
+            if self.report_catalog is not None:
+                report = self.report_catalog.get_report_by_company_name(company_name)
+                if report is not None:
+                    company_sha1 = report.sha1
             companies_df = self._load_companies_df()
-            matching_rows = companies_df[companies_df['company_name'] == company_name]
-            company_sha1 = "" if matching_rows.empty else matching_rows.iloc[0]['sha1']
+            if not company_sha1 and "company_name" in companies_df.columns:
+                matching_rows = companies_df[companies_df["company_name"] == company_name]
+                if not matching_rows.empty:
+                    for column in ("sha1", "sha1_name", "doc_id"):
+                        if column in matching_rows.columns:
+                            company_sha1 = matching_rows.iloc[0][column]
+                            if company_sha1:
+                                break
         return [{"pdf_sha1": company_sha1, "page_index": page} for page in pages_list]
 
     def _build_query_plan(
@@ -157,13 +221,27 @@ class QuestionsProcessor:
             "page": result.get("page"),
             "chunk_id": metadata.get("chunk_id"),
             "chunk_type": metadata.get("chunk_type"),
+            "node_type": metadata.get("node_type"),
+            "parent_chunk_id": metadata.get("parent_chunk_id"),
             "section_title": metadata.get("section_title"),
             "report_section": metadata.get("report_section"),
             "company_name": metadata.get("company_name"),
+            "company_aliases": metadata.get("company_aliases", []),
+            "security_code": metadata.get("security_code"),
+            "broker_name": metadata.get("broker_name"),
             "currency": metadata.get("currency"),
             "report_year": metadata.get("report_year"),
             "report_type": metadata.get("report_type"),
+            "doc_source_type": metadata.get("doc_source_type"),
+            "report_date": metadata.get("report_date"),
+            "fiscal_year": metadata.get("fiscal_year"),
+            "period": metadata.get("period"),
+            "unit_hint": metadata.get("unit_hint"),
+            "language": metadata.get("language"),
             "topic_flags": metadata.get("topic_flags", []),
+            "table_id": metadata.get("table_id"),
+            "matched_child_chunk_ids": result.get("matched_child_chunk_ids", []),
+            "result_scope": result.get("result_scope"),
             "retrieval_sources": result.get("retrieval_sources", []),
             "score": round(_result_score(result), 4),
             "text_preview": " ".join((result.get("text") or "").split())[:220],
@@ -197,79 +275,132 @@ class QuestionsProcessor:
         return validated_pages
 
     def _build_retriever(self):
+        cached_bundle = getattr(self._retriever_cache, "bundle", None) if self.retriever_cache_enabled else None
+        if cached_bundle is not None:
+            return cached_bundle
+
         if self.full_context:
-            return VectorRetriever(vector_db_dir=self.vector_db_dir, documents_dir=self.documents_dir), "full_context"
-        if self.llm_reranking:
-            return HybridRetriever(
-                documents_dir=self.documents_dir,
-                vector_db_dir=self.vector_db_dir,
-                bm25_db_dir=self.bm25_db_path,
-                sparse_db_dir=self.sparse_db_dir,
-                use_vector_dbs=self.use_vector_dbs,
-                use_bm25_db=self.use_bm25_db,
-                use_sparse_lexical_db=self.use_sparse_lexical_db,
-                provider=self.api_provider,
-                model=self.answering_model,
-            ), "hybrid_rerank"
-        if sum(1 for enabled in (self.use_vector_dbs, self.use_bm25_db, self.use_sparse_lexical_db) if enabled) > 1:
-            return HybridRetriever(
-                documents_dir=self.documents_dir,
-                vector_db_dir=self.vector_db_dir,
-                bm25_db_dir=self.bm25_db_path,
-                sparse_db_dir=self.sparse_db_dir,
-                use_vector_dbs=self.use_vector_dbs,
-                use_bm25_db=self.use_bm25_db,
-                use_sparse_lexical_db=self.use_sparse_lexical_db,
-                provider=self.api_provider,
-                model=self.answering_model,
-            ), "hybrid"
-        if self.use_vector_dbs:
-            return VectorRetriever(vector_db_dir=self.vector_db_dir, documents_dir=self.documents_dir), "vector"
-        if self.use_sparse_lexical_db:
+            bundle = (
+                VectorRetriever(
+                    vector_db_dir=self.vector_db_dir,
+                    documents_dir=self.documents_dir,
+                    vector_search_k=self.vector_search_k,
+                    ivf_nprobe=self.vector_ivf_nprobe,
+                    hnsw_ef_search=self.vector_hnsw_ef_search,
+                ),
+                "full_context",
+            )
+        elif self.llm_reranking:
+            bundle = (
+                HybridRetriever(
+                    documents_dir=self.documents_dir,
+                    vector_db_dir=self.vector_db_dir,
+                    bm25_db_dir=self.bm25_db_path,
+                    sparse_db_dir=self.sparse_db_dir,
+                    use_vector_dbs=self.use_vector_dbs,
+                    use_bm25_db=self.use_bm25_db,
+                    use_sparse_lexical_db=self.use_sparse_lexical_db,
+                    vector_search_k=self.vector_search_k,
+                    vector_ivf_nprobe=self.vector_ivf_nprobe,
+                    vector_hnsw_ef_search=self.vector_hnsw_ef_search,
+                    provider=self.api_provider,
+                    model=self.answering_model,
+                ),
+                "hybrid_rerank",
+            )
+        elif sum(1 for enabled in (self.use_vector_dbs, self.use_bm25_db, self.use_sparse_lexical_db) if enabled) > 1:
+            bundle = (
+                HybridRetriever(
+                    documents_dir=self.documents_dir,
+                    vector_db_dir=self.vector_db_dir,
+                    bm25_db_dir=self.bm25_db_path,
+                    sparse_db_dir=self.sparse_db_dir,
+                    use_vector_dbs=self.use_vector_dbs,
+                    use_bm25_db=self.use_bm25_db,
+                    use_sparse_lexical_db=self.use_sparse_lexical_db,
+                    vector_search_k=self.vector_search_k,
+                    vector_ivf_nprobe=self.vector_ivf_nprobe,
+                    vector_hnsw_ef_search=self.vector_hnsw_ef_search,
+                    provider=self.api_provider,
+                    model=self.answering_model,
+                ),
+                "hybrid",
+            )
+        elif self.use_vector_dbs:
+            bundle = (
+                VectorRetriever(
+                    vector_db_dir=self.vector_db_dir,
+                    documents_dir=self.documents_dir,
+                    vector_search_k=self.vector_search_k,
+                    ivf_nprobe=self.vector_ivf_nprobe,
+                    hnsw_ef_search=self.vector_hnsw_ef_search,
+                ),
+                "vector",
+            )
+        elif self.use_sparse_lexical_db:
             if self.sparse_db_dir is None:
                 raise ValueError("sparse_db_dir is required when sparse lexical retrieval is enabled.")
-            return BGEM3SparseRetriever(sparse_db_dir=self.sparse_db_dir, documents_dir=self.documents_dir), "sparse"
-        if self.bm25_db_path is None:
-            raise ValueError("bm25_db_path is required when BM25 retrieval is enabled.")
-        return BM25Retriever(bm25_db_dir=self.bm25_db_path, documents_dir=self.documents_dir), "bm25"
+            bundle = (
+                BGEM3SparseRetriever(sparse_db_dir=self.sparse_db_dir, documents_dir=self.documents_dir),
+                "sparse",
+            )
+        else:
+            if self.bm25_db_path is None:
+                raise ValueError("bm25_db_path is required when BM25 retrieval is enabled.")
+            bundle = (
+                BM25Retriever(bm25_db_dir=self.bm25_db_path, documents_dir=self.documents_dir),
+                "bm25",
+            )
 
-    def _run_retrieval(self, retriever, mode: str, company_name: str, query: str, filters) -> List[Dict]:
+        if self.retriever_cache_enabled:
+            self._retriever_cache.bundle = bundle
+        return bundle
+
+    def _run_retrieval(self, retriever, mode: str, company_name: str, query: str, filters, candidate_doc_ids: Optional[List[str]] = None) -> List[Dict]:
         if mode == "full_context":
-            return retriever.retrieve_all(company_name, filters=filters)
+            return retriever.retrieve_all(company_name, filters=filters, candidate_doc_ids=candidate_doc_ids)
         if mode == "hybrid_rerank":
             return retriever.retrieve_by_company_name(
                 company_name=company_name,
                 query=query,
                 llm_reranking_sample_size=self.llm_reranking_sample_size,
                 top_n=self.top_n_retrieval,
-                return_parent_pages=self.return_parent_pages,
+                parent_retrieval_mode=self.parent_retrieval_mode,
                 filters=filters,
+                candidate_doc_ids=candidate_doc_ids,
             )
         if mode == "hybrid":
             return retriever.retrieve_candidates_by_company_name(
                 company_name=company_name,
                 query=query,
                 top_n=self.top_n_retrieval,
-                return_parent_pages=self.return_parent_pages,
+                parent_retrieval_mode=self.parent_retrieval_mode,
                 filters=filters,
+                candidate_doc_ids=candidate_doc_ids,
             )
         return retriever.retrieve_by_company_name(
             company_name=company_name,
             query=query,
             top_n=self.top_n_retrieval,
-            return_parent_pages=self.return_parent_pages,
+            parent_retrieval_mode=self.parent_retrieval_mode,
             filters=filters,
+            candidate_doc_ids=candidate_doc_ids,
         )
 
     def _merge_multi_query_results(self, retrieval_runs: List[List[Dict]], top_n: int) -> List[Dict]:
         merged: Dict[tuple, Dict] = {}
         for retrieval_results in retrieval_runs:
             for result in retrieval_results:
-                key = (result.get("page"), result.get("chunk_id"), result.get("text"))
+                key = _result_merge_key(result)
                 existing = merged.get(key)
                 if existing is None:
                     merged[key] = result.copy()
                     continue
+
+                existing_children = list(existing.get("matched_child_chunk_ids", []))
+                for child_chunk_id in result.get("matched_child_chunk_ids", []):
+                    if child_chunk_id not in existing_children:
+                        existing_children.append(child_chunk_id)
 
                 if _result_score(result) > _result_score(existing):
                     existing.update(result)
@@ -277,6 +408,7 @@ class QuestionsProcessor:
                 sources = set(existing.get("retrieval_sources", []))
                 sources.update(result.get("retrieval_sources", []))
                 existing["retrieval_sources"] = sorted(sources)
+                existing["matched_child_chunk_ids"] = existing_children
 
         merged_results = list(merged.values())
         merged_results.sort(key=_result_score, reverse=True)
@@ -321,16 +453,25 @@ class QuestionsProcessor:
                 mentioned_companies=extracted_companies,
                 route_mode="explicit_company",
             )
-            return {
-                "company_name": company_name,
-                "companies": extracted_companies,
-                "query_plan": query_plan,
-                "route_info": {
+            if self.report_catalog is not None and self.doc_router_enabled:
+                query_plan.filters.company_name = company_name
+                _, route_info = self.report_catalog.resolve_single_company(query_plan, limit=self.candidate_doc_top_k)
+                route_info["route_mode"] = "explicit_company"
+                candidate_doc_ids = route_info.get("candidate_doc_ids") or []
+                if candidate_doc_ids:
+                    query_plan.filters.candidate_doc_ids = candidate_doc_ids
+            else:
+                route_info = {
                     "route_mode": "explicit_company",
                     "selected_company": company_name,
                     "candidate_companies": extracted_companies,
                     "selection_reasons": ["company_mentioned_in_question"],
-                },
+                }
+            return {
+                "company_name": company_name,
+                "companies": extracted_companies,
+                "query_plan": query_plan,
+                "route_info": route_info,
                 "is_comparative": False,
             }
 
@@ -341,12 +482,15 @@ class QuestionsProcessor:
             question,
             schema=schema,
             mentioned_companies=[],
-            route_mode="metadata_inference",
+            route_mode="document_catalog",
         )
-        company_name, route_info = self.report_catalog.resolve_single_company(query_plan)
+        company_name, route_info = self.report_catalog.resolve_single_company(query_plan, limit=self.candidate_doc_top_k)
         query_plan.filters.company_name = company_name
+        candidate_doc_ids = route_info.get("candidate_doc_ids") or []
+        if candidate_doc_ids:
+            query_plan.filters.candidate_doc_ids = candidate_doc_ids
         query_plan.mentioned_companies = [company_name]
-        query_plan.route_mode = route_info.get("route_mode", "metadata_inference")
+        query_plan.route_mode = route_info.get("route_mode", "document_catalog")
         return {
             "company_name": company_name,
             "companies": [company_name],
@@ -374,14 +518,17 @@ class QuestionsProcessor:
             route_mode="explicit_company",
         )
         rewrite_result.filters.company_name = company_name
+        candidate_doc_ids = list((route_info or {}).get("candidate_doc_ids") or rewrite_result.filters.candidate_doc_ids or [])
+        if candidate_doc_ids:
+            rewrite_result.filters.candidate_doc_ids = candidate_doc_ids
         retriever, mode = self._build_retriever()
 
         if mode == "full_context":
-            retrieval_results = self._run_retrieval(retriever, mode, company_name, question, rewrite_result.filters)
+            retrieval_results = self._run_retrieval(retriever, mode, company_name, question, rewrite_result.filters, candidate_doc_ids)
         else:
             retrieval_runs = []
             for search_query in rewrite_result.search_queries:
-                results = self._run_retrieval(retriever, mode, company_name, search_query, rewrite_result.filters)
+                results = self._run_retrieval(retriever, mode, company_name, search_query, rewrite_result.filters, candidate_doc_ids)
                 if results:
                     retrieval_runs.append(results)
             retrieval_results = self._merge_multi_query_results(retrieval_runs, self.top_n_retrieval)
@@ -394,9 +541,31 @@ class QuestionsProcessor:
             question=question,
             rag_context=rag_context,
             schema=schema,
-            model=self.answering_model
+            model=self.answering_model,
+            temperature=self.answer_temperature,
         )
         self.response_data = dict(self.api_processor.response_data)
+
+        if schema == "number" and self.table_grounder is not None:
+            grounding_result = self.table_grounder.ground_number_query(
+                question=question,
+                retrieval_results=retrieval_results,
+                filters=rewrite_result.filters,
+                candidate_doc_ids=candidate_doc_ids,
+            )
+            if grounding_result is not None and grounding_result.get("normalized_value") is not None:
+                grounded_value = grounding_result["normalized_value"]
+                if isinstance(grounded_value, float) and grounded_value.is_integer():
+                    grounded_value = int(grounded_value)
+                answer_dict["final_answer"] = grounded_value
+                answer_dict["table_grounding_result"] = grounding_result
+                answer_dict["reasoning_summary"] = (
+                    f"Table-grounded answer from table {grounding_result.get('table_id')} on page {grounding_result.get('page')}."
+                )
+                pages = list(answer_dict.get("relevant_pages") or [])
+                if grounding_result.get("page") is not None and grounding_result["page"] not in pages:
+                    pages.append(grounding_result["page"])
+                answer_dict["relevant_pages"] = pages
 
         pages = answer_dict.get("relevant_pages", [])
         validated_pages = self._validate_page_references(pages, retrieval_results)
@@ -407,7 +576,11 @@ class QuestionsProcessor:
             company_name,
             pdf_sha1=selected_report.get("sha1"),
         )
-        answer_dict["citations"] = build_citations(retrieval_results, validated_pages)
+        answer_dict["citations"] = build_citations(
+            retrieval_results,
+            validated_pages,
+            table_grounding_result=answer_dict.get("table_grounding_result"),
+        )
         answer_dict["confidence"] = compute_confidence(answer_dict, retrieval_results)
         answer_dict["search_queries"] = rewrite_result.search_queries
         answer_dict["query_plan"] = rewrite_result.to_dict()
@@ -419,6 +592,8 @@ class QuestionsProcessor:
         answer_dict["retrieval_pages"] = [result.get("page") for result in retrieval_results]
         answer_dict["retrieval_results"] = [self._serialize_retrieval_result(result) for result in retrieval_results]
         answer_dict["response_data"] = self.response_data
+        if not self.reasoning_debug_enabled:
+            answer_dict["step_by_step_analysis"] = ""
         validated_answer = validate_answer(answer_dict, retrieval_results, rewrite_result)
         return validated_answer.answer
 
@@ -470,6 +645,7 @@ class QuestionsProcessor:
                 "route_info": answer_dict.get("route_info", {}),
                 "retrieval_pages": answer_dict.get("retrieval_pages", []),
                 "retrieval_results": answer_dict.get("retrieval_results", []),
+                "table_grounding_result": answer_dict.get("table_grounding_result"),
                 "response_data": answer_dict.get("response_data", {}),
                 "self": ref_id
             }
@@ -613,11 +789,13 @@ class QuestionsProcessor:
 
             answer_details_ref = q.get("answer_details", {}).get("$ref", "")
             step_by_step_analysis = None
+            table_grounding_result = None
             if answer_details_ref and answer_details_ref.startswith("#/answer_details/"):
                 try:
                     index = int(answer_details_ref.split("/")[-1])
                     if 0 <= index < len(self.answer_details) and self.answer_details[index]:
                         step_by_step_analysis = self.answer_details[index].get("step_by_step_analysis")
+                        table_grounding_result = self.answer_details[index].get("table_grounding_result")
                 except (ValueError, IndexError):
                     pass
 
@@ -647,6 +825,8 @@ class QuestionsProcessor:
 
             if step_by_step_analysis:
                 submission_answer["reasoning_process"] = step_by_step_analysis
+            if table_grounding_result:
+                submission_answer["table_grounding_result"] = table_grounding_result
 
             submission_answers.append(submission_answer)
 
@@ -728,7 +908,8 @@ class QuestionsProcessor:
             question=question,
             rag_context=individual_answers,
             schema="comparative",
-            model=self.answering_model
+            model=self.answering_model,
+            temperature=self.answer_temperature,
         )
         self.response_data = dict(self.api_processor.response_data)
         comparative_answer["references"] = dedupe_references(aggregated_references)
