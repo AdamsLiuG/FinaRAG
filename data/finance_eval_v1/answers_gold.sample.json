@@ -1,0 +1,86 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "finance_eval_v1_sample",
+  "answers": [
+    {
+      "question_id": "fin-eval-0001",
+      "question_text": "国网信通2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "王奔",
+      "doc_ids": [
+        "600131_2024_20250425"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "references": [
+        {
+          "pdf_sha1": "600131_2024_20250425",
+          "page_index": 6,
+          "evidence_type": "narrative"
+        }
+      ],
+      "company_name": "国网信通",
+      "stock_code": "600131",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "metric_name": "法定代表人",
+      "evidence_type": "narrative",
+      "capability": "single_doc_fact",
+      "should_refuse": false,
+      "annotation_status": "human_verified"
+    },
+    {
+      "question_id": "fin-eval-0002",
+      "question_text": "优博讯2024年年报中的研发投入金额是多少？",
+      "kind": "number",
+      "value": "356,778,998.12",
+      "doc_ids": [
+        "300531_2024_20250429"
+      ],
+      "gold_pages": [
+        115
+      ],
+      "references": [
+        {
+          "pdf_sha1": "300531_2024_20250429",
+          "page_index": 114,
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "优博讯",
+      "stock_code": "300531",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_numeric",
+      "should_refuse": false,
+      "annotation_status": "human_verified"
+    },
+    {
+      "question_id": "fin-eval-0003",
+      "question_text": "国网信通2024年年报中是否披露了火星业务收入？",
+      "kind": "boolean",
+      "value": "N/A",
+      "doc_ids": [
+        "600131_2024_20250425"
+      ],
+      "gold_pages": [],
+      "references": [],
+      "company_name": "国网信通",
+      "stock_code": "600131",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "capability": "refusal",
+      "should_refuse": true,
+      "annotation_status": "human_verified"
+    }
+  ],
+  "metadata": {
+    "owner": "FinaRAG"
+  }
+}

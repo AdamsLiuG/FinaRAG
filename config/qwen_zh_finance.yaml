@@ -12,6 +12,7 @@ vector_hnsw_ef_search: 64
 retriever_cache_enabled: true
 use_bm25_db: true
 use_sparse_lexical_db: true
+use_tag_db: true
 llm_reranking: true
 llm_reranking_sample_size: 8
 top_n_retrieval: 5
@@ -25,5 +26,6 @@ candidate_doc_top_k: 5
 numeric_grounding_enabled: true
 reasoning_debug_enabled: false
 api_provider: "qwen"
-answering_model: "Qwen3.5-35B-A3B-AWQ-4bit"
+# answering_model: "Qwen3.5-35B-A3B-AWQ-4bit"
+answering_model: "Qwen3.5-27B"
 config_suffix: "_qwen_zh_finance"

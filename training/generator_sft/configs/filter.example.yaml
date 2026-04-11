@@ -1,0 +1,6 @@
+input_path: training/generator_sft/raw/teacher_answers_raw.jsonl
+output_path: training/generator_sft/processed/teacher_answers_filtered.jsonl
+rejected_output_path: training/generator_sft/manifests/rejected_samples.jsonl
+stats_output_path: training/generator_sft/manifests/filter_stats.json
+chat_output_path: training/generator_sft/processed/all.chat.jsonl
+chat_stats_output_path: training/generator_sft/manifests/chat_export_stats.json

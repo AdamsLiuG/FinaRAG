@@ -9,7 +9,57 @@ import faiss
 import numpy as np
 
 from src.embedding_backend import EmbeddingBackend, BGEM3SparseEmbeddingBackend
-from src.text_normalization import tokenize_for_bm25
+from src.text_normalization import normalize_text, tokenize_for_bm25
+
+
+_TAG_ARRAY_FIELDS = (
+    "business_tags",
+    "strategy_tags",
+    "factor_tags",
+    "chain_position_minor",
+    "listing_tags",
+    "ownership_tags",
+    "status_tags",
+    "style_tags",
+)
+
+
+def _vector_text_from_chunk(chunk: dict) -> str:
+    return chunk.get("embedding_text") or chunk.get("search_text") or chunk.get("text") or ""
+
+
+def _lexical_text_from_chunk(chunk: dict) -> str:
+    return chunk.get("search_text") or chunk.get("embedding_text") or chunk.get("text") or ""
+
+
+def _chunk_tag_values(chunk: dict) -> List[str]:
+    values: List[str] = []
+    scalar_fields = (
+        "section_name",
+        "section_title",
+        "report_section",
+        "exchange",
+        "board",
+        "market_type",
+        "industry_l1",
+        "industry_l2",
+        "chain_position_major",
+    )
+    for field in scalar_fields:
+        value = chunk.get(field)
+        if value not in (None, ""):
+            values.append(str(value))
+    for field in _TAG_ARRAY_FIELDS:
+        values.extend(str(item) for item in chunk.get(field) or [] if item not in (None, ""))
+    deduped: List[str] = []
+    seen = set()
+    for value in values:
+        marker = normalize_text(value)
+        if not marker or marker in seen:
+            continue
+        seen.add(marker)
+        deduped.append(value)
+    return deduped
 
 
 class BM25Ingestor:
@@ -37,7 +87,7 @@ class BM25Ingestor:
                 report_data = json.load(f)
                 
             # Extract text chunks and create BM25 index
-            text_chunks = [chunk['text'] for chunk in report_data['content']['chunks']]
+            text_chunks = [_lexical_text_from_chunk(chunk) for chunk in report_data['content']['chunks']]
             bm25_index = self.create_bm25_index(text_chunks)
             
             # Save BM25 index
@@ -67,7 +117,7 @@ class SparseLexicalIngestor:
             with open(report_path, 'r', encoding='utf-8') as f:
                 report_data = json.load(f)
 
-            text_chunks = [chunk['text'] for chunk in report_data['content']['chunks']]
+            text_chunks = [_lexical_text_from_chunk(chunk) for chunk in report_data['content']['chunks']]
             lexical_weights = self._get_lexical_weights(text_chunks)
 
             sha1_name = report_data["metainfo"]["sha1_name"]
@@ -126,7 +176,7 @@ class VectorDBIngestor:
         return index
     
     def _process_report(self, report: dict):
-        text_chunks = [chunk['text'] for chunk in report['content']['chunks']]
+        text_chunks = [_vector_text_from_chunk(chunk) for chunk in report['content']['chunks']]
         embeddings = self._get_embeddings(text_chunks)
         index = self._create_vector_db(embeddings)
         return index
@@ -142,6 +192,41 @@ class VectorDBIngestor:
             sha1_name = report_data["metainfo"]["sha1_name"]
             faiss_file_path = output_dir / f"{sha1_name}.faiss"
             faiss.write_index(index, str(faiss_file_path))
+
+        print(f"Processed {len(all_report_paths)} reports")
+
+
+class TagIngestor:
+    def __init__(self):
+        pass
+
+    def process_reports(self, all_reports_dir: Path, output_dir: Path):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        all_report_paths = list(all_reports_dir.glob("*.json"))
+
+        for report_path in tqdm(all_report_paths, desc="Processing reports for tag retrieval"):
+            with open(report_path, "r", encoding="utf-8") as file:
+                report_data = json.load(file)
+
+            chunk_terms: List[List[str]] = []
+            chunk_tag_values: List[List[str]] = []
+            for chunk in report_data.get("content", {}).get("chunks", []):
+                tag_values = _chunk_tag_values(chunk)
+                chunk_tag_values.append(tag_values)
+                chunk_terms.append(tokenize_for_bm25(" ".join(tag_values)))
+
+            sha1_name = report_data["metainfo"]["sha1_name"]
+            output_file = output_dir / f"{sha1_name}.json"
+            with open(output_file, "w", encoding="utf-8") as file:
+                json.dump(
+                    {
+                        "chunk_terms": chunk_terms,
+                        "chunk_tag_values": chunk_tag_values,
+                    },
+                    file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
         print(f"Processed {len(all_report_paths)} reports")
 

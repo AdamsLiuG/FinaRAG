@@ -37,7 +37,7 @@ class ComparativeQuestionTests(unittest.TestCase):
 
             processor.get_answer_for_company = fake_get_answer_for_company
 
-            def fake_compare(question, rag_context, schema, model):
+            def fake_compare(question, rag_context, schema, model, temperature=0.0):
                 self.assertEqual(schema, "comparative")
                 self.assertIn("Alpha Corp", rag_context)
                 self.assertIn("Beta Corp", rag_context)

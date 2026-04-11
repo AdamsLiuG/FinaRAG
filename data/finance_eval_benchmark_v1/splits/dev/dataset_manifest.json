@@ -1,0 +1,46 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "finance_eval_benchmark_v1_dev30",
+  "description": "30-question development split for finance_eval_benchmark_v1_core60.",
+  "source_corpora": [
+    "top10_industries_2024_20each",
+    "chinese_annual_reports_2024_v1"
+  ],
+  "question_count": 30,
+  "answer_count": 30,
+  "scoring_profile": "finance_rag_v1",
+  "strata_summary": {
+    "all": 30,
+    "capability/cross_doc_compare": 5,
+    "capability/metadata_tag_retrieval": 5,
+    "capability/section_filter": 5,
+    "capability/single_doc_boolean": 5,
+    "capability/single_doc_fact": 10,
+    "difficulty/easy": 10,
+    "difficulty/hard": 10,
+    "difficulty/medium": 10,
+    "industry/专用设备制造业": 3,
+    "industry/信息技术": 3,
+    "industry/化学原料和化学制品制造业": 3,
+    "industry/医药生物": 3,
+    "industry/房地产业": 3,
+    "industry/汽车": 3,
+    "industry/电力、热力生产和供应业": 3,
+    "industry/电子": 3,
+    "industry/货币金融服务": 3,
+    "industry/零售业": 3,
+    "kind/boolean": 5,
+    "kind/name": 15,
+    "kind/names": 5,
+    "kind/number": 5,
+    "split/dev": 30
+  },
+  "metadata": {
+    "owner": "FinaRAG",
+    "quality_tier": "provisional_gold",
+    "review_required": true,
+    "split_name": "dev",
+    "annotation_policy": "top10_auto_filled_needs_human_review",
+    "split_strategy": "odd industry groups -> dev slots {1,3,5}, test slots {2,4,6}; even industry groups -> dev slots {2,4,6}, test slots {1,3,5}"
+  }
+}

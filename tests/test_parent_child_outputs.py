@@ -14,6 +14,9 @@ class ParentChildOutputTests(unittest.TestCase):
             "chunk_type": "content",
             "result_scope": "parent",
             "matched_child_chunk_ids": [3, 4],
+            "matched_tags": ["国产替代"],
+            "matched_queries": ["毛利率是多少", "综合毛利率是多少"],
+            "query_hit_count": 2,
             "retrieval_sources": ["vector"],
             "metadata": {
                 "chunk_id": 12,
@@ -21,8 +24,10 @@ class ParentChildOutputTests(unittest.TestCase):
                 "node_type": "parent",
                 "parent_chunk_id": None,
                 "section_title": "Margins",
+                "section_name": "管理层讨论与分析",
                 "report_section": "Margins",
                 "company_name": "Alpha Corp",
+                "stock_code": "600000",
                 "currency": "USD",
                 "report_year": 2023,
                 "report_type": "annual",
@@ -43,7 +48,13 @@ class ParentChildOutputTests(unittest.TestCase):
         self.assertEqual(serialized["node_type"], "parent")
         self.assertEqual(serialized["matched_child_chunk_ids"], [3, 4])
         self.assertEqual(serialized["result_scope"], "parent")
+        self.assertEqual(serialized["section_name"], "管理层讨论与分析")
+        self.assertEqual(serialized["matched_tags"], ["国产替代"])
+        self.assertEqual(serialized["matched_queries"], ["毛利率是多少", "综合毛利率是多少"])
+        self.assertEqual(serialized["query_hit_count"], 2)
+        self.assertEqual(serialized["final_score"], 0.88)
 
 
 if __name__ == "__main__":
     unittest.main()
+

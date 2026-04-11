@@ -7,12 +7,27 @@ from typing import Any, Dict, List, Optional, Tuple
 import tiktoken
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from src.text_normalization import contains_cjk, normalize_period_token, parse_numeric_value
+from src.pdfcrawl_metadata import (
+    load_company_label_snapshot_lookup,
+    load_report_page_lookup,
+    write_jsonl,
+)
+from src.text_normalization import contains_cjk, dedupe_preserve_order, normalize_period_token, parse_numeric_value
 
 class TextSplitter():
     def __init__(self, child_chunk_size: int = 320, child_chunk_overlap: int = 50):
         self.child_chunk_size = child_chunk_size
         self.child_chunk_overlap = child_chunk_overlap
+        self._metadata_tag_fields = (
+            "business_tags",
+            "strategy_tags",
+            "factor_tags",
+            "chain_position_minor",
+            "listing_tags",
+            "ownership_tags",
+            "status_tags",
+            "style_tags",
+        )
 
     def _infer_report_year(self, pages: List[Dict[str, any]]) -> Optional[int]:
         year_counter: Counter[int] = Counter()
@@ -119,6 +134,138 @@ class TextSplitter():
             if key.startswith(("has_", "mentions_")) and str(value).strip().lower() == "true"
         )
 
+    def _coerce_list(self, value: Any) -> List[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return dedupe_preserve_order([item for item in value if item not in (None, "")])
+        return [value]
+
+    def _merge_report_snapshot(self, report_meta: Dict[str, Any], report_snapshot: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not report_snapshot:
+            return report_meta
+
+        merged = dict(report_meta)
+        scalar_fields = (
+            "stock_code",
+            "exchange",
+            "board",
+            "market_type",
+            "industry_l1",
+            "industry_l2",
+            "chain_position_major",
+        )
+        for field in scalar_fields:
+            if not merged.get(field) and report_snapshot.get(field):
+                merged[field] = report_snapshot.get(field)
+
+        merged["stock_code"] = merged.get("stock_code") or merged.get("security_code")
+        for field in self._metadata_tag_fields:
+            merged[field] = self._coerce_list(merged.get(field) or report_snapshot.get(field))
+        return merged
+
+    def _apply_page_metadata(self, block: Dict[str, Any], page_metadata: Optional[Dict[str, Any]], report_meta: Dict[str, Any]) -> Dict[str, Any]:
+        enriched = dict(block)
+        page_number = enriched.get("page")
+        enriched["stock_code"] = (page_metadata or {}).get("stock_code") or report_meta.get("stock_code") or report_meta.get("security_code")
+        enriched["exchange"] = (page_metadata or {}).get("exchange") or report_meta.get("exchange")
+        enriched["board"] = (page_metadata or {}).get("board") or report_meta.get("board")
+        enriched["market_type"] = (page_metadata or {}).get("market_type") or report_meta.get("market_type")
+        enriched["industry_l1"] = (page_metadata or {}).get("industry_l1") or report_meta.get("industry_l1")
+        enriched["industry_l2"] = (page_metadata or {}).get("industry_l2") or report_meta.get("industry_l2")
+        enriched["page_start"] = (page_metadata or {}).get("page_start") or page_number
+        enriched["page_end"] = (page_metadata or {}).get("page_end") or page_number
+        enriched["section_name"] = (
+            (page_metadata or {}).get("section_name")
+            or enriched.get("section_name")
+            or enriched.get("report_section")
+            or enriched.get("section_title")
+            or f"Page {page_number}"
+        )
+        enriched["chunk_metadata_id"] = (page_metadata or {}).get("chunk_id")
+        enriched["chain_position_major"] = (page_metadata or {}).get("chain_position_major") or report_meta.get("chain_position_major")
+        for field in self._metadata_tag_fields:
+            enriched[field] = self._coerce_list((page_metadata or {}).get(field) or report_meta.get(field))
+        return enriched
+
+    @staticmethod
+    def _normalize_report_type_label(doc_source_type: Optional[str], report_year: Any) -> Optional[str]:
+        year_text = str(report_year).strip() if report_year not in (None, "") else ""
+        suffix = {
+            "annual_report": "年报",
+            "interim_report": "中期报告",
+            "research_report": "研报",
+        }.get(str(doc_source_type or "").strip(), "文档")
+        if not year_text:
+            return suffix
+        return f"{year_text}年{suffix}"
+
+    def _build_embedding_text(self, payload: Dict[str, Any]) -> str:
+        lines: List[str] = []
+        company_name = payload.get("company_name")
+        stock_code = payload.get("stock_code") or payload.get("security_code")
+        report_label = self._normalize_report_type_label(payload.get("doc_source_type"), payload.get("report_year"))
+        market_tokens = [token for token in (payload.get("market_type"), payload.get("board")) if token]
+        industry_tokens = [token for token in (payload.get("industry_l1"), payload.get("industry_l2")) if token]
+
+        if company_name:
+            lines.append(f"公司：{company_name}")
+        if stock_code:
+            lines.append(f"代码：{stock_code}")
+        if report_label:
+            lines.append(f"年份：{report_label}")
+        if market_tokens:
+            lines.append(f"市场：{'、'.join(dedupe_preserve_order(market_tokens))}")
+        if industry_tokens:
+            lines.append(f"行业：{'-'.join(dedupe_preserve_order(industry_tokens))}")
+        if payload.get("section_name"):
+            lines.append(f"章节：{payload['section_name']}")
+        if payload.get("business_tags"):
+            lines.append(f"业务主题：{'、'.join(payload['business_tags'])}")
+        if payload.get("strategy_tags"):
+            lines.append(f"战略主题：{'、'.join(payload['strategy_tags'])}")
+        if payload.get("factor_tags"):
+            lines.append(f"因子主题：{'、'.join(payload['factor_tags'])}")
+        chain_minor = payload.get("chain_position_minor") or []
+        if payload.get("chain_position_major") or chain_minor:
+            lines.append(
+                "产业链："
+                + "/".join(
+                    token
+                    for token in [
+                        payload.get("chain_position_major"),
+                        "、".join(chain_minor) if chain_minor else None,
+                    ]
+                    if token
+                )
+            )
+        lines.append("")
+        lines.append("正文：")
+        lines.append(payload.get("text") or "")
+        return "\n".join(lines).strip()
+
+    def _build_search_text(self, payload: Dict[str, Any]) -> str:
+        parts: List[str] = []
+        for field in (
+            "company_name",
+            "stock_code",
+            "report_year",
+            "doc_source_type",
+            "exchange",
+            "board",
+            "market_type",
+            "industry_l1",
+            "industry_l2",
+            "section_name",
+        ):
+            value = payload.get(field)
+            if value not in (None, ""):
+                parts.append(str(value))
+        for field in self._metadata_tag_fields:
+            parts.extend(str(item) for item in payload.get(field) or [] if item)
+        parts.append(payload.get("text") or "")
+        return "\n".join(parts).strip()
+
     def _build_chunk_payload(
         self,
         text: str,
@@ -129,8 +276,12 @@ class TextSplitter():
         node_type: str,
         parent_chunk_id: Optional[int] = None,
     ) -> Dict[str, Any]:
+        section_title = source_chunk.get("section_title")
+        section_name = source_chunk.get("section_name") or source_chunk.get("report_section") or section_title or f"Page {source_chunk['page']}"
         payload = {
             "page": source_chunk["page"],
+            "page_start": source_chunk.get("page_start") or source_chunk["page"],
+            "page_end": source_chunk.get("page_end") or source_chunk["page"],
             "length_tokens": self.count_tokens(text),
             "text": text,
             "id": chunk_id,
@@ -138,7 +289,8 @@ class TextSplitter():
             "type": source_chunk.get("chunk_type", source_chunk.get("type", "content")),
             "chunk_type": source_chunk.get("chunk_type", source_chunk.get("type", "content")),
             "node_type": node_type,
-            "section_title": source_chunk.get("section_title"),
+            "section_title": section_title,
+            "section_name": section_name,
             "table_id": source_chunk.get("table_id"),
             "report_year": report_meta.get("report_year"),
             "currency": report_meta.get("currency"),
@@ -148,6 +300,7 @@ class TextSplitter():
             "doc_source_type": report_meta.get("doc_source_type"),
             "company_aliases": list(report_meta.get("company_aliases") or []),
             "security_code": report_meta.get("security_code"),
+            "stock_code": source_chunk.get("stock_code") or report_meta.get("stock_code") or report_meta.get("security_code"),
             "broker_name": report_meta.get("broker_name"),
             "report_date": report_meta.get("report_date"),
             "fiscal_year": report_meta.get("fiscal_year"),
@@ -155,12 +308,23 @@ class TextSplitter():
             "topic_flags": self._report_topic_flags(report_meta),
             "parent_block_id": source_chunk.get("parent_block_id"),
             "parent_chunk_id": parent_chunk_id,
-            "report_section": source_chunk.get("report_section", source_chunk.get("section_title")),
+            "report_section": source_chunk.get("report_section", section_name),
             "evidence_type": source_chunk.get("evidence_type", "narrative"),
             "has_table_context": bool(source_chunk.get("has_table_context")),
             "period": source_chunk.get("period") or normalize_period_token(source_chunk.get("text", "")),
             "unit_hint": source_chunk.get("unit_hint") or self._extract_unit_hint(source_chunk.get("text", "")),
+            "exchange": source_chunk.get("exchange") or report_meta.get("exchange"),
+            "board": source_chunk.get("board") or report_meta.get("board"),
+            "market_type": source_chunk.get("market_type") or report_meta.get("market_type"),
+            "industry_l1": source_chunk.get("industry_l1") or report_meta.get("industry_l1"),
+            "industry_l2": source_chunk.get("industry_l2") or report_meta.get("industry_l2"),
+            "chain_position_major": source_chunk.get("chain_position_major") or report_meta.get("chain_position_major"),
+            "chunk_metadata_id": source_chunk.get("chunk_metadata_id"),
         }
+        for field in self._metadata_tag_fields:
+            payload[field] = self._coerce_list(source_chunk.get(field) or report_meta.get(field))
+        payload["embedding_text"] = self._build_embedding_text(payload)
+        payload["search_text"] = self._build_search_text(payload)
         if node_type == "parent":
             payload["child_chunk_ids"] = []
         return payload
@@ -174,13 +338,19 @@ class TextSplitter():
             node_type="parent",
         )
 
-    def _split_report(self, file_content: Dict[str, any], serialized_tables_report_path: Optional[Path] = None) -> Dict[str, any]:
+    def _split_report(
+        self,
+        file_content: Dict[str, any],
+        serialized_tables_report_path: Optional[Path] = None,
+        report_page_metadata: Optional[Dict[int, Dict[str, Any]]] = None,
+        report_snapshot: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, any]:
         """Split report into parent/child chunks, preserving structure-aware metadata."""
         child_chunks: List[Dict[str, Any]] = []
         parent_chunks: List[Dict[str, Any]] = []
         parent_chunk_id = 0
         child_chunk_id = 0
-        report_meta = file_content.get("metainfo", {})
+        report_meta = self._merge_report_snapshot(file_content.get("metainfo", {}), report_snapshot)
         pages = file_content["content"]["pages"]
         report_year = self._infer_report_year(pages)
         if report_year is not None:
@@ -195,8 +365,14 @@ class TextSplitter():
             structured_tables = self._extract_structured_tables(parsed_report.get('tables', []))
         
         for page in pages:
+            page_metadata = (report_page_metadata or {}).get(page["page"])
             page_has_table_context = bool(tables_by_page and page['page'] in tables_by_page)
-            page_blocks = self._split_page(page, report_meta, has_table_context=page_has_table_context)
+            page_blocks = self._split_page(
+                page,
+                report_meta,
+                page_metadata=page_metadata,
+                has_table_context=page_has_table_context,
+            )
             for block in page_blocks:
                 parent_chunk = self._build_parent_chunk(block, report_meta, parent_chunk_id)
                 child_nodes, child_chunk_id = self._split_parent_chunk(parent_chunk, report_meta, child_chunk_id)
@@ -210,9 +386,10 @@ class TextSplitter():
                     table['type'] = 'serialized_table'
                     table['chunk_type'] = 'serialized_table'
                     table['parent_block_id'] = f"page{page['page']}_table{table['table_id']}"
-                    table['report_section'] = table['section_title']
+                    table['report_section'] = table.get('section_name') or table['section_title']
                     table['evidence_type'] = 'table'
                     table['has_table_context'] = True
+                    table = self._apply_page_metadata(table, page_metadata, report_meta)
                     parent_chunk = self._build_parent_chunk(table, report_meta, parent_chunk_id)
                     child_nodes, child_chunk_id = self._split_parent_chunk(parent_chunk, report_meta, child_chunk_id)
                     parent_chunks.append(parent_chunk)
@@ -275,12 +452,19 @@ class TextSplitter():
 
         return child_chunks, child_chunk_id_start
 
-    def _split_page(self, page: Dict[str, any], report_meta: Dict[str, any], has_table_context: bool = False) -> List[Dict[str, any]]:
+    def _split_page(
+        self,
+        page: Dict[str, any],
+        report_meta: Dict[str, any],
+        page_metadata: Optional[Dict[str, Any]] = None,
+        has_table_context: bool = False,
+    ) -> List[Dict[str, any]]:
         """Split page text into structure-aware parent blocks."""
         all_chunks: List[Dict[str, any]] = []
         for index, block in enumerate(self._extract_structural_blocks(page)):
             block["parent_block_id"] = f"page{page['page']}_block{index}"
-            block["report_section"] = block.get("section_title")
+            block = self._apply_page_metadata(block, page_metadata, report_meta)
+            block["report_section"] = block.get("section_name") or block.get("section_title")
             block["evidence_type"] = "narrative"
             block["has_table_context"] = has_table_context
             block["period"] = normalize_period_token(block.get("text", ""))
@@ -362,9 +546,63 @@ class TextSplitter():
             )
         return structured_tables
 
-    def split_all_reports(self, all_report_dir: Path, output_dir: Path, serialized_tables_dir: Optional[Path] = None):
+    def _build_chunk_metadata_rows(self, report_id: str, report: Dict[str, Any]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        metainfo = report.get("metainfo", {})
+        for chunk in list(report.get("content", {}).get("parent_chunks", [])) + list(report.get("content", {}).get("chunks", [])):
+            rows.append(
+                {
+                    "doc_id": report_id,
+                    "report_id": report_id,
+                    "stock_code": chunk.get("stock_code") or metainfo.get("stock_code") or metainfo.get("security_code"),
+                    "company_name": chunk.get("company_name") or metainfo.get("company_name"),
+                    "report_year": chunk.get("report_year") or metainfo.get("report_year"),
+                    "chunk_id": chunk.get("chunk_id"),
+                    "node_type": chunk.get("node_type"),
+                    "chunk_type": chunk.get("chunk_type"),
+                    "parent_chunk_id": chunk.get("parent_chunk_id"),
+                    "page": chunk.get("page"),
+                    "page_start": chunk.get("page_start"),
+                    "page_end": chunk.get("page_end"),
+                    "section_name": chunk.get("section_name"),
+                    "section_title": chunk.get("section_title"),
+                    "report_section": chunk.get("report_section"),
+                    "table_id": chunk.get("table_id"),
+                    "evidence_type": chunk.get("evidence_type"),
+                    "has_table_context": chunk.get("has_table_context"),
+                    "exchange": chunk.get("exchange"),
+                    "board": chunk.get("board"),
+                    "market_type": chunk.get("market_type"),
+                    "industry_l1": chunk.get("industry_l1"),
+                    "industry_l2": chunk.get("industry_l2"),
+                    "business_tags": chunk.get("business_tags", []),
+                    "strategy_tags": chunk.get("strategy_tags", []),
+                    "factor_tags": chunk.get("factor_tags", []),
+                    "chain_position_major": chunk.get("chain_position_major"),
+                    "chain_position_minor": chunk.get("chain_position_minor", []),
+                    "listing_tags": chunk.get("listing_tags", []),
+                    "ownership_tags": chunk.get("ownership_tags", []),
+                    "status_tags": chunk.get("status_tags", []),
+                    "style_tags": chunk.get("style_tags", []),
+                    "embedding_text": chunk.get("embedding_text"),
+                    "search_text": chunk.get("search_text"),
+                    "chunk_metadata_id": chunk.get("chunk_metadata_id"),
+                }
+            )
+        return rows
+
+    def split_all_reports(
+        self,
+        all_report_dir: Path,
+        output_dir: Path,
+        serialized_tables_dir: Optional[Path] = None,
+        metadata_store_dir: Optional[Path] = None,
+    ):
 
         all_report_paths = list(all_report_dir.glob("*.json"))
+        report_page_lookup = load_report_page_lookup(metadata_store_dir) if metadata_store_dir else {}
+        company_snapshot_lookup = load_company_label_snapshot_lookup(metadata_store_dir) if metadata_store_dir else {}
+        chunk_metadata_rows: List[Dict[str, Any]] = []
         
         for report_path in all_report_paths:
             serialized_tables_path = None
@@ -375,11 +613,23 @@ class TextSplitter():
                 
             with open(report_path, 'r', encoding='utf-8') as file:
                 report_data = json.load(file)
-                
-            updated_report = self._split_report(report_data, serialized_tables_path)
+
+            report_id = str((report_data.get("metainfo") or {}).get("sha1_name") or report_path.stem)
+            updated_report = self._split_report(
+                report_data,
+                serialized_tables_path,
+                report_page_metadata=report_page_lookup.get(report_id),
+                report_snapshot=company_snapshot_lookup.get(report_id),
+            )
             output_dir.mkdir(parents=True, exist_ok=True)
             
             with open(output_dir / report_path.name, 'w', encoding='utf-8') as file:
                 json.dump(updated_report, file, indent=2, ensure_ascii=False)
+            chunk_metadata_rows.extend(self._build_chunk_metadata_rows(report_id, updated_report))
+
+        if metadata_store_dir is not None:
+            metadata_store_dir.mkdir(parents=True, exist_ok=True)
+            write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", chunk_metadata_rows)
+            write_jsonl(metadata_store_dir / "report_chunk.jsonl", chunk_metadata_rows)
                 
         print(f"Split {len(all_report_paths)} files")

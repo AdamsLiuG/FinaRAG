@@ -13,6 +13,7 @@ from src.text_splitter import TextSplitter
 from src.ingestion import VectorDBIngestor
 from src.ingestion import BM25Ingestor
 from src.ingestion import SparseLexicalIngestor
+from src.ingestion import TagIngestor
 from src.questions_processing import QuestionsProcessor
 from src.tables_serialization import TableSerializer
 
@@ -42,6 +43,8 @@ class PipelineConfig:
         self.documents_dir = self.databases_path / "chunked_reports"
         self.bm25_db_path = self.databases_path / "bm25_dbs"
         self.sparse_db_dir = self.databases_path / "sparse_dbs"
+        self.tag_db_dir = self.databases_path / "tag_dbs"
+        self.metadata_store_dir = root_path / "metadata_store"
 
         self.parsed_reports_dirname = "01_parsed_reports"
         self.parsed_reports_debug_dirname = "01_parsed_reports_debug"
@@ -82,6 +85,7 @@ class RunConfig:
     retriever_cache_enabled: bool = True
     use_bm25_db: bool = False
     use_sparse_lexical_db: bool = False
+    use_tag_db: bool = True
     llm_reranking: bool = False
     llm_reranking_sample_size: int = 30
     top_n_retrieval: int = 10
@@ -97,6 +101,23 @@ class RunConfig:
     candidate_doc_top_k: int = 5
     numeric_grounding_enabled: bool = False
     reasoning_debug_enabled: bool = True
+    hyde_enabled: bool = False
+    hyde_trigger_mode: str = "off"
+    hyde_generation_model: str | None = None
+    hyde_generation_temperature: float = 0.2
+    hyde_max_tokens: int = 192
+    hyde_top_score_threshold: float = 0.55
+    hyde_margin_threshold: float = 0.05
+    reranking_strategy: str = "single"
+    cascade_candidate_pool_cap: int = 50
+    colbert_top_n: int = 10
+    colbert_model: str | None = None
+    colbert_device: str | None = None
+    colbert_batch_size: int = 16
+    colbert_query_max_length: int = 128
+    colbert_passage_max_length: int = 512
+    final_reranking_backend: str | None = None
+    final_reranking_model: str | None = None
 
 
 def run_config_from_dict(data: dict) -> RunConfig:
@@ -115,6 +136,7 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "retriever_cache_enabled",
         "use_bm25_db",
         "use_sparse_lexical_db",
+        "use_tag_db",
         "llm_reranking",
         "llm_reranking_sample_size",
         "top_n_retrieval",
@@ -130,6 +152,23 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "candidate_doc_top_k",
         "numeric_grounding_enabled",
         "reasoning_debug_enabled",
+        "hyde_enabled",
+        "hyde_trigger_mode",
+        "hyde_generation_model",
+        "hyde_generation_temperature",
+        "hyde_max_tokens",
+        "hyde_top_score_threshold",
+        "hyde_margin_threshold",
+        "reranking_strategy",
+        "cascade_candidate_pool_cap",
+        "colbert_top_n",
+        "colbert_model",
+        "colbert_device",
+        "colbert_batch_size",
+        "colbert_query_max_length",
+        "colbert_passage_max_length",
+        "final_reranking_backend",
+        "final_reranking_model",
     }
     payload = {key: value for key, value in data.items() if key in allowed_fields}
     return RunConfig(**payload)
@@ -142,9 +181,18 @@ def load_run_config(config_path: Path) -> RunConfig:
         raise ValueError(f"Config file {config_path} must define a mapping.")
     return run_config_from_dict(data)
 
+
+def apply_runtime_overrides(run_config: RunConfig) -> RunConfig:
+    provider = (run_config.api_provider or "").strip().lower()
+    if provider:
+        provider_model = os.getenv(f"{provider.upper()}_MODEL")
+        if provider_model:
+            run_config.answering_model = provider_model
+    return run_config
+
 class Pipeline:
     def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "questions.json", pdf_reports_dir_name: str = "pdf_reports", run_config: RunConfig = RunConfig()):
-        self.run_config = run_config
+        self.run_config = apply_runtime_overrides(run_config)
         self.paths = self._initialize_paths(root_path, subset_name, questions_file_name, pdf_reports_dir_name)
         self._convert_json_to_csv_if_needed()
 
@@ -272,7 +320,8 @@ class Pipeline:
         text_splitter.split_all_reports(
             self.paths.merged_reports_path,
             self.paths.documents_dir,
-            serialized_tables_dir
+            serialized_tables_dir,
+            self.paths.metadata_store_dir,
         )
         print(f"Chunked reports saved to {self.paths.documents_dir}")
 
@@ -307,6 +356,15 @@ class Pipeline:
         sparse_ingestor = SparseLexicalIngestor()
         sparse_ingestor.process_reports(input_dir, output_dir)
         print(f"Sparse lexical databases created in {output_dir}")
+
+    def create_tag_db(self):
+        """Create tag retrieval databases from chunked reports."""
+        input_dir = self.paths.documents_dir
+        output_dir = self.paths.tag_db_dir
+
+        tag_ingestor = TagIngestor()
+        tag_ingestor.process_reports(input_dir, output_dir)
+        print(f"Tag databases created in {output_dir}")
     
     def parse_pdf_reports(self, parallel: bool = True, chunk_size: int = 2, max_workers: int = 10, cuda_devices: str | None = None):
         if parallel:
@@ -314,10 +372,10 @@ class Pipeline:
         else:
             self.parse_pdf_reports_sequential(cuda_devices=cuda_devices)
     
-    def process_parsed_reports(self):
+    def process_parsed_reports(self, export_markdown: bool = True):
         """Process already parsed PDF reports through the pipeline:
         1. Merge to simpler JSON structure
-        2. Export to markdown
+        2. Optionally export to markdown
         3. Chunk the reports
         4. Create retrieval databases
         """
@@ -326,8 +384,11 @@ class Pipeline:
         print("Step 1: Merging reports...")
         self.merge_reports()
         
-        print("Step 2: Exporting reports to markdown...")
-        self.export_reports_to_markdown()
+        if export_markdown:
+            print("Step 2: Exporting reports to markdown...")
+            self.export_reports_to_markdown()
+        else:
+            print("Step 2: Skipping reports markdown export...")
         
         print("Step 3: Chunking reports...")
         self.chunk_reports(include_serialized_tables=self.run_config.use_serialized_tables)
@@ -343,6 +404,10 @@ class Pipeline:
         if self.run_config.use_sparse_lexical_db:
             print("Step 6: Creating sparse lexical databases...")
             self.create_sparse_db()
+
+        if self.run_config.use_tag_db:
+            print("Step 7: Creating tag databases...")
+            self.create_tag_db()
         
         print("Reports processing pipeline completed successfully!")
         
@@ -372,6 +437,7 @@ class Pipeline:
             vector_db_dir=self.paths.vector_db_dir,
             bm25_db_path=self.paths.bm25_db_path,
             sparse_db_dir=self.paths.sparse_db_dir,
+            tag_db_dir=self.paths.tag_db_dir,
             documents_dir=self.paths.documents_dir,
             questions_file_path=self.paths.questions_file_path,
             subset_path=self.paths.document_manifest_path,
@@ -380,6 +446,7 @@ class Pipeline:
             use_vector_dbs=self.run_config.use_vector_dbs,
             use_bm25_db=self.run_config.use_bm25_db,
             use_sparse_lexical_db=self.run_config.use_sparse_lexical_db,
+            use_tag_db=self.run_config.use_tag_db,
             llm_reranking=self.run_config.llm_reranking,
             llm_reranking_sample_size=self.run_config.llm_reranking_sample_size,
             top_n_retrieval=self.run_config.top_n_retrieval,
@@ -396,6 +463,23 @@ class Pipeline:
             candidate_doc_top_k=self.run_config.candidate_doc_top_k,
             numeric_grounding_enabled=self.run_config.numeric_grounding_enabled,
             reasoning_debug_enabled=self.run_config.reasoning_debug_enabled,
+            hyde_enabled=self.run_config.hyde_enabled,
+            hyde_trigger_mode=self.run_config.hyde_trigger_mode,
+            hyde_generation_model=self.run_config.hyde_generation_model,
+            hyde_generation_temperature=self.run_config.hyde_generation_temperature,
+            hyde_max_tokens=self.run_config.hyde_max_tokens,
+            hyde_top_score_threshold=self.run_config.hyde_top_score_threshold,
+            hyde_margin_threshold=self.run_config.hyde_margin_threshold,
+            reranking_strategy=self.run_config.reranking_strategy,
+            cascade_candidate_pool_cap=self.run_config.cascade_candidate_pool_cap,
+            colbert_top_n=self.run_config.colbert_top_n,
+            colbert_model=self.run_config.colbert_model,
+            colbert_device=self.run_config.colbert_device,
+            colbert_batch_size=self.run_config.colbert_batch_size,
+            colbert_query_max_length=self.run_config.colbert_query_max_length,
+            colbert_passage_max_length=self.run_config.colbert_passage_max_length,
+            final_reranking_backend=self.run_config.final_reranking_backend,
+            final_reranking_model=self.run_config.final_reranking_model,
         )
         
         output_path = self._get_next_available_filename(self.paths.answers_file_path)
@@ -414,12 +498,14 @@ preprocess_configs = {
         use_vector_dbs=True,
         use_bm25_db=True,
         use_sparse_lexical_db=True,
+        use_tag_db=True,
     ),
     "no_ser_tab": RunConfig(
         use_serialized_tables=False,
         use_vector_dbs=True,
         use_bm25_db=True,
         use_sparse_lexical_db=True,
+        use_tag_db=True,
     ),
 }
 
@@ -550,6 +636,7 @@ qwen_sparse_rerank_config = RunConfig(
     retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     use_sparse_lexical_db=True,
+    use_tag_db=True,
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,

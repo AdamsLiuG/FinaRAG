@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.document_store import get_document_store
 from src.document_manifest import load_document_manifest
 from src.query_plan import QueryPlan
 from src.text_normalization import extract_security_codes, normalize_text
@@ -49,25 +50,56 @@ class ReportCatalog:
         self.subset_path = Path(subset_path) if subset_path else None
         self.documents_dir = Path(documents_dir) if documents_dir else None
         self._reports: List[CompanyReport] | None = None
+        self._company_label_snapshots: Dict[str, Dict[str, Any]] | None = None
+
+    def _metadata_store_dir(self) -> Path | None:
+        if self.documents_dir is not None:
+            candidate = self.documents_dir.parent.parent / "metadata_store"
+            if candidate.exists():
+                return candidate
+        if self.subset_path is not None:
+            candidate = self.subset_path.parent / "metadata_store"
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _load_company_label_snapshots(self) -> Dict[str, Dict[str, Any]]:
+        if self._company_label_snapshots is not None:
+            return self._company_label_snapshots
+
+        snapshots: Dict[str, Dict[str, Any]] = {}
+        metadata_store_dir = self._metadata_store_dir()
+        if metadata_store_dir is None:
+            self._company_label_snapshots = snapshots
+            return snapshots
+
+        snapshot_path = metadata_store_dir / "company_label_snapshot.jsonl"
+        if not snapshot_path.exists():
+            self._company_label_snapshots = snapshots
+            return snapshots
+
+        with open(snapshot_path, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                report_id = payload.get("report_id")
+                if report_id:
+                    snapshots[str(report_id)] = payload
+
+        self._company_label_snapshots = snapshots
+        return snapshots
 
     def _load_document_meta(self) -> Dict[str, Dict[str, Any]]:
         if self.documents_dir is None or not self.documents_dir.exists():
             return {}
 
-        report_meta: Dict[str, Dict[str, Any]] = {}
-        for document_path in self.documents_dir.glob("*.json"):
-            try:
-                with open(document_path, "r", encoding="utf-8") as file:
-                    document = json.load(file)
-            except Exception:
-                continue
-
-            metainfo = document.get("metainfo") or {}
-            sha1 = metainfo.get("sha1_name") or metainfo.get("doc_id")
-            if not sha1:
-                continue
-            report_meta[sha1] = metainfo
-        return report_meta
+        store = get_document_store(self.documents_dir)
+        return {doc_id: dict(metainfo) for doc_id, metainfo in store.metainfo_by_doc_id.items()}
 
     def _load_reports(self) -> List[CompanyReport]:
         if self._reports is not None:
@@ -197,6 +229,109 @@ class ReportCatalog:
 
         return score, reasons
 
+    @staticmethod
+    def _matches_text_filter(expected: Optional[str], observed: Optional[str]) -> bool:
+        if not expected or not observed:
+            return True
+        expected_norm = normalize_text(expected)
+        observed_norm = normalize_text(observed)
+        return expected_norm in observed_norm or observed_norm in expected_norm
+
+    @classmethod
+    def _matches_list_filter(cls, expected: Optional[List[str]], observed: Optional[List[str]]) -> bool:
+        if not expected:
+            return True
+        observed_norm = {normalize_text(str(item)) for item in observed or [] if item not in (None, "")}
+        if not observed_norm:
+            return False
+        for item in expected:
+            normalized = normalize_text(str(item))
+            if not normalized:
+                continue
+            if not any(normalized in candidate or candidate in normalized for candidate in observed_norm):
+                return False
+        return True
+
+    def _report_filter_metadata(self, report: CompanyReport) -> Dict[str, Any]:
+        metadata = dict(report.metadata)
+        metadata.update(self._load_company_label_snapshots().get(report.sha1, {}))
+        return metadata
+
+    def _matches_query_filters(self, report: CompanyReport, query_plan: QueryPlan) -> tuple[bool, List[str]]:
+        filters = query_plan.filters
+        metadata = self._report_filter_metadata(report)
+        reasons: List[str] = []
+
+        if filters.doc_source_type and metadata.get("doc_source_type") and metadata.get("doc_source_type") != filters.doc_source_type:
+            return False, reasons
+        if filters.year is not None:
+            observed_year = metadata.get("report_year") or metadata.get("fiscal_year")
+            try:
+                observed_year = int(observed_year)
+            except (TypeError, ValueError):
+                observed_year = None
+            if observed_year is not None and observed_year != filters.year:
+                return False, reasons
+            if observed_year == filters.year:
+                reasons.append("year_filter_match")
+        if filters.exchange and not self._matches_text_filter(filters.exchange, metadata.get("exchange")):
+            return False, reasons
+        if filters.board and not self._matches_text_filter(filters.board, metadata.get("board")):
+            return False, reasons
+        if filters.market_type and not self._matches_text_filter(filters.market_type, metadata.get("market_type")):
+            return False, reasons
+        if filters.industry_l1 and not self._matches_text_filter(filters.industry_l1, metadata.get("industry_l1")):
+            return False, reasons
+        if filters.industry_l2 and not self._matches_text_filter(filters.industry_l2, metadata.get("industry_l2")):
+            return False, reasons
+        if filters.chain_position_major and not self._matches_text_filter(filters.chain_position_major, metadata.get("chain_position_major")):
+            return False, reasons
+        if not self._matches_list_filter(filters.business_tags, metadata.get("business_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.strategy_tags, metadata.get("strategy_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.factor_tags, metadata.get("factor_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.chain_position_minor, metadata.get("chain_position_minor")):
+            return False, reasons
+        if not self._matches_list_filter(filters.listing_tags, metadata.get("listing_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.ownership_tags, metadata.get("ownership_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.status_tags, metadata.get("status_tags")):
+            return False, reasons
+        if not self._matches_list_filter(filters.style_tags, metadata.get("style_tags")):
+            return False, reasons
+
+        for label, value in (
+            ("exchange", filters.exchange),
+            ("board", filters.board),
+            ("market_type", filters.market_type),
+            ("industry_l1", filters.industry_l1),
+            ("industry_l2", filters.industry_l2),
+            ("chain_position_major", filters.chain_position_major),
+        ):
+            if value:
+                reasons.append(f"{label}_filter_match")
+
+        for label, values in (
+            ("business_tags", filters.business_tags),
+            ("strategy_tags", filters.strategy_tags),
+            ("factor_tags", filters.factor_tags),
+            ("chain_position_minor", filters.chain_position_minor),
+            ("listing_tags", filters.listing_tags),
+            ("ownership_tags", filters.ownership_tags),
+            ("status_tags", filters.status_tags),
+            ("style_tags", filters.style_tags),
+        ):
+            for value in values or []:
+                reasons.append(f"{label}:{value}")
+
+        if filters.doc_source_type:
+            reasons.append("doc_source_type_filter_match")
+
+        return True, reasons
+
     def rank_candidate_reports(self, query_plan: QueryPlan, limit: int = 5) -> List[Dict[str, Any]]:
         candidates: List[Dict[str, Any]] = []
         for report in self._load_reports():
@@ -261,5 +396,56 @@ class ReportCatalog:
                     "reasons": item["reasons"],
                 }
                 for item in non_zero[:limit]
+            ],
+        }
+
+    def resolve_candidate_reports(self, query_plan: QueryPlan, limit: Optional[int] = None) -> Dict[str, Any]:
+        matched_candidates: List[Dict[str, Any]] = []
+        for report in self._load_reports():
+            matched, reasons = self._matches_query_filters(report, query_plan)
+            if not matched:
+                continue
+            matched_candidates.append(
+                {
+                    "report": report,
+                    "reasons": reasons,
+                }
+            )
+
+        matched_candidates.sort(
+            key=lambda item: (
+                item["report"].report_year or -1,
+                item["report"].company_name,
+                item["report"].sha1,
+            ),
+            reverse=True,
+        )
+
+        if limit is not None:
+            matched_candidates = matched_candidates[: max(1, limit)]
+
+        candidate_companies: List[str] = []
+        candidate_doc_ids: List[str] = []
+        for item in matched_candidates:
+            report = item["report"]
+            candidate_doc_ids.append(report.sha1)
+            if report.company_name and report.company_name not in candidate_companies:
+                candidate_companies.append(report.company_name)
+
+        return {
+            "route_mode": "document_catalog_multi",
+            "selected_company": None,
+            "candidate_companies": candidate_companies,
+            "candidate_doc_ids": candidate_doc_ids,
+            "selected_report": None,
+            "selection_reasons": sorted({reason for item in matched_candidates for reason in item["reasons"]}),
+            "candidate_scores": [
+                {
+                    "company_name": item["report"].company_name,
+                    "doc_id": item["report"].sha1,
+                    "doc_source_type": item["report"].doc_source_type,
+                    "reasons": item["reasons"],
+                }
+                for item in matched_candidates
             ],
         }

@@ -37,6 +37,28 @@ def _safe_ratio(numerator: int | float, denominator: int | float) -> float | Non
     return round(float(numerator) / float(denominator), 4)
 
 
+def _ordered_unique_pages(values: Iterable[object]) -> List[int]:
+    pages: List[int] = []
+    seen: set[int] = set()
+    for value in values:
+        if not isinstance(value, int) or value in seen:
+            continue
+        seen.add(value)
+        pages.append(value)
+    return pages
+
+
+def _extract_ranked_retrieval_pages(detail: Optional[Dict]) -> List[int]:
+    if not isinstance(detail, dict):
+        return []
+
+    retrieval_results = detail.get("retrieval_results") or []
+    if retrieval_results:
+        return _ordered_unique_pages(result.get("page") for result in retrieval_results)
+
+    return _ordered_unique_pages(detail.get("retrieval_pages") or [])
+
+
 def load_answers_bundle(path: Path) -> Tuple[List[Dict], Dict]:
     with open(path, "r", encoding="utf-8") as file:
         payload = json.load(file)
@@ -188,4 +210,105 @@ def compare_answers(pred_answers: List[Dict], ref_answers: List[Dict], debug_pay
             kind: _safe_ratio(values["matched"], values["total"])
             for kind, values in by_kind.items()
         },
+    }
+
+
+def compare_ranked_retrieval(
+    pred_answers: List[Dict],
+    ref_answers: List[Dict],
+    debug_payload: Optional[Dict] = None,
+    *,
+    recall_k: int = 10,
+    precision_k: int = 3,
+) -> Dict:
+    if recall_k <= 0:
+        raise ValueError("recall_k must be a positive integer.")
+    if precision_k <= 0:
+        raise ValueError("precision_k must be a positive integer.")
+
+    ref_by_question = {answer["question_text"]: answer for answer in ref_answers if answer.get("question_text")}
+    debug_index = build_debug_index(debug_payload)
+
+    eligible_questions = 0
+    questions_without_reference_pages = 0
+    questions_missing_debug_details = 0
+    questions_with_no_ranked_pages = 0
+    questions_with_fewer_than_recall_k_ranked_pages = 0
+    questions_with_fewer_than_precision_k_ranked_pages = 0
+    recall_scores: List[float] = []
+    precision_scores: List[float] = []
+    hit_scores: List[int] = []
+    question_details: List[Dict] = []
+
+    for pred in pred_answers:
+        question_text = pred.get("question_text")
+        if question_text not in ref_by_question:
+            continue
+
+        ref = ref_by_question[question_text]
+        ref_pages = sorted(_normalize_page_set(ref))
+        if not ref_pages:
+            questions_without_reference_pages += 1
+            continue
+
+        eligible_questions += 1
+        detail = debug_index.get(question_text)
+        if detail is None:
+            detail = {}
+            questions_missing_debug_details += 1
+
+        ranked_pages = _extract_ranked_retrieval_pages(detail)
+        if not ranked_pages:
+            questions_with_no_ranked_pages += 1
+        if len(ranked_pages) < recall_k:
+            questions_with_fewer_than_recall_k_ranked_pages += 1
+        if len(ranked_pages) < precision_k:
+            questions_with_fewer_than_precision_k_ranked_pages += 1
+
+        top_recall_pages = ranked_pages[:recall_k]
+        top_precision_pages = ranked_pages[:precision_k]
+        ref_page_set = set(ref_pages)
+        recall_hits = sorted(set(top_recall_pages) & ref_page_set)
+        precision_hits = sorted(set(top_precision_pages) & ref_page_set)
+
+        recall_score = round(len(recall_hits) / len(ref_pages), 4)
+        precision_score = round(len(precision_hits) / precision_k, 4)
+        hit_score = 1 if recall_hits else 0
+
+        recall_scores.append(recall_score)
+        precision_scores.append(precision_score)
+        hit_scores.append(hit_score)
+        question_details.append(
+            {
+                "question_text": question_text,
+                "kind": pred.get("kind", "unknown"),
+                "reference_pages": ref_pages,
+                "ranked_pages": ranked_pages,
+                "ranked_pages_count": len(ranked_pages),
+                f"top_{recall_k}_pages": top_recall_pages,
+                f"top_{precision_k}_pages": top_precision_pages,
+                f"recall_at_{recall_k}": recall_score,
+                f"precision_at_{precision_k}": precision_score,
+                f"hit_at_{recall_k}": hit_score,
+                "recall_hits": recall_hits,
+                "precision_hits": precision_hits,
+            }
+        )
+
+    return {
+        "evaluation_level": "page",
+        "page_dedup_strategy": "first_occurrence",
+        "recall_k": recall_k,
+        "precision_k": precision_k,
+        "matched_questions": len(question_details) + questions_without_reference_pages,
+        "eligible_questions": eligible_questions,
+        "questions_without_reference_pages": questions_without_reference_pages,
+        "questions_missing_debug_details": questions_missing_debug_details,
+        "questions_with_no_ranked_pages": questions_with_no_ranked_pages,
+        "questions_with_fewer_than_recall_k_ranked_pages": questions_with_fewer_than_recall_k_ranked_pages,
+        "questions_with_fewer_than_precision_k_ranked_pages": questions_with_fewer_than_precision_k_ranked_pages,
+        f"macro_recall_at_{recall_k}": round(sum(recall_scores) / len(recall_scores), 4) if recall_scores else None,
+        f"macro_precision_at_{precision_k}": round(sum(precision_scores) / len(precision_scores), 4) if precision_scores else None,
+        f"hit_at_{recall_k}": _safe_ratio(sum(hit_scores), len(hit_scores)),
+        "question_details": question_details,
     }

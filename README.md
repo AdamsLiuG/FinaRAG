@@ -1,756 +1,551 @@
-# FinaRAG
+<p align="center">
+  <h1 align="center">FinaRAG</h1>
+  <p align="center"><strong>面向中文金融研报与年报的 RAG 问答系统</strong></p>
+  <p align="center">
+    <em>Retrieval-Augmented Generation for Chinese Financial Document Understanding</em>
+  </p>
+</p>
 
-- 面向金融年报、券商研报和 PDFCrawl 语料的检索增强问答（RAG）工具链，覆盖从 PDF 解析、索引构建到问答、评测和交互式演示的完整流程。
-- 项目重点不只是“把 PDF 放进向量库”，而是围绕金融文档中的表格、口径、币种、年份、文档路由和证据溯源做结构化增强。
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+"/>
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"/>
+  <img src="https://img.shields.io/badge/framework-RAG-orange" alt="RAG"/>
+  <img src="https://img.shields.io/badge/LLM-Qwen-purple" alt="Qwen"/>
+  <img src="https://img.shields.io/badge/retrieval-FAISS%20|%20BM25%20|%20BGE--M3-009688" alt="Hybrid Retrieval"/>
+</p>
 
-## 项目概览摘要
+---
 
-| 维度 | 内容 |
-| --- | --- |
-| 主要入口 | `main.py`（CLI）、`demo_app/streamlit_app.py`（交互式工作台）、`eval/*.py`（评测脚本） |
-| 核心流程 | PDF / PDFCrawl 语料 -> Docling 解析 -> 表格序列化 -> Parent/Child 切块 -> 向量/BM25/稀疏索引 -> 路由/检索/重排 -> 结构化答案/引用/校验 |
-| 主要场景 | 中文上市公司年报问答、券商研报问答、数字类表格问答、多公司比较问答 |
-| 默认回答模型 | `Qwen3.5-35B-A3B-AWQ-4bit` |
-| 默认嵌入模型 | `BAAI/bge-m3` |
-| 示例数据集 | `data/test_set`、`data/chinese_annual_reports_2024`、`data/erc2_set` |
-| 演示方式 | Streamlit 工作台，支持配置选择、数据集切换、问题样例和 PDF 上传 |
+## 📖 项目概述
 
-## 项目简介
+FinaRAG 是一个面向 **中文金融研报 / 年报** 场景的端到端 RAG（Retrieval-Augmented Generation）系统，覆盖从 PDF 解析、结构化表格序列化、多路召回、级联重排到 LLM 生成与答案校验的完整流水线。
 
-FinaRAG 是一个面向金融文档问答场景的 Python 项目，聚焦年报、研报等复杂 PDF 的解析、索引和问答。它通过结构化解析、表格语义化、混合检索、候选文档路由和答案校验，降低金融问答中常见的页码幻觉、指标口径混淆和数字回答不落地等问题。
+系统针对金融文档的特有挑战——**复杂表格抽取、数值精度要求高、跨文档比较查询、中英双语混排**——提供了工程化的解决方案，在多轮迭代优化后能够端到端地回答 `数值(number)`、`名称(name/names)`、`是非判断(boolean)` 四类问题，并生成可追溯的 citation 与推理链。
 
-项目适用于以下场景：
+### 核心亮点
 
-- 对上市公司年报进行问答、指标核对和出处追溯
-- 对券商研报进行要点提取、布尔判断和命名实体问答
-- 对数字类问题进行表格 grounding，减少“模型猜数”
-- 在多份公司文档中做候选文档路由和比较问答
+| 维度 | 技术要点 |
+|------|----------|
+| **文档解析** | Docling PDF 解析引擎 + RapidOCR 双路 OCR，自动回退机制 |
+| **表格处理** | 结构化表格序列化 → Information Block + 数值 Grounding，支持单元格级引用 |
+| **混合召回** | 四路检索（FAISS 向量 / BM25 / BGE-M3 Sparse / Tag 标签）+ RRF / Average 融合 |
+| **重排序** | 支持 Single / Cascade 策略：ColBERT 一阶 → LLM/FlagEmbedding/vLLM 二阶 |
+| **文档路由** | 基于元数据的 Document Catalog Router，支持多维筛选（行业、板块、标签） |
+| **查询改写** | 规则驱动的金融术语同义扩展 + 多查询融合去重 |
+| **HyDE** | Hypothetical Document Embedding fallback 机制，低分场景自动触发 |
+| **答案校验** | 基于检索元数据的后验 Validation（币种、年份、topic flag 一致性校验） |
+| **评测体系** | 内建 Exact Match / Recall@K / Precision@K / Confidence Calibration + Error Analysis |
+| **交互式 Demo** | Streamlit 应用：深色金融风格 UI，支持多数据集切换、推理链可视化 |
 
-高层架构如下：
+---
 
-```text
-PDF / PDFCrawl Dataset
-  -> Docling Parsing + OCR
-  -> Parsed Report Merge
-  -> Structure-Aware Parent / Child Chunking
-  -> Serialized Table Blocks + Structured Tables
-  -> FAISS / BM25 / BGEM3 Sparse Indexes
-  -> Query Rewrite + Metadata Filters + Document Catalog Routing
-  -> Optional Rerank
-  -> Structured Answer + Citations + Confidence + Validation
-  -> Evaluation / Error Analysis / Streamlit Demo
+## 🏗️ 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            FinaRAG Pipeline                                │
+├─────────┬──────────────┬──────────────┬──────────────┬──────────────────────┤
+│  Stage  │   PDF 解析   │  切块 & 索引  │   检索 & 排序  │   生成 & 校验       │
+├─────────┼──────────────┼──────────────┼──────────────┼──────────────────────┤
+│         │              │              │              │                      │
+│  输入   │  PDF 文档    │ 解析后 JSON   │   用户问题    │  检索证据 + 问题     │
+│         │              │              │              │                      │
+│  处理   │ Docling +    │ 结构感知切块   │ ┌──────────┐ │  LLM 答案生成        │
+│         │ RapidOCR     │ (Parent/Child)│ │ 查询改写   │ │  (Pydantic Schema)  │
+│         │              │              │ │ 金融术语扩展│ │                      │
+│         │ 表格序列化    │ Embedding    │ └──────┬───┘ │  Table Grounding      │
+│         │ (Info Blocks) │ (BAAI/bge-m3)│        │     │  (数值对齐)           │
+│         │              │              │ ┌──────▼───┐ │                      │
+│         │ 元数据标注    │ 四路索引构建  │ │ 四路混合召回│ │  Answer Validation   │
+│         │ (行业/标签)   │ FAISS/BM25/  │ │ FAISS     │ │  (置信度校验)        │
+│         │              │ Sparse/Tag   │ │ BM25      │ │                      │
+│         │              │              │ │ BGE-M3    │ │  Citation 构建       │
+│         │              │              │ │ Tag       │ │  (页码/表格引用)     │
+│         │              │              │ └──────┬───┘ │                      │
+│         │              │              │ ┌──────▼───┐ │                      │
+│         │              │              │ │ 重排序     │ │                      │
+│         │              │              │ │ Cascade/  │ │                      │
+│         │              │              │ │ Single    │ │                      │
+│         │              │              │ └──────────┘ │                      │
+│         │              │              │              │                      │
+│  输出   │ 结构化 JSON  │ 向量/词法索引  │ Top-K 证据   │  答案 + 推理链 +     │
+│         │ + 表格 JSON  │ + 元数据存储  │ (含分数)     │  引用 + 置信度       │
+└─────────┴──────────────┴──────────────┴──────────────┴──────────────────────┘
 ```
 
-## 功能特性
+### 多路检索融合策略
 
-- 支持从 `PDFCrawl` 输出一键整理成 FinaRAG 可直接消费的数据集目录，自动生成 `document_manifest.csv`、`pdf_reports/` 和 `questions.json`
-- 使用 `Docling` 解析 PDF，支持 `docling_rapidocr` 和 `docling_easyocr`，并对 Docling v2 的已知可恢复错误回退到旧版 backend
-- 对解析结果进行结构感知切块，生成 `parent_chunks` 与 `chunks`，支持真正的 Parent/Child 检索，而不只是整页扩展
-- 可选表格序列化与结构化表格抽取，数字问题可通过 `TableGrounder` 将指标定位到具体表格单元格
-- 支持多路检索：FAISS 向量检索、BM25、BGE-M3 sparse lexical 检索，并支持 `rrf` / `average` 融合
-- 支持查询改写、年份/币种/报告类型/证券代码过滤、候选文档路由和多公司比较问答
-- 输出结构化答案，包含 `references`、`citations`、`confidence`、`validation_flags`、`route_info` 和调试信息
-- 内置评测脚本，可对答案文件进行统计、参考答案对比和错误归因分析；提供 Streamlit 工作台用于交互式演示
+```
+               ┌─────────────────────────────────────────┐
+               │          HybridRetriever                 │
+               │                                         │
+   Query ──────┤   ┌─────────────┐  ┌─────────────┐     │
+               │   │ Vector (FAISS)│ │ BM25 (OKapi) │    │
+               │   └──────┬──────┘  └──────┬──────┘     │
+               │          │                │             │
+               │   ┌──────┴──────┐  ┌──────┴──────┐     │
+               │   │ Sparse(BGE) │  │ Tag Index   │     │
+               │   └──────┬──────┘  └──────┬──────┘     │
+               │          │                │             │
+               │          └───── Fusion ───┘             │
+               │            (RRF / Average)              │
+               │                 │                       │
+               │          ┌──────▼──────┐                │
+               │          │  Reranker   │                │
+               │          │ ┌─────────┐ │                │
+               │          │ │ ColBERT  │ │  Cascade 模式  │
+               │          │ │    ↓     │ │                │
+               │          │ │ LLM/Flag │ │                │
+               │          │ └─────────┘ │                │
+               │          └─────────────┘                │
+               └─────────────────────────────────────────┘
+```
 
-## 技术栈
+---
 
-| 分类 | 技术 / 依赖 |
-| --- | --- |
-| 语言与基础设施 | Python，`click==8.1.7`，`python-dotenv==1.0.1`，`pydantic==2.9.2` |
-| PDF 解析与 OCR | `docling[rapidocr]==2.14.0`，RapidOCR / EasyOCR 模式切换 |
-| 文本切分与预处理 | `langchain==0.3.3`，`tiktoken==0.8.0`，`jieba==0.42.1` |
-| 向量检索 | `faiss-cpu==1.9.0.post1`，`sentence-transformers==3.3.1` |
-| 词法检索 / 稀疏检索 | `rank-bm25==0.2.2`，`FlagEmbedding==1.3.5` |
-| LLM 与推理接口 | Qwen 兼容 OpenAI-style API、Gemini SDK、IBM 接口适配 |
-| 数据处理 | `pandas==2.2.3`，`numpy==1.26.4`，`PyYAML==6.0.2`，`json_repair==0.35.0` |
-| Web / Demo | `streamlit==1.44.1` |
-| 测试与评测 | `pytest==8.3.5`，`unittest`，仓库内 `eval/` 脚本 |
-| 打包方式 | `setup.py` 可编辑安装 |
-| 部署形态 | 本地 CLI + 本地 Streamlit 进程；待补充：仓库未提供 Docker / K8s / CI 工作流 |
+## 📁 项目结构
 
-## 项目结构
-
-```text
+```
 FinaRAG/
-├── main.py                           # CLI 入口：数据集整理、PDF 解析、表格序列化、索引构建、批量问答
-├── config/                           # YAML 运行配置，定义检索栈、重排、OCR、路由和问答行为
-│   ├── qwen_base.yaml
-│   ├── qwen_rerank.yaml
-│   ├── qwen_ser_rerank.yaml
-│   └── qwen_zh_finance.yaml
-├── data/                             # 示例数据集、中文 benchmark 模板和预构建索引产物
-│   ├── chinese_annual_reports_2024/  # 中文年报数据集，含 30 份文档 manifest、15 道标注问题和调试产物
-│   ├── chinese_benchmark/            # 中文 benchmark scaffold、manifest 模板、问题模板、gold 答案模板
-│   ├── erc2_set/                     # ERC2 数据集说明和样例元数据
-│   └── test_set/                     # 轻量英文测试数据集，含 5 道样例问题
-├── demo_app/
-│   └── streamlit_app.py              # Streamlit 工作台，支持配置切换、数据集选择、问题样例、PDF 上传
-├── eval/
-│   ├── run_eval.py                   # 评测单个 answers 文件或运行 pipeline 后评测
-│   ├── compare_configs.py            # 对多个配置批量跑分并输出对比结果
-│   ├── metrics.py                    # answer rate、citation coverage、reference exact match 等指标
-│   └── error_analysis.py             # routing / retrieval / generation / validation 失败归因
+├── main.py                    # CLI 入口 (click)
+├── config/                    # YAML 流水线配置
+│   ├── qwen_zh_finance.yaml              # 中文金融主配置
+│   ├── qwen_zh_finance_colbert_cascade_*.yaml  # ColBERT 级联重排配置
+│   └── qwen_zh_finance_hyde_fallback.yaml      # HyDE fallback 配置
+│
 ├── src/
-│   ├── pipeline.py                   # 顶层流程编排、路径约定、运行配置定义
-│   ├── pdf_parsing.py                # Docling 解析、OCR 配置、并行 PDF 处理
-│   ├── tables_serialization.py       # 使用 LLM 将表格转成上下文独立的信息块
-│   ├── parsed_reports_merging.py     # 将解析结果整理为后续切块可消费的页面结构
-│   ├── text_splitter.py              # 结构感知 Parent/Child 切块、结构化表格记录抽取
-│   ├── ingestion.py                  # FAISS / BM25 / sparse lexical 索引构建
-│   ├── retrieval.py                  # 向量检索、BM25、混合检索、融合和重排
-│   ├── retrieval_filters.py          # 元数据过滤和问题类型 bonus
-│   ├── report_catalog.py             # 候选文档目录、公司抽取和文档路由
-│   ├── query_rewrite.py              # 金融术语扩展、年份/币种/报告类型/证券代码抽取
-│   ├── questions_processing.py       # 单题/批量问答、比较问答、调试产物写出
-│   ├── table_grounding.py            # 数值问题的表格定位与数值归一
-│   ├── citation_formatter.py         # citations / confidence 生成
-│   ├── answer_validation.py          # 币种、年份、期间、table grounding 等后校验
-│   ├── document_manifest.py          # 统一读取 CSV / JSON manifest
-│   └── pdfcrawl_dataset.py           # PDFCrawl -> FinaRAG 数据集布局适配
-├── tests/                            # Parent/Child 检索、文档路由、query rewrite、表格 grounding 等测试
-├── requirements.txt                  # Python 依赖清单
-├── setup.py                          # 包安装入口
-├── LICENSE                           # MIT License
-└── README.md
+│   ├── pipeline.py            # 流水线编排 (Pipeline + RunConfig)
+│   ├── questions_processing.py # 问答核心 (QuestionsProcessor)
+│   ├── retrieval.py           # 多路检索 + 混合融合 (HybridRetriever)
+│   ├── reranking.py           # 重排序引擎 (CascadeReranker, LLMReranker, FlagEmbedding, vLLM)
+│   ├── query_rewrite.py       # 查询改写 + 金融术语扩展 (QuestionRewriter)
+│   ├── text_splitter.py       # 结构感知 Parent/Child 切块
+│   ├── ingestion.py           # 索引构建 (VectorDB, BM25, Sparse, Tag)
+│   ├── embedding_backend.py   # 嵌入模型后端 (多 GPU + 线程安全加载)
+│   ├── table_grounding.py     # 数值对齐引擎 (TableGrounder)
+│   ├── hyde.py                # HyDE 假设文档生成
+│   ├── answer_validation.py   # 后验答案校验
+│   ├── report_catalog.py      # 文档目录路由 (ReportCatalog)
+│   ├── prompts.py             # Prompt 模板 (按 schema 分化)
+│   ├── citation_formatter.py  # Citation 构建与去重
+│   ├── api_requests.py        # LLM API 封装
+│   ├── document_store.py      # 文档存储层
+│   └── text_normalization.py  # 中英文本规范化
+│
+├── eval/
+│   ├── metrics.py             # 评测指标 (Exact Match, Recall@K, Precision@K)
+│   └── error_analysis.py      # 错误归因 (routing / parse / retrieval / generation)
+│
+├── demo_app/
+│   └── streamlit_app.py       # 交互式 Demo (深色金融风格 UI)
+│
+├── tests/                     # pytest 测试套件 (20+ 测试模块)
+│   ├── test_answer_validation.py
+│   ├── test_cascade_reranking.py
+│   ├── test_query_rewrite.py
+│   ├── test_table_grounding.py
+│   ├── test_parent_child_splitter.py
+│   ├── test_hyde.py
+│   ├── test_eval_metrics.py
+│   └── ...
+│
+├── requirements.txt
+├── setup.py
+└── LICENSE (MIT)
 ```
 
-说明：
+---
 
-- 当前仓库没有独立的 `api/` 目录，外部使用入口主要是 `main.py`、`eval/` 和 `demo_app/`
-- 当前仓库没有独立的 `scripts/` 目录，批处理命令由 `click` CLI 和 `eval/*.py` 提供
-- 当前仓库没有独立的 `docs/` 目录，项目说明主要集中在 `README.md`、数据集子目录说明和 `Advanced_plan.md`
+## 🔧 技术栈
 
-## 快速开始
+| 类别 | 技术 |
+|------|------|
+| 语言 & 运行时 | Python 3.11+ |
+| PDF 解析 | [Docling](https://github.com/DS4SD/docling) + RapidOCR + PyPDF2 fallback |
+| 向量检索 | FAISS (Flat / IVF / HNSW) + SentenceTransformers |
+| 嵌入模型 | BAAI/bge-m3 (默认)，支持自定义模型 |
+| 稀疏检索 | BM25 (rank-bm25) + BGE-M3 Sparse Lexical Weights (FlagEmbedding) |
+| 重排序 | FlagEmbedding Reranker / ColBERT / LLM Prompt / vLLM API |
+| LLM 推理 | Qwen 系列 (通过 OpenAI 兼容 API)，支持 Gemini 等多 Provider |
+| 切块 | LangChain RecursiveCharacterTextSplitter (tiktoken 编码器) |
+| 配置管理 | YAML + Pydantic BaseModel |
+| CLI | click |
+| 交互式 Demo | Streamlit |
+| 测试 | pytest (20+ 测试模块) |
+| token 计数 | tiktoken (o200k_base) |
 
-### 环境要求
+---
 
-- Python 3.11+，建议 3.12
-- Linux / macOS 环境优先
-- 如需启用本地 GPU 嵌入或本地 reranker，请准备可用 CUDA 环境
-- 如需运行表格序列化、问答和重排，请准备可访问的 LLM 接口
+## ⚡ 快速开始
 
-### 安装步骤
+### 1. 环境准备
 
 ```bash
-git clone https://github.com/AdamsLiuG/FinaRAG.git
+git clone https://github.com/<your-username>/FinaRAG.git
 cd FinaRAG
 
-python3 -m venv .venv
-source .venv/bin/activate
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate
 
-pip install --upgrade pip
+# 安装依赖
 pip install -r requirements.txt
 pip install -e .
 ```
 
-### 环境变量配置
+### 2. 配置环境变量
 
-仓库根目录会读取 `.env`。如果需要从零配置，可以新建 `.env` 并至少提供下列变量：
+在项目根目录创建 `.env` 文件：
 
 ```env
-QWEN_BASE_URL=https://your-qwen-compatible-endpoint
+# LLM 推理服务 (Qwen / 兼容 OpenAI 格式的本地服务)
+QWEN_BASE_URL=http://localhost:8000/v1
 QWEN_API_KEY=your-api-key
-QWEN_MODEL=Qwen3.5-35B-A3B-AWQ-4bit
+QWEN_MODEL=Qwen3.5-27B
 
+# 嵌入模型
 EMBEDDING_MODEL_NAME=BAAI/bge-m3
-EMBEDDING_DEVICE=cpu
+EMBEDDING_DEVICE=cuda:0
 
-RERANKING_BACKEND=flag_embedding
-RERANKING_MODEL=BAAI/bge-reranker-v2-m3
-RERANKING_DEVICE=cpu
+# 重排序
+RERANKING_BACKEND=flag_embedding        # flag_embedding / llm_prompt / vllm_api
+RERANKING_MODEL_NAME=BAAI/bge-reranker-v2-m3
+RERANKING_DEVICE=cuda:0
 ```
 
-### 初始化 Docling 模型
-
-首次运行前建议先下载 Docling 所需模型：
+### 3. 数据处理流水线
 
 ```bash
-.venv/bin/python main.py download-models
-```
-
-### 准备数据集
-
-如果你已经有 `PDFCrawl` 输出，可直接生成 FinaRAG 数据目录：
-
-```bash
-.venv/bin/python main.py prepare-pdfcrawl-dataset \
-  --pdfcrawl-root /path/to/PDFCrawl/output \
-  --dataset-dir data/my_dataset \
-  --link-mode symlink \
-  --currency CNY \
-  --language zh
-```
-
-生成后的数据集目录至少包含：
-
-```text
-data/my_dataset/
-├── document_manifest.csv
-├── questions.json
-└── pdf_reports/
-```
-
-### 本地启动与索引构建
-
-注意：`parse-pdfs`、`serialize-tables`、`process-reports`、`process-questions` 默认把“当前工作目录”当作数据集根目录。
-
-以 `data/chinese_annual_reports_2024` 为例：
-
-```bash
-cd data/chinese_annual_reports_2024
-
-../../.venv/bin/python ../../main.py parse-pdfs \
-  --parallel \
-  --chunk-size 2 \
-  --max-workers 4 \
-  --config-path ../../config/qwen_zh_finance.yaml
-
-../../.venv/bin/python ../../main.py serialize-tables \
-  --max-workers 4 \
-  --config-path ../../config/qwen_zh_finance.yaml
-
-../../.venv/bin/python ../../main.py process-reports \
-  --config-path ../../config/qwen_zh_finance.yaml
-```
-
-### 批量问答
-
-```bash
-cd data/chinese_annual_reports_2024
-
-../../.venv/bin/python ../../main.py process-questions \
-  --config-path ../../config/qwen_zh_finance.yaml
-```
-
-输出结果会写到当前数据集目录，文件名由配置决定，例如：
-
-- `answers_qwen_zh_finance.json`
-- `answers_qwen_zh_finance_debug.json`
-
-如果目标文件已存在，系统会自动追加 `_01`、`_02` 等后缀。
-
-### 构建命令
-
-本项目没有传统前端/后端编译步骤；“构建”主要指索引和问答资产构建：
-
-```bash
-cd data/chinese_annual_reports_2024
-
-../../.venv/bin/python ../../main.py process-reports \
-  --config-path ../../config/qwen_zh_finance.yaml
-```
-
-### 测试命令
-
-```bash
-python -m pytest -q
-```
-
-### 启动 Streamlit Demo
-
-```bash
-cd /path/to/FinaRAG
-.venv/bin/streamlit run demo_app/streamlit_app.py --server.port 8501
-```
-
-默认访问地址：
-
-- `http://127.0.0.1:8501`
-
-## 配置说明
-
-### 1. YAML 配置文件
-
-仓库当前提供以下运行配置：
-
-| 文件 | 主要特征 |
-| --- | --- |
-| `config/qwen_base.yaml` | 向量检索 + Parent/Child 检索 + Query Rewrite |
-| `config/qwen_rerank.yaml` | 向量 + BM25 混合召回 + LLM rerank |
-| `config/qwen_ser_rerank.yaml` | 表格序列化 + 向量/BM25/sparse 混合召回 + LLM rerank |
-| `config/qwen_zh_finance.yaml` | 中文金融配置，启用中文 OCR、文档路由、numeric grounding |
-
-核心配置项来自 `RunConfig`：
-
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `use_serialized_tables` | `false` | 是否启用表格序列化和 `serialized_table` chunk |
-| `parent_document_retrieval` | `false` | 是否启用父级文档回溯 |
-| `parent_retrieval_mode` | `page` | 父级回溯模式，支持 `page` / `block` |
-| `use_vector_dbs` | `true` | 是否启用 FAISS 向量检索 |
-| `use_bm25_db` | `false` | 是否启用 BM25 |
-| `use_sparse_lexical_db` | `false` | 是否启用 BGE-M3 sparse lexical 检索 |
-| `llm_reranking` | `false` | 是否启用重排 |
-| `llm_reranking_sample_size` | `30` | 进入重排的候选数 |
-| `top_n_retrieval` | `10` | 生成答案前保留的最终候选数 |
-| `parallel_requests` | `10` | 批量问题处理时的并行线程数 |
-| `full_context` | `false` | 是否跳过检索，直接给整份文档上下文 |
-| `api_provider` | `qwen` | 回答模型提供方 |
-| `answering_model` | `Qwen3.5-35B-A3B-AWQ-4bit` | 问答模型名 |
-| `document_language` | `en` | 文档语言，影响 OCR 和切块分隔符 |
-| `ocr_mode` | `docling_rapidocr` | OCR 模式，支持 `docling_rapidocr` / `docling_easyocr` |
-| `doc_router_enabled` | `false` | 是否启用文档目录路由 |
-| `candidate_doc_top_k` | `5` | 候选文档数量上限 |
-| `numeric_grounding_enabled` | `false` | 是否启用表格 grounding |
-| `reasoning_debug_enabled` | `true` | 是否保留逐步分析和调试信息 |
-
-### 2. 环境变量
-
-#### 2.1 LLM 与问答运行时
-
-| 变量名 | 是否必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `QWEN_BASE_URL` | 条件必填 | 无 | Qwen 兼容接口地址；未设置时回退到 `LLM_BASE_URL` |
-| `QWEN_API_KEY` | 条件必填 | 无 | Qwen 接口鉴权；未设置时回退到 `LLM_API_KEY` |
-| `QWEN_MODEL` | 否 | `Qwen3.5-35B-A3B-AWQ-4bit` | Qwen 提供方默认回答模型 |
-| `QWEN_MAX_TOKENS` | 否 | 无 | Qwen 请求 `max_tokens` |
-| `QWEN_STREAM` | 否 | `true` | 是否启用流式返回 |
-| `QWEN_ENABLE_THINKING` | 否 | `false` | 是否开启 thinking 模式 |
-| `LLM_BASE_URL` | 否 | 无 | 通用兼容接口地址，作为 provider 级变量的后备值 |
-| `LLM_API_KEY` | 否 | 无 | 通用兼容接口密钥 |
-| `LLM_MODEL` | 否 | 无 | 通用回答模型后备值 |
-| `LLM_MAX_TOKENS` | 否 | 无 | 通用 `max_tokens` |
-| `LLM_STREAM` | 否 | 无 | 通用流式开关 |
-| `LLM_ENABLE_THINKING` | 否 | 无 | 通用 thinking 开关 |
-| `LLM_PROVIDER` | 否 | 无 | 表格序列化 provider 的后备值 |
-| `TABLE_SERIALIZER_PROVIDER` | 否 | `qwen` | 表格序列化使用的 provider |
-| `TABLE_SERIALIZER_MODEL` | 否 | `Qwen3.5-35B-A3B-AWQ-4bit` | 表格序列化使用的模型 |
-| `RAG_MAX_CONTEXT_CHARS` | 否 | `8000` | 送入回答模型的总上下文字符数上限 |
-| `RAG_MAX_DOC_CHARS` | 否 | `2500` | 单个召回片段字符数上限 |
-| `IBM_API_KEY` | 条件必填 | 无 | 当 `api_provider=ibm` 时使用 |
-| `GEMINI_API_KEY` | 条件必填 | 无 | 当 `api_provider=gemini` 时使用 |
-| `JINA_API_KEY` | 条件必填 | 无 | 当使用 Jina reranker 时使用 |
-
-#### 2.2 Embedding、检索与重排
-
-| 变量名 | 是否必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `EMBEDDING_MODEL_NAME` | 否 | `BAAI/bge-m3` | 稠密向量模型 |
-| `EMBEDDING_DEVICE` | 否 | `cpu` | 稠密向量设备，支持 `cpu`、`cuda:0`、`cuda:0,cuda:1` |
-| `EMBEDDING_BATCH_SIZE` | 否 | `32` | 稠密向量 batch size |
-| `EMBEDDING_TRUST_REMOTE_CODE` | 否 | `false` | 是否信任远端模型代码 |
-| `EMBEDDING_FALLBACK_MODEL_NAME` | 否 | `BAAI/bge-small-en-v1.5` | 发生 meta-tensor 错误时的回退模型 |
-| `EMBEDDING_SPARSE_MODEL_NAME` | 否 | 继承 `EMBEDDING_MODEL_NAME` | BGE-M3 sparse lexical 模型 |
-| `EMBEDDING_SPARSE_DEVICE` | 否 | 继承 `EMBEDDING_DEVICE` | 稀疏检索设备 |
-| `EMBEDDING_SPARSE_BATCH_SIZE` | 否 | `32` | 稀疏编码 batch size |
-| `EMBEDDING_SPARSE_QUERY_MAX_LENGTH` | 否 | `256` | 稀疏 query 最大长度 |
-| `EMBEDDING_SPARSE_PASSAGE_MAX_LENGTH` | 否 | `512` | 稀疏 passage 最大长度 |
-| `EMBEDDING_SPARSE_USE_FP16` | 否 | CUDA 下自动启用 | 稀疏模型是否启用 FP16 |
-| `RERANKING_BACKEND` | 否 | `llm_prompt` | 重排后端，支持 `llm_prompt` 或 `flag_embedding` |
-| `RERANKING_MODEL` | 否 | 依后端而定 | `flag_embedding` 时默认 `BAAI/bge-reranker-v2-m3`；`llm_prompt` 时回退到 `LLM_MODEL` 或 Qwen 默认模型 |
-| `RERANKING_DEVICE` | 否 | `cuda:0` | 本地 reranker 设备 |
-| `RERANKING_USE_FP16` | 否 | `true` | 本地 reranker 是否启用 FP16 |
-| `RERANKING_TRUST_REMOTE_CODE` | 否 | `false` | 本地 reranker 是否信任远端模型代码 |
-| `HYBRID_RETRIEVAL_FUSION` | 否 | `rrf` | 混合检索融合策略，支持 `rrf` / `average` |
-| `HYBRID_RETRIEVAL_RRF_K` | 否 | `60` | RRF 融合参数 |
-| `VECTOR_INDEX_TYPE` | 否 | `flat` | FAISS 索引类型，支持 `flat` / `ivf` / `hnsw` |
-| `VECTOR_SEARCH_K` | 否 | `0` | 向量检索候选数；`0` 表示自动推导 |
-| `VECTOR_IVF_NLIST` | 否 | `32` | IVF 索引聚类中心数 |
-| `VECTOR_IVF_NPROBE` | 否 | `8` | IVF 查询探测数 |
-| `VECTOR_HNSW_M` | 否 | `32` | HNSW 图连接数 |
-| `VECTOR_HNSW_EF_CONSTRUCTION` | 否 | `200` | HNSW 构建参数 |
-| `VECTOR_HNSW_EF_SEARCH` | 否 | `64` | HNSW 查询参数 |
-
-#### 2.3 内置 Qwen 预设覆盖项
-
-当使用 `process-questions --config qwen_base` 这类内置预设，而不是 `--config-path` 指定 YAML 时，以下环境变量会覆盖预设行为：
-
-- `QWEN_PARALLEL_REQUESTS`
-- `QWEN_PARENT_DOCUMENT_RETRIEVAL`
-- `QWEN_PARENT_RETRIEVAL_MODE`
-- `QWEN_TOP_N_RETRIEVAL`
-- `QWEN_LLM_RERANKING_SAMPLE_SIZE`
-- `QWEN_DOCUMENT_LANGUAGE`
-- `QWEN_OCR_MODE`
-- `QWEN_DOC_ROUTER_ENABLED`
-- `QWEN_CANDIDATE_DOC_TOP_K`
-- `QWEN_NUMERIC_GROUNDING_ENABLED`
-- `QWEN_REASONING_DEBUG_ENABLED`
-- `QWEN_VECTOR_INDEX_TYPE`
-- `QWEN_VECTOR_SEARCH_K`
-- `QWEN_VECTOR_IVF_NLIST`
-- `QWEN_VECTOR_IVF_NPROBE`
-- `QWEN_VECTOR_HNSW_M`
-- `QWEN_VECTOR_HNSW_EF_CONSTRUCTION`
-- `QWEN_VECTOR_HNSW_EF_SEARCH`
-- `QWEN_RETRIEVER_CACHE_ENABLED`
-
-## 使用说明
-
-### 1. 典型使用流程
-
-```text
-准备数据集
-  -> parse-pdfs
-  -> serialize-tables（如配置启用）
-  -> process-reports
-  -> process-questions
-  -> eval/run_eval.py 或 Streamlit Demo
-```
-
-### 2. 使用内置示例数据集
-
-#### 中文年报样例
-
-```bash
-cd data/chinese_annual_reports_2024
-
-../../.venv/bin/python ../../main.py process-questions \
-  --config-path ../../config/qwen_zh_finance.yaml
-
-../../.venv/bin/python ../../eval/run_eval.py \
-  --dataset-dir . \
-  --answers-file answers_qwen_zh_finance.json
-```
-
-当前数据集中：
-
-- `document_manifest.csv` 包含 `30` 份中文年报
-- `questions.json` 包含 `15` 道标注问题
-- 覆盖行业包括 `consumer`、`new_energy`、`semiconductor`
-
-#### 英文轻量测试集
-
-```bash
-cd data/test_set
-
-../../.venv/bin/python ../../main.py process-questions \
-  --config-path ../../config/qwen_base.yaml
-```
-
-注意：`data/test_set/README.md` 已明确说明预构建的 `databases.zip` 与当前本地 embedding 管线不兼容；如果需要严格复现当前代码路径，建议从 `pdf_reports/` 重新构建索引。
-
-### 3. 评测答案文件
-
-单个答案文件评测：
-
-```bash
-.venv/bin/python eval/run_eval.py \
-  --dataset-dir data/chinese_annual_reports_2024 \
-  --answers-file data/chinese_annual_reports_2024/answers_qwen_zh_finance.json
-```
-
-运行 pipeline 后立即评测：
-
-```bash
-.venv/bin/python eval/run_eval.py \
-  --dataset-dir data/test_set \
-  --config qwen_base \
-  --run-pipeline
-```
-
-对比多组配置：
-
-```bash
-.venv/bin/python eval/compare_configs.py \
-  --dataset-dir data/test_set \
-  --configs qwen_base,qwen_rerank,qwen_ser_rerank \
-  --markdown-output results/config_compare.md
-```
-
-### 4. Streamlit 工作台
-
-```bash
-.venv/bin/streamlit run demo_app/streamlit_app.py --server.port 8501
-```
-
-Demo 提供的功能包括：
-
-- 配置方案选择
-- 数据集切换
-- Top-K 和温度调节
-- 样例问题载入
-- PDF 上传到 `data/upload_workspace/pdf_reports/`
-- 候选文档路由、引用、检索结果和系统状态展示
-
-### 5. 数据集文件约定
-
-#### `document_manifest.csv`
-
-`prepare-pdfcrawl-dataset` 生成的 manifest 列包括：
-
-| 字段 | 说明 |
-| --- | --- |
-| `doc_id` | 文档唯一 ID，通常与 PDF 文件名同名 |
-| `company_name` | 公司名称 |
-| `company_aliases` | 公司别名，支持 `|` 等分隔 |
-| `security_code` | 证券代码 |
-| `doc_source_type` | 文档来源类型，如 `annual_report`、`research_report` |
-| `report_title` | 文档标题 |
-| `report_date` | 报告发布日期 |
-| `fiscal_year` | 财报年度 |
-| `broker_name` | 券商名称 |
-| `major_industry` | 行业标签 |
-| `language` | 文档语言，如 `zh`、`en`、`bilingual` |
-| `currency` | 币种，如 `CNY`、`USD` |
-| `source_manifest` | 来源 manifest 路径 |
-| `source_file_path` | 原始 PDF 路径 |
-| `pdf_url` | PDF 来源 URL |
-
-#### `questions.json`
-
-最小可运行格式只需要：
-
-```json
-[
-  {
-    "text": "贵州茅台2024年年报中的法定代表人是谁？",
-    "kind": "name"
-  }
-]
-```
-
-如果需要评测或 gold 标注，可扩展为：
-
-```json
-[
-  {
-    "id": "zh-ar-001",
-    "text": "贵州茅台2024年年报中的营业收入是多少元？",
-    "kind": "number",
-    "doc_ids": ["600519_2024_20250403"],
-    "gold_value": 170899152276.34,
-    "gold_pages": [5],
-    "evidence_type": "table",
-    "should_refuse": false
-  }
-]
-```
-
-### 6. 程序化使用示例
-
-使用 `Pipeline` 处理整套数据：
-
-```python
-from pathlib import Path
-from src.pipeline import Pipeline, load_run_config
-
-dataset_dir = Path("data/chinese_annual_reports_2024")
-run_config = load_run_config(Path("config/qwen_zh_finance.yaml"))
-
-pipeline = Pipeline(dataset_dir, run_config=run_config)
-answers_file = pipeline.process_questions()
-print(answers_file)
-```
-
-使用 `QuestionsProcessor` 处理单题：
-
-```python
-from pathlib import Path
-from src.pipeline import load_run_config
-from src.questions_processing import QuestionsProcessor
-
-dataset_dir = Path("data/chinese_annual_reports_2024")
-cfg = load_run_config(Path("config/qwen_zh_finance.yaml"))
-
-processor = QuestionsProcessor(
-    vector_db_dir=dataset_dir / "databases_ser_tab" / "vector_dbs",
-    bm25_db_path=dataset_dir / "databases_ser_tab" / "bm25_dbs",
-    sparse_db_dir=dataset_dir / "databases_ser_tab" / "sparse_dbs",
-    documents_dir=dataset_dir / "databases_ser_tab" / "chunked_reports",
-    subset_path=dataset_dir / "document_manifest.csv",
-    parent_document_retrieval=cfg.parent_document_retrieval,
-    parent_retrieval_mode=cfg.parent_retrieval_mode,
-    use_vector_dbs=cfg.use_vector_dbs,
-    use_bm25_db=cfg.use_bm25_db,
-    use_sparse_lexical_db=cfg.use_sparse_lexical_db,
-    llm_reranking=cfg.llm_reranking,
-    llm_reranking_sample_size=cfg.llm_reranking_sample_size,
-    top_n_retrieval=cfg.top_n_retrieval,
-    api_provider=cfg.api_provider,
-    answering_model=cfg.answering_model,
-    document_language=cfg.document_language,
-    doc_router_enabled=cfg.doc_router_enabled,
-    candidate_doc_top_k=cfg.candidate_doc_top_k,
-    numeric_grounding_enabled=cfg.numeric_grounding_enabled,
-)
-
-result = processor.process_question("贵州茅台2024年年报中的法定代表人是谁？", "name")
-print(result["final_answer"])
-print(result["references"])
-```
-
-## API 说明
-
-当前仓库未提供 REST/OpenAPI/Swagger 接口，主要入口是 CLI 和 Python 类。程序化入口如下：
-
-| 入口 | 类型 | 说明 |
-| --- | --- | --- |
-| `main.py` | CLI | 数据集构建、解析、索引、批量问答 |
-| `src.pipeline.Pipeline` | Python API | 串联整套处理流程 |
-| `src.questions_processing.QuestionsProcessor` | Python API | 单题 / 批量问题处理 |
-| `eval/run_eval.py` | CLI | 评测答案文件 |
-| `demo_app/streamlit_app.py` | Web UI | 交互式问答与调试工作台 |
-
-常用 CLI 命令如下：
-
-| 命令 | 主要参数 | 说明 |
-| --- | --- | --- |
-| `download-models` | 无 | 预下载 Docling 模型 |
-| `prepare-pdfcrawl-dataset` | `--pdfcrawl-root`、`--dataset-dir`、`--link-mode` | 将 PDFCrawl 产物整理成 FinaRAG 数据目录 |
-| `parse-pdfs` | `--parallel`、`--chunk-size`、`--max-workers`、`--cuda-devices`、`--config-path` | 解析 PDF 到 `debug_data/01_parsed_reports*` |
-| `serialize-tables` | `--max-workers`、`--config-path` | 为解析结果补充 `serialized` 表格块 |
-| `process-reports` | `--config` 或 `--config-path` | 合并、导出 Markdown、切块并构建索引 |
-| `process-questions` | `--config` 或 `--config-path` | 读取 `questions.json` 并生成答案文件 |
-
-输出答案文件中常见字段包括：
-
-- `question_text`
-- `kind`
-- `value`
-- `references`
-- `citations`
-- `confidence`
-- `confidence_reason`
-- `validation_flags`
-- `route_info`
-- 调试包中的 `answer_details`、`query_plan`、`retrieval_results`、`table_grounding_result`
-
-## 开发指南
-
-### 本地开发方式
-
-```bash
-git clone https://github.com/AdamsLiuG/FinaRAG.git
-cd FinaRAG
-
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-```
-
-### 常用开发命令
-
-```bash
-# 查看 CLI 帮助
-.venv/bin/python main.py --help
-
-# 运行测试
-python -m pytest -q
-
-# 运行单个评测
-.venv/bin/python eval/run_eval.py --help
-
-# 启动 Demo
-.venv/bin/streamlit run demo_app/streamlit_app.py
-```
-
-### 测试方式
-
-当前测试主要覆盖：
-
-- Parent/Child 切块与检索输出
-- Metadata routing 和文档候选路由
-- Query rewrite 的年份/币种/证券代码抽取
-- Numeric table grounding
-- 向量索引参数、检索配置和多 GPU embedding 分片
-- Docling fallback 和 CUDA device 分配
-- PDFCrawl 数据集适配
-
-### 代码规范
-
-- 待补充：仓库中未提供 `ruff`、`flake8`、`black`、`isort`、`pre-commit` 等统一规范配置
-- 当前代码风格以标准 Python 模块化结构和 `pytest`/`unittest` 测试为主
-
-### Commit / Branch 规范
-
-- 待补充：仓库中未提供明确的 commit message 规范和分支策略
-
-### 模块开发建议
-
-- 新增检索后端时，同时修改 `src/ingestion.py`、`src/retrieval.py` 和相关测试
-- 新增实验配置时，优先在 `config/` 下添加 YAML，而不是继续扩展硬编码预设
-- 如果修改问答输出结构，请同步检查 `eval/metrics.py`、`eval/error_analysis.py` 和 Streamlit 展示逻辑
-- 如果修改数据集目录格式，请同步维护 `src/pdfcrawl_dataset.py`、`src/document_manifest.py` 和 Demo 的数据发现逻辑
-
-## 部署说明
-
-### 本地进程部署
-
-本项目当前的“部署”方式主要是本地 Python 进程：
-
-```bash
-source .venv/bin/activate
-streamlit run demo_app/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-适用场景：
-
-- 本地开发演示
-- 局域网内临时共享 Streamlit 工作台
-- 离线批处理问答和评测
-
-### 容器化 / CI / 云部署
-
-- 待补充：仓库未提供 `Dockerfile`
-- 待补充：仓库未提供 `docker-compose.yml`
-- 待补充：仓库未提供 `nginx`、`k8s`、`helm`、`systemd` 配置
-- 待补充：仓库未提供 GitHub Actions / GitLab CI 等 CI/CD 配置
-
-## 常见问题
-
-### 1. 为什么 `parse-pdfs` / `process-reports` 找不到数据文件？
-
-这些命令默认把“当前工作目录”当作数据集根目录。请先 `cd` 到包含 `pdf_reports/`、`document_manifest.csv`、`questions.json` 的目录，再执行 CLI。
-
-### 2. 为什么 Demo 提示检索资产未就绪？
-
-当前数据集和当前配置对应的 `chunked_reports/`、`vector_dbs/`、`bm25_dbs/` 或 `sparse_dbs/` 还没有构建完成。请先运行：
-
-```text
-parse-pdfs -> serialize-tables（如启用） -> process-reports
-```
-
-### 3. 为什么数字题被返回成 `N/A`？
-
-数字问题会经过币种、年份、期间和 table grounding 校验。如果命中文档与问题过滤条件不一致，或者无法定位到表格单元格，`answer_validation.py` 会主动降级甚至拒答。
-
-### 4. 为什么 `block` 模式报错要求重新运行 `process-reports`？
-
-`block` 模式依赖 `content.parent_chunks` 和子 chunk 的 `parent_chunk_id`。如果你的索引产物是旧格式，必须重新执行 `process-reports` 以生成 Parent/Child 结构。
-
-### 5. 为什么预构建数据库不能直接复用？
-
-`data/test_set/README.md` 和 `data/erc2_set/README.md` 都明确说明：仓库中某些预构建 `databases` 产物与当前本地 embedding 管线不兼容。需要基于当前代码和当前 embedding 配置重新构建。
-
-### 6. 如何把 PDFCrawl 的结果接入当前项目？
-
-使用：
-
-```bash
-.venv/bin/python main.py prepare-pdfcrawl-dataset \
-  --pdfcrawl-root /path/to/PDFCrawl/output \
+# Step 1: PDF 解析 → 结构化 JSON
+python main.py parse-pdfs \
+  --pdf-dir data/my_dataset/pdf_reports \
+  --output-dir data/my_dataset/parsed_reports
+
+# Step 2: 表格序列化 (可选但推荐)
+python main.py serialize-tables \
+  --parsed-dir data/my_dataset/parsed_reports \
+  --output-dir data/my_dataset/serialized_tables
+
+# Step 3: 完整流水线处理 (切块 + 索引构建 + 数据准备)
+python main.py process-reports \
+  --config config/qwen_zh_finance.yaml \
   --dataset-dir data/my_dataset
 ```
 
-该命令会自动生成 `document_manifest.csv`、同步 `pdf_reports/` 并可写出空的 `questions.json`。
+### 4. 问答执行
 
-## Roadmap
+```bash
+# 批量回答预定义问题集
+python main.py answer-questions \
+  --config config/qwen_zh_finance.yaml \
+  --dataset-dir data/my_dataset
 
-- 待补充：仓库未提供正式的公开 Roadmap 文档
-- `data/chinese_benchmark/` 已提供中文金融 benchmark 模板和 gold 答案模板
-- `eval/compare_configs.py` 已提供多配置对比评测入口
-- `demo_app/streamlit_app.py` 已提供交互式工作台和上传 PDF 工作区
+# 启动交互式 Demo
+streamlit run demo_app/streamlit_app.py
+```
 
-## 贡献指南
+---
 
-欢迎通过 Issue 和 Pull Request 参与改进。
+## 🔬 核心模块详解
 
-建议贡献流程：
+### 1. 结构感知 Parent/Child 切块
 
-1. 先通过 Issue 描述问题、场景和复现方式
-2. Fork 仓库并创建独立分支
-3. 安装依赖并补充或更新相关测试
-4. 如果修改检索、重排、路由或问答逻辑，建议附上至少一组评测结果或样例输出
-5. 提交 PR 时请说明影响范围，包括修改模块、输出格式是否变化、是否需要重建索引，以及是否影响 Demo 或评测脚本
+传统平铺切块容易打断表格和段落上下文。FinaRAG 采用 **Parent/Child 双层切块** 策略：
 
-贡献建议：
+- **Parent Chunk**：保留完整的结构化块（段落 / 表格），作为上下文锚点
+- **Child Chunk**：基于 tiktoken 编码器进一步细分（默认 320 tokens），用于精确检索匹配
+- **检索时**：先匹配 Child → 回溯 Parent → 提供完整上下文给 LLM
 
-- 优先保持数据目录结构、输出 JSON 结构和评测脚本兼容
-- 涉及配置项新增时，优先补充 YAML 配置和 README 说明
-- 涉及路由、检索、table grounding 的变更，建议增加对应单元测试
+```python
+# src/text_splitter.py - 核心逻辑
+class TextSplitter:
+    def _split_report(self, file_content, serialized_tables_report_path, ...):
+        # 1. 提取结构块 (heading-aware)
+        # 2. 构建 Parent chunk (保留完整段落/表格)
+        # 3. 拆分 Child chunk (320 tokens, overlap=50)
+        # 4. 维护 parent_chunk_id ↔ child_chunk_ids 映射
+```
 
-## 许可证
+**切块时同步注入的元数据字段：**
 
-本项目基于 [MIT License](LICENSE) 开源。
+| 字段 | 说明 |
+|------|------|
+| `embedding_text` | 结构化嵌入文本（含公司名/代码/年份/行业/章节） |
+| `search_text` | 全元数据拼接文本（供 BM25/Sparse 检索） |
+| `evidence_type` | `narrative` / `table` |
+| `topic_flags` | `has_leadership_changes` / `has_dividend_policy_changes` 等 |
+| `business_tags` / `strategy_tags` | 业务标签 / 战略标签（出海 / 数字化转型 / AI 等） |
+
+### 2. 四路混合检索 + 融合
+
+```python
+# src/retrieval.py
+class HybridRetriever:
+    # 四路检索后端，每路独立返回 top-N 候选
+    vector_retriever   # FAISS (cosine similarity)
+    bm25_retriever     # BM25Okapi (词频匹配)
+    sparse_retriever   # BGE-M3 Sparse Lexical Weights
+    tag_retriever      # 基于元数据标签的结构化检索
+
+    # 融合策略
+    fusion_method: "rrf" | "average"
+    #   RRF: score = Σ 1/(k + rank_i), k=60
+    #   Average: score = mean(normalized_scores)
+```
+
+**融合去重逻辑：** 同一 chunk 被多路召回时，取各路归一化分数的最高值，同时累加 RRF 分数，合并 `retrieval_sources` 和 `matched_tags`。
+
+### 3. 级联重排序 (Cascade Reranking)
+
+```
+Candidate Pool (50+ docs)
+         │
+    ColBERT Reranker (一阶粗排)
+         │  ─── colbert_top_n (e.g., 10)
+         │
+    Final Reranker (二阶精排)
+    ├── LLM Prompt Reranker   (通用, 带详细 reasoning)
+    ├── FlagEmbedding Reranker (快速, bge-reranker)
+    └── vLLM API Reranker      (高性能, 批量推理)
+         │
+    Top-K Results → LLM 生成
+```
+
+```python
+# src/reranking.py
+class CascadeReranker:
+    def rerank_documents(self, query, documents, ...):
+        # Stage 1: ColBERT 粗排 → 缩小候选池
+        colbert_ranked = self._colbert_rerank(query, documents)
+        top_candidates = colbert_ranked[:self.colbert_top_n]
+
+        # Stage 2: 精排 (LLM/FlagEmbedding/vLLM)
+        final_ranked = self.final_reranker.rerank_documents(query, top_candidates)
+        return final_ranked
+```
+
+### 4. 查询改写与金融术语扩展
+
+```python
+# src/query_rewrite.py
+class QuestionRewriter:
+    # 规则驱动的查询理解 + 扩展
+    def rewrite(self, question, schema, company_name) -> QueryPlan:
+        # 1. 文本归一化
+        # 2. 提取过滤器: 年份, 币种, 交易所, 板块, 行业, 报告类型
+        # 3. 金融术语同义扩展:
+        #    "营业收入" → ["营收", "收入"]
+        #    "归母净利润" → ["母公司股东净利润", "归属于母公司股东的净利润"]
+        #    "share buyback" → ["share repurchase", "repurchase program"]
+        # 4. 输出 QueryPlan (搜索查询列表 + 结构化过滤器 + 路由策略)
+```
+
+`QueryPlan` 驱动后续的检索过滤、文档路由和答案校验，是查询理解的统一数据结构。
+
+### 5. Table Grounding (数值对齐引擎)
+
+在金融问答中，数值类问题对精度要求极高。FinaRAG 实现了 **Table Grounding** 机制：
+
+```python
+# src/table_grounding.py
+class TableGrounder:
+    def ground_number_query(self, question, retrieval_results, filters):
+        # 1. 从检索结果定位候选文档的 structured_tables
+        # 2. 遍历每个 cell_record，计算综合匹配分:
+        #    - 行首匹配 (×2.2 权重) + 列首匹配 (×1.8)
+        #    - 页面重叠加分 (+1.5) + 年份匹配 (+1.5) + 币种匹配 (+0.6)
+        # 3. 返回最佳匹配单元格的 normalized_value 作为 grounding 锚点
+        # 4. 阈值过滤: match_score < 2.2 则放弃 grounding
+```
+
+该机制能够直接从原始表格中定位精确数值，避免 LLM 对数字的幻觉或近似。
+
+### 6. 答案后验校验 (Answer Validation)
+
+```python
+# src/answer_validation.py
+def validate_answer(answer_dict, retrieval_results, query_plan) -> ValidatedAnswer:
+    # 多维度校验 → 自动降级置信度
+    # ├── 币种一致性 (query vs retrieval metadata)
+    # ├── 报告年份一致性
+    # ├── 文档类型一致性
+    # ├── 期间匹配度
+    # ├── Topic flag 覆盖
+    # ├── 数值 Grounding 校验 (值存在性 / 期间 / 币种)
+    # └── Citation 覆盖检查
+    #
+    # 不通过 → final_answer 置为 "N/A"，confidence 降为 "low"
+```
+
+### 7. HyDE (Hypothetical Document Embedding)
+
+当初始检索结果质量不佳时（top score < 阈值 或 score margin 过小），自动触发 HyDE fallback：
+
+```python
+# src/hyde.py
+class HyDEGenerator:
+    def generate(self, question, schema, query_plan, route_info):
+        # 1. 构建 HyDE prompt (包含公司名/年份/报告类型/行业等上下文)
+        # 2. LLM 生成假设性证据段落 (不回答问题，只生成检索锚点)
+        # 3. 用生成的段落作为新 query 进行二次检索
+        # 4. 合并初始结果 + HyDE 结果 → 重新排序
+```
+
+---
+
+## 📊 评测体系
+
+FinaRAG 内建完整的评测模块，支持多维度性能分析：
+
+### 评测指标
+
+```python
+# eval/metrics.py
+compare_answers(pred, ref)          # Exact Match + Page Hit + Citation Precision
+compare_ranked_retrieval(pred, ref) # Recall@K + Precision@K + Hit@K
+
+# eval/error_analysis.py
+summarize_error_analysis(pred, ref) # 错误归因: routing / parse / retrieval / generation / validation
+```
+
+| 指标 | 说明 |
+|------|------|
+| `reference_exact_match` | 答案精确匹配率 (按 schema 类型归一化) |
+| `reference_page_hit` | 引用页码命中率 |
+| `citation_page_hit` | Citation 页码命中率 |
+| `retrieval_hit_at_k` | 检索结果中包含正确页面的比率 |
+| `macro_recall_at_K` | 检索 Top-K 的宏平均召回率 |
+| `macro_precision_at_K` | 检索 Top-K 的宏平均精确率 |
+| `confidence_calibration` | 按置信度分组的实际准确率 (校准分析) |
+
+### 错误归因
+
+`error_analysis.py` 将每个错误样本自动分类到流水线的具体阶段：
+
+- **routing** — 文档路由错误（公司名未匹配 / 歧义路由）
+- **parse** — PDF 解析失败（Docling 异常 / OCR 质量）
+- **retrieval** — 检索支撑不足（弱 citation 覆盖）
+- **generation** — LLM 生成错误（有检索支撑但答案不匹配）
+- **validation** — 后验校验被降级（币种/年份/类型不一致）
+
+---
+
+## ⚙️ 配置系统
+
+所有流水线参数通过 YAML 配置文件管理，支持运行时覆盖：
+
+```yaml
+# config/qwen_zh_finance.yaml
+use_serialized_tables: true                 # 启用表格序列化
+parent_document_retrieval: true             # 启用 Parent/Child 检索
+parent_retrieval_mode: block                # block | page
+
+# 检索后端
+use_vector_dbs: true
+use_bm25_db: true
+use_sparse_lexical_db: true
+use_tag_db: true
+
+# 向量索引参数
+vector_index_type: "flat"                   # flat | ivf | hnsw
+vector_ivf_nlist: 32
+vector_hnsw_m: 32
+vector_hnsw_ef_construction: 200
+
+# 重排序
+llm_reranking: true
+llm_reranking_sample_size: 8
+top_n_retrieval: 5
+
+# 文档路由
+doc_router_enabled: true
+candidate_doc_top_k: 5
+
+# 数值 Grounding
+numeric_grounding_enabled: true
+
+# LLM 配置
+api_provider: "qwen"
+answering_model: "Qwen3.5-27B"
+document_language: "zh"
+```
+
+**预置配置：**
+
+| 配置文件 | 场景 |
+|---------|------|
+| `qwen_zh_finance.yaml` | 中文金融文档全功能配置 |
+| `qwen_zh_finance_colbert_cascade_bge.yaml` | ColBERT+BGE 级联重排 |
+| `qwen_zh_finance_colbert_cascade_qwen.yaml` | ColBERT+Qwen 级联重排 |
+| `qwen_zh_finance_hyde_fallback.yaml` | 启用 HyDE fallback |
+| `qwen_base.yaml` | 基础配置 (仅向量检索) |
+
+---
+
+## 🖥️ 交互式 Demo
+
+```bash
+streamlit run demo_app/streamlit_app.py
+```
+
+Streamlit Demo 提供深色金融风格 UI，核心功能包括：
+
+- **多数据集切换**：自动发现 `data/` 目录下的数据集
+- **实时问答**：输入自然语言问题，展示完整推理链
+- **检索可视化**：展示四路召回结果、融合分数、重排序过程
+- **证据追溯**：页码引用、表格引用、Citation 详情
+- **配置热切换**：运行时修改检索后端、重排策略、模型参数
+- **系统监控**：嵌入模型状态、检索后端连接状态
+
+---
+
+## 🧪 测试
+
+```bash
+# 运行全部测试
+pytest tests/ -v
+
+# 运行特定模块测试
+pytest tests/test_query_rewrite.py -v        # 查询改写
+pytest tests/test_cascade_reranking.py -v    # 级联重排
+pytest tests/test_table_grounding.py -v      # 数值对齐
+pytest tests/test_answer_validation.py -v    # 答案校验
+pytest tests/test_parent_child_splitter.py -v # 切块
+pytest tests/test_hyde.py -v                 # HyDE
+pytest tests/test_eval_metrics.py -v         # 评测指标
+```
+
+---
+
+## 📎 CLI 命令参考
+
+```bash
+python main.py --help
+
+# 主要命令
+python main.py prepare-dataset   # 数据集初始化
+python main.py parse-pdfs        # PDF 解析
+python main.py serialize-tables  # 表格序列化
+python main.py process-reports   # 完整流水线 (切块 + 索引)
+python main.py answer-questions  # 批量问答
+```
+
+---
+
+## 🔑 工程亮点小结
+
+1. **端到端设计**：从 PDF → 结构化解析 → 多路索引 → 混合召回 → 排序 → 生成 → 校验，每一步均有模块化实现和独立测试
+2. **金融场景深度适配**：表格序列化 + 数值 Grounding + 金融术语同义扩展 + 币种/年份/期间过滤
+3. **可扩展的检索架构**：四路检索后端按需启用，融合策略和重排策略均通过配置切换
+4. **生产级工程实践**：
+   - 线程安全的嵌入模型加载（解决 meta-tensor 并发问题）
+   - 多 GPU 嵌入分片 + ThreadPoolExecutor 并行推理
+   - Pydantic Schema 驱动的 LLM 输出解析 + JSON 修复
+   - 答案后验校验 + 置信度校准
+5. **完善的评测闭环**：内建 Exact Match / Retrieval Recall / Confidence Calibration / Error Analysis，支持配置间横向对比
+
+---
+
+## 📄 License
+
+[MIT License](LICENSE)

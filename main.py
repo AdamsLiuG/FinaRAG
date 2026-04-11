@@ -22,7 +22,8 @@ def download_models():
 @click.option('--currency', default='CNY', show_default=True, help='写入 manifest 的默认币种')
 @click.option('--language', default='zh', show_default=True, help='写入 manifest 的文档语言')
 @click.option('--write-questions-stub/--no-write-questions-stub', default=True, show_default=True, help='是否生成空 questions.json')
-def prepare_pdfcrawl_dataset_command(pdfcrawl_root, dataset_dir, link_mode, currency, language, write_questions_stub):
+@click.option('--metadata-mode', type=click.Choice(['auto', 'required', 'ignore']), default='auto', show_default=True, help='metadata.jsonl 接入模式')
+def prepare_pdfcrawl_dataset_command(pdfcrawl_root, dataset_dir, link_mode, currency, language, write_questions_stub, metadata_mode):
     """把 PDFCrawl 输出整理成 FinaRAG 可直接消费的数据集目录"""
     summary = prepare_pdfcrawl_dataset(
         pdfcrawl_root=pdfcrawl_root,
@@ -31,6 +32,7 @@ def prepare_pdfcrawl_dataset_command(pdfcrawl_root, dataset_dir, link_mode, curr
         currency=currency,
         language=language,
         write_questions_stub=write_questions_stub,
+        metadata_mode=metadata_mode,
     )
     click.echo(
         f"已生成数据集: {summary.dataset_dir}\n"
@@ -78,14 +80,18 @@ def serialize_tables(max_workers, config_path):
 @cli.command()
 @click.option('--config', type=click.Choice(['ser_tab', 'no_ser_tab']), default='no_ser_tab', help='选择配置预设')
 @click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
-def process_reports(config, config_path):
+@click.option('--export-markdown/--skip-markdown-export', default=True, show_default=True, help='是否导出 markdown 预览文件')
+def process_reports(config, config_path, export_markdown):
     """执行文档处理流水线（合并、切块、向量化）"""
     root_path = Path.cwd()
     run_config = load_run_config(config_path) if config_path else preprocess_configs[config]
     pipeline = Pipeline(root_path, run_config=run_config)
     
-    click.echo(f"处理研报文档 (config={config_path or config})...")
-    pipeline.process_parsed_reports()
+    click.echo(
+        f"处理研报文档 (config={config_path or config}, "
+        f"export_markdown={export_markdown})..."
+    )
+    pipeline.process_parsed_reports(export_markdown=export_markdown)
 
 @cli.command()
 @click.option('--config', type=click.Choice(['qwen_base', 'qwen_vector_rerank', 'qwen_rerank', 'qwen_sparse_rerank', 'qwen_ser_vector_rerank', 'qwen_ser_rerank', 'qwen_ser_sparse_rerank']), default='qwen_base', help='选择配置预设')

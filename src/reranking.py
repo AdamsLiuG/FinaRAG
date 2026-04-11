@@ -1,4 +1,9 @@
+import ipaddress
 import os
+import threading
+from functools import lru_cache
+from typing import Optional
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 import requests
 import src.prompts as prompts
@@ -7,6 +12,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from src.api_requests import APIProcessor
+from src.embedding_backend import _get_bgem3_inference_lock, _load_bgem3_model
 
 
 def _get_env_value(*names, default=None):
@@ -15,6 +21,32 @@ def _get_env_value(*names, default=None):
         if value:
             return value
     return default
+
+
+def _should_bypass_env_proxy_for_url(base_url: str | None) -> bool:
+    if not base_url:
+        return False
+
+    hostname = urlparse(base_url).hostname
+    if not hostname:
+        return False
+
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return True
+
+    try:
+        ip = ipaddress.ip_address(hostname)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        return hostname.endswith(".local")
+
+
+def _normalize_remote_scores(scores: list[float]) -> list[float]:
+    if not scores:
+        return []
+    if all(0.0 <= float(score) <= 1.0 for score in scores):
+        return [float(score) for score in scores]
+    return _minmax_normalize([float(score) for score in scores])
 
 
 def _parse_devices(value: str | None) -> list[str]:
@@ -34,6 +66,43 @@ def _parse_devices(value: str | None) -> list[str]:
         else:
             devices.append(f"cuda:{part}")
     return devices
+
+
+def _env_positive_int(*names: str) -> Optional[int]:
+    for name in names:
+        raw_value = os.getenv(name)
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        try:
+            value = int(str(raw_value).strip())
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def _limit_devices(devices: list[str], *env_names: str) -> list[str]:
+    max_devices = _env_positive_int(*env_names)
+    if max_devices is None:
+        return devices
+    return devices[: max(1, max_devices)]
+
+
+def _minmax_normalize(values: list[float]) -> list[float]:
+    if not values:
+        return []
+
+    min_value = min(values)
+    max_value = max(values)
+    if max_value == min_value:
+        return [1.0 if max_value > 0 else 0.0 for _ in values]
+
+    scale = max_value - min_value
+    return [float((value - min_value) / scale) for value in values]
+
+
+_flag_reranker_load_lock = threading.Lock()
 
 
 class FastTokenizerFlagRerankerModel:
@@ -59,6 +128,7 @@ class FastTokenizerFlagRerankerModel:
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             trust_remote_code=trust_remote_code,
+            low_cpu_mem_usage=False,
         )
         if use_fp16 and device.startswith("cuda"):
             self.model = self.model.half()
@@ -113,6 +183,46 @@ class FastTokenizerFlagRerankerModel:
 
         return scores
 
+
+@lru_cache(maxsize=4)
+def _load_flag_reranker_model_cached(
+    model_name: str,
+    device: str,
+    use_fp16: bool,
+    batch_size: int,
+    max_length: int,
+    trust_remote_code: bool,
+) -> FastTokenizerFlagRerankerModel:
+    return FastTokenizerFlagRerankerModel(
+        model_name=model_name,
+        device=device,
+        use_fp16=use_fp16,
+        batch_size=batch_size,
+        max_length=max_length,
+        trust_remote_code=trust_remote_code,
+    )
+
+
+def _load_flag_reranker_model(
+    model_name: str,
+    device: str,
+    use_fp16: bool,
+    batch_size: int = 128,
+    max_length: int = 512,
+    trust_remote_code: bool = False,
+) -> FastTokenizerFlagRerankerModel:
+    # Serialise concurrent model initialisation so transformers does not race
+    # through meta-tensor loading on first use under parallel question runs.
+    with _flag_reranker_load_lock:
+        return _load_flag_reranker_model_cached(
+            model_name=model_name,
+            device=device,
+            use_fp16=use_fp16,
+            batch_size=batch_size,
+            max_length=max_length,
+            trust_remote_code=trust_remote_code,
+        )
+
 class JinaReranker:
     def __init__(self):
         self.url = 'https://api.jina.ai/v1/rerank'
@@ -142,7 +252,7 @@ class FlagEmbeddingReranker:
         load_dotenv()
         self.model_name = model or _get_env_value("RERANKING_MODEL", default="BAAI/bge-reranker-v2-m3")
         self.device = _get_env_value("RERANKING_DEVICE", default="cuda:0")
-        self.devices = _parse_devices(self.device)
+        self.devices = _limit_devices(_parse_devices(self.device), "RERANKING_MAX_DEVICES")
         use_fp16 = _get_env_value("RERANKING_USE_FP16", default="true").lower() in {"1", "true", "yes", "on"}
         trust_remote_code = _get_env_value("RERANKING_TRUST_REMOTE_CODE", default="false").lower() in {
             "1", "true", "yes", "on"
@@ -152,7 +262,7 @@ class FlagEmbeddingReranker:
         # FlagEmbedding's prepare_for_model + tokenizer.pad path that triggers
         # the XLMRobertaTokenizerFast warning.
         self.models = [
-            FastTokenizerFlagRerankerModel(
+            _load_flag_reranker_model(
                 model_name=self.model_name,
                 device=device,
                 use_fp16=self.use_fp16,
@@ -201,12 +311,141 @@ class FlagEmbeddingReranker:
         for doc, score in zip(documents, scores):
             item = doc.copy()
             item["relevance_score"] = round(float(score), 4)
+            item["final_relevance_score"] = item["relevance_score"]
             item["combined_score"] = round(
                 llm_weight * item["relevance_score"] + vector_weight * item["distance"], 4
             )
             results.append(item)
 
         results.sort(key=lambda x: x["combined_score"], reverse=True)
+        self.last_debug = {
+            "reranking_strategy": "single",
+            "initial_candidate_pool_size": len(documents),
+            "colbert_candidate_pool_size": None,
+            "colbert_top_n": None,
+            "final_reranking_backend": "flag_embedding",
+        }
+        return results
+
+
+class VLLMApiReranker:
+    def __init__(self, model: str | None = None):
+        load_dotenv()
+        self.model_name = (
+            model
+            or _get_env_value("RERANKING_MODEL", "QWEN_RERANKING_MODEL", "QWEN_MODEL", "LLM_MODEL")
+            or "Qwen/Qwen3-Reranker-0.6B"
+        )
+        self.base_url = _get_env_value("RERANKING_BASE_URL", "QWEN_RERANKING_BASE_URL", "QWEN_BASE_URL", "LLM_BASE_URL")
+        self.api_key = _get_env_value("RERANKING_API_KEY", "QWEN_RERANKING_API_KEY", "QWEN_API_KEY", "LLM_API_KEY")
+        timeout_raw = _get_env_value("RERANKING_TIMEOUT", "RERANKING_API_TIMEOUT", default="300")
+        self.timeout = float(timeout_raw) if timeout_raw else 300.0
+
+    def _get_request_url(self) -> str:
+        if not self.base_url:
+            raise ValueError(
+                "Missing reranking API base URL. Set RERANKING_BASE_URL "
+                "(or fall back to QWEN_BASE_URL / LLM_BASE_URL)."
+            )
+
+        normalized_base = self.base_url.rstrip("/")
+        if normalized_base.endswith("/chat/completions"):
+            normalized_base = normalized_base[: -len("/chat/completions")]
+        if normalized_base.endswith(("/rerank", "/v1/rerank", "/v2/rerank")):
+            return normalized_base
+        if normalized_base.endswith("/v1") or normalized_base.endswith("/v2"):
+            return f"{normalized_base}/rerank"
+        return f"{normalized_base}/v1/rerank"
+
+    def _post(self, payload: dict) -> requests.Response:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        request_kwargs = {
+            "url": self._get_request_url(),
+            "headers": headers,
+            "json": payload,
+            "timeout": self.timeout,
+        }
+
+        if _should_bypass_env_proxy_for_url(self.base_url):
+            with requests.Session() as session:
+                session.trust_env = False
+                return session.post(**request_kwargs)
+        return requests.post(**request_kwargs)
+
+    @staticmethod
+    def _extract_scores(response_json: dict, total_documents: int) -> list[float]:
+        results = response_json.get("results")
+        if results is None:
+            results = response_json.get("data")
+        if not isinstance(results, list):
+            raise ValueError(f"Unexpected rerank response payload: {response_json!r}")
+
+        raw_scores = [0.0] * total_documents
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            index = item.get("index")
+            score = item.get("relevance_score", item.get("score"))
+            if index is None or score is None:
+                continue
+            try:
+                normalized_index = int(index)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= normalized_index < total_documents:
+                raw_scores[normalized_index] = float(score)
+
+        return _normalize_remote_scores(raw_scores)
+
+    def rerank_documents(self, query: str, documents: list, documents_batch_size: int = 4, llm_weight: float = 0.7):
+        if not documents:
+            self.last_debug = {
+                "reranking_strategy": "single",
+                "initial_candidate_pool_size": 0,
+                "colbert_candidate_pool_size": None,
+                "colbert_top_n": None,
+                "final_reranking_backend": "vllm_api",
+            }
+            return []
+
+        payload = {
+            "model": self.model_name,
+            "query": query,
+            "documents": [doc.get("text", "") for doc in documents],
+            "top_n": len(documents),
+            "return_documents": False,
+        }
+        response = self._post(payload)
+        if not response.ok:
+            raise requests.HTTPError(
+                f"{response.status_code} Client Error for url: {response.url}\n{response.text[:1000]}",
+                response=response,
+            )
+
+        scores = self._extract_scores(response.json(), len(documents))
+        vector_weight = 1 - llm_weight
+        results = []
+        for doc, score in zip(documents, scores):
+            item = doc.copy()
+            item["relevance_score"] = round(float(score), 4)
+            item["final_relevance_score"] = item["relevance_score"]
+            item["combined_score"] = round(
+                llm_weight * item["relevance_score"] + vector_weight * float(item.get("distance", 0.0)),
+                4,
+            )
+            results.append(item)
+
+        results.sort(key=lambda item: item["combined_score"], reverse=True)
+        self.last_debug = {
+            "reranking_strategy": "single",
+            "initial_candidate_pool_size": len(documents),
+            "colbert_candidate_pool_size": None,
+            "colbert_top_n": None,
+            "final_reranking_backend": "vllm_api",
+        }
         return results
 
 class LLMReranker:
@@ -266,6 +505,7 @@ class LLMReranker:
                 
                 doc_with_score = doc.copy()
                 doc_with_score["relevance_score"] = ranking["relevance_score"]
+                doc_with_score["final_relevance_score"] = doc_with_score["relevance_score"]
                 # Calculate combined score - note that distance is inverted since lower is better
                 doc_with_score["combined_score"] = round(
                     llm_weight * ranking["relevance_score"] + 
@@ -301,6 +541,7 @@ class LLMReranker:
                 for doc, rank in zip(batch, block_rankings):
                     doc_with_score = doc.copy()
                     doc_with_score["relevance_score"] = rank["relevance_score"]
+                    doc_with_score["final_relevance_score"] = doc_with_score["relevance_score"]
                     doc_with_score["combined_score"] = round(
                         llm_weight * rank["relevance_score"] + 
                         vector_weight * doc['distance'],
@@ -320,5 +561,197 @@ class LLMReranker:
         
         # Sort results by combined score in descending order
         all_results.sort(key=lambda x: x["combined_score"], reverse=True)
+        self.last_debug = {
+            "reranking_strategy": "single",
+            "initial_candidate_pool_size": len(documents),
+            "colbert_candidate_pool_size": None,
+            "colbert_top_n": None,
+            "final_reranking_backend": "llm_prompt",
+        }
         return all_results
+
+
+class ColBERTReranker:
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        device: Optional[str] = None,
+        batch_size: int = 16,
+        query_max_length: int = 128,
+        passage_max_length: int = 512,
+    ):
+        load_dotenv()
+        resolved_model_name = model_name or _get_env_value("COLBERT_MODEL", "EMBEDDING_MODEL_NAME", default="BAAI/bge-m3")
+        if not resolved_model_name:
+            raise ValueError("A BGE-M3 model name or path is required for ColBERT-style reranking.")
+
+        raw_device = device or _get_env_value("COLBERT_DEVICE", "RERANKING_DEVICE", default="cuda:0")
+        self.device = _limit_devices(
+            _parse_devices(raw_device),
+            "COLBERT_MAX_DEVICES",
+            "RERANKING_MAX_DEVICES",
+        )[0]
+        self.batch_size = max(1, int(batch_size))
+        self.query_max_length = max(8, int(query_max_length))
+        self.passage_max_length = max(16, int(passage_max_length))
+        self.model_name = resolved_model_name
+        use_fp16 = _get_env_value("COLBERT_USE_FP16", default="true").lower() in {"1", "true", "yes", "on"}
+        self.use_fp16 = use_fp16 and str(self.device).startswith("cuda")
+        self.model = _load_bgem3_model(
+            model_name=self.model_name,
+            device=self.device,
+            use_fp16=self.use_fp16,
+            batch_size=self.batch_size,
+            query_max_length=self.query_max_length,
+            passage_max_length=self.passage_max_length,
+        )
+
+    @staticmethod
+    def _content_mask(input_ids: torch.Tensor, attention_mask: torch.Tensor, special_token_ids: list[int]) -> torch.Tensor:
+        content_mask = attention_mask.bool()
+        if not special_token_ids:
+            return content_mask
+
+        special_mask = torch.zeros_like(content_mask)
+        for token_id in special_token_ids:
+            special_mask |= input_ids == int(token_id)
+        return content_mask & ~special_mask
+
+    @staticmethod
+    def _late_interaction_scores(
+        query_embeddings: torch.Tensor,
+        query_mask: torch.Tensor,
+        doc_embeddings: torch.Tensor,
+        doc_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        similarity = torch.einsum("qd,bpd->bqp", query_embeddings, doc_embeddings)
+        similarity = similarity.masked_fill(~doc_mask.unsqueeze(1), -1e4)
+        max_similarity = similarity.max(dim=2).values
+        max_similarity = max_similarity.masked_fill(~query_mask.unsqueeze(0), 0.0)
+        return max_similarity.sum(dim=1)
+
+    @staticmethod
+    def _coerce_score(value) -> float:
+        if hasattr(value, "item"):
+            return float(value.item())
+        return float(value)
+
+    def _encode_colbert_query(self, query: str):
+        outputs = self.model.encode(
+            [query],
+            batch_size=1,
+            max_length=self.query_max_length,
+            return_dense=False,
+            return_sparse=False,
+            return_colbert_vecs=True,
+        )
+        colbert_vecs = list(outputs.get("colbert_vecs") or [])
+        if not colbert_vecs:
+            raise RuntimeError("BGE-M3 did not return query-side colbert_vecs for ColBERT-style reranking.")
+        return colbert_vecs[0]
+
+    def _encode_colbert_passages(self, texts: list[str]) -> list:
+        outputs = self.model.encode(
+            texts,
+            batch_size=self.batch_size,
+            max_length=self.passage_max_length,
+            return_dense=False,
+            return_sparse=False,
+            return_colbert_vecs=True,
+        )
+        colbert_vecs = list(outputs.get("colbert_vecs") or [])
+        if len(colbert_vecs) != len(texts):
+            raise RuntimeError(
+                "BGE-M3 passage-side colbert_vecs count does not match the number of documents being reranked."
+            )
+        return colbert_vecs
+
+    @torch.no_grad()
+    def score_documents(self, query: str, documents: list[dict]) -> list[float]:
+        if not documents:
+            return []
+
+        texts = [doc.get("text", "") for doc in documents]
+        with _get_bgem3_inference_lock(self.model):
+            query_vecs = self._encode_colbert_query(query)
+            passage_vecs = self._encode_colbert_passages(texts)
+            return [
+                self._coerce_score(self.model.colbert_score(query_vecs, doc_vecs))
+                for doc_vecs in passage_vecs
+            ]
+
+
+class CascadeReranker:
+    def __init__(
+        self,
+        *,
+        colbert_model: str,
+        colbert_device: Optional[str] = None,
+        colbert_batch_size: int = 16,
+        colbert_query_max_length: int = 128,
+        colbert_passage_max_length: int = 512,
+        cascade_candidate_pool_cap: int = 50,
+        colbert_top_n: int = 10,
+        final_reranker=None,
+        final_reranking_backend: str = "flag_embedding",
+        colbert_reranker: Optional[ColBERTReranker] = None,
+    ):
+        self.cascade_candidate_pool_cap = max(1, int(cascade_candidate_pool_cap))
+        self.colbert_top_n = max(1, int(colbert_top_n))
+        self.final_reranker = final_reranker
+        self.final_reranking_backend = final_reranking_backend
+        self.colbert_reranker = colbert_reranker or ColBERTReranker(
+            model_name=colbert_model,
+            device=colbert_device,
+            batch_size=colbert_batch_size,
+            query_max_length=colbert_query_max_length,
+            passage_max_length=colbert_passage_max_length,
+        )
+
+    def rerank_documents(self, query: str, documents: list, documents_batch_size: int = 4, llm_weight: float = 0.7):
+        if not documents:
+            self.last_debug = {
+                "reranking_strategy": "cascade",
+                "initial_candidate_pool_size": 0,
+                "colbert_candidate_pool_size": 0,
+                "colbert_top_n": self.colbert_top_n,
+                "final_reranking_backend": self.final_reranking_backend,
+            }
+            return []
+        if self.final_reranker is None:
+            raise ValueError("CascadeReranker requires a final_reranker.")
+
+        sorted_documents = sorted(documents, key=lambda doc: float(doc.get("distance", 0.0)), reverse=True)
+        initial_candidates = [doc.copy() for doc in sorted_documents[:self.cascade_candidate_pool_cap]]
+        raw_scores = self.colbert_reranker.score_documents(query, initial_candidates)
+        normalized_scores = _minmax_normalize(raw_scores)
+
+        for doc, raw_score, normalized_score in zip(initial_candidates, raw_scores, normalized_scores):
+            doc["distance_rrf"] = round(float(doc.get("distance", 0.0)), 4)
+            doc["colbert_raw_score"] = round(float(raw_score), 4)
+            doc["colbert_score"] = round(float(normalized_score), 4)
+            doc["distance"] = doc["colbert_score"]
+            doc["ranking_score"] = doc["colbert_score"]
+
+        initial_candidates.sort(key=lambda doc: float(doc.get("colbert_score", 0.0)), reverse=True)
+        colbert_candidates = initial_candidates[:self.colbert_top_n]
+
+        final_results = self.final_reranker.rerank_documents(
+            query=query,
+            documents=colbert_candidates,
+            documents_batch_size=documents_batch_size,
+            llm_weight=llm_weight,
+        )
+        for item in final_results:
+            if "final_relevance_score" not in item and "relevance_score" in item:
+                item["final_relevance_score"] = item["relevance_score"]
+
+        self.last_debug = {
+            "reranking_strategy": "cascade",
+            "initial_candidate_pool_size": len(initial_candidates),
+            "colbert_candidate_pool_size": len(colbert_candidates),
+            "colbert_top_n": self.colbert_top_n,
+            "final_reranking_backend": self.final_reranking_backend,
+        }
+        return final_results
     

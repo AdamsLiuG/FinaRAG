@@ -95,6 +95,60 @@ _TOPIC_PATTERNS = {
     ],
 }
 
+_EXCHANGE_PATTERNS = {
+    "上海证券交易所": ["上海证券交易所", "上交所", "sse"],
+    "深圳证券交易所": ["深圳证券交易所", "深交所", "szse"],
+    "北京证券交易所": ["北京证券交易所", "北交所", "bse"],
+}
+
+_BOARD_PATTERNS = {
+    "科创板": ["科创板"],
+    "创业板": ["创业板"],
+    "沪主板": ["沪主板", "上海主板"],
+    "深主板": ["深主板", "深圳主板"],
+    "北交所": ["北交所", "北京证券交易所"],
+}
+
+_MARKET_TYPE_PATTERNS = {
+    "A股": ["a股", "a 股"],
+    "H股": ["h股", "h 股"],
+    "港股": ["港股"],
+}
+
+_SECTION_HINTS = [
+    "管理层讨论与分析",
+    "公司简介和主要财务指标",
+    "重要事项",
+    "公司治理",
+    "财务报告",
+    "释义",
+    "股份变动及股东情况",
+    "风险提示",
+]
+
+_TAG_FILTER_PATTERNS = {
+    "strategy_tags": {
+        "出海": ["出海", "海外", "国际化", "境外"],
+        "数字化转型": ["数字化", "数智化", "数字化转型"],
+        "人工智能": ["人工智能", "ai", "大模型"],
+        "绿色转型": ["绿色转型", "绿色低碳", "双碳", "碳中和"],
+        "国产替代": ["国产替代", "自主可控", "国产化"],
+    },
+    "listing_tags": {
+        "A股": ["a股", "a 股"],
+        "科创板": ["科创板"],
+        "创业板": ["创业板"],
+        "沪主板": ["沪主板", "上海主板"],
+        "深主板": ["深主板", "深圳主板"],
+    },
+    "status_tags": {
+        "龙头": ["龙头", "龙头候选"],
+    },
+    "factor_tags": {
+        "高资本开支": ["资本开支", "capex"],
+    },
+}
+
 
 def _query_fingerprint(text: str) -> str:
     return re.sub(r"[\W_]+", "", normalize_text(text or ""))
@@ -110,6 +164,7 @@ class QuestionRewriter:
     ) -> QueryPlan:
         normalized_query = normalize_text(question)
         topic_flags = self._extract_topic_flags(normalized_query)
+        tag_filters = self._extract_tag_filters(normalized_query)
         security_codes = extract_security_codes(question)
         doc_source_type = self._extract_doc_source_type(normalized_query)
         period = normalize_period_token(question)
@@ -119,8 +174,23 @@ class QuestionRewriter:
             year=self._extract_year(question),
             report_type=self._extract_report_type(normalized_query),
             doc_source_type=doc_source_type,
+            exchange=self._extract_exchange(normalized_query),
+            board=self._extract_board(normalized_query),
+            market_type=self._extract_market_type(normalized_query),
+            industry_l1=self._extract_industry_label(question),
+            industry_l2=None,
             security_code=security_codes[0] if security_codes else None,
             period=period,
+            section_name=self._extract_section_name(question),
+            business_tags=tag_filters.get("business_tags"),
+            strategy_tags=tag_filters.get("strategy_tags"),
+            factor_tags=tag_filters.get("factor_tags"),
+            chain_position_major=self._extract_chain_position(normalized_query),
+            chain_position_minor=tag_filters.get("chain_position_minor"),
+            listing_tags=tag_filters.get("listing_tags"),
+            ownership_tags=tag_filters.get("ownership_tags"),
+            status_tags=tag_filters.get("status_tags"),
+            style_tags=tag_filters.get("style_tags"),
             required_topic_flags=None,
             question_kind=schema,
         )
@@ -140,6 +210,33 @@ class QuestionRewriter:
 
         if period and period.lower() not in normalized_query:
             self._append_query(expanded_queries, f"{question.strip()} {period}")
+
+        if filters.section_name and filters.section_name not in question:
+            self._append_query(expanded_queries, f"{question.strip()} {filters.section_name}")
+
+        for filter_value in (
+            filters.exchange,
+            filters.board,
+            filters.market_type,
+            filters.industry_l1,
+            filters.chain_position_major,
+        ):
+            if filter_value and normalize_text(str(filter_value)) not in normalized_query:
+                self._append_query(expanded_queries, f"{question.strip()} {filter_value}")
+
+        for list_filter in (
+            filters.business_tags,
+            filters.strategy_tags,
+            filters.factor_tags,
+            filters.chain_position_minor,
+            filters.listing_tags,
+            filters.ownership_tags,
+            filters.status_tags,
+            filters.style_tags,
+        ):
+            for value in list_filter or []:
+                if normalize_text(str(value)) not in normalized_query:
+                    self._append_query(expanded_queries, f"{question.strip()} {value}")
 
         if filters.doc_source_type == "research_report" and "研报" not in normalized_query and "券商" not in normalized_query:
             self._append_query(expanded_queries, f"{question.strip()} 券商研报")
@@ -167,6 +264,12 @@ class QuestionRewriter:
                 "doc_source_type": filters.doc_source_type,
                 "period": period,
                 "security_codes": security_codes,
+                "section_name": filters.section_name,
+                "exchange": filters.exchange,
+                "board": filters.board,
+                "market_type": filters.market_type,
+                "industry_l1": filters.industry_l1,
+                "industry_l2": filters.industry_l2,
             },
         )
 
@@ -192,6 +295,46 @@ class QuestionRewriter:
             return "annual_report"
         if any(keyword in normalized_question for keyword in ("中报", "半年报", "季报", "q1", "q2", "q3", "q4")):
             return "interim_report"
+        return None
+
+    def _extract_exchange(self, normalized_question: str) -> Optional[str]:
+        for target, patterns in _EXCHANGE_PATTERNS.items():
+            if any(pattern in normalized_question for pattern in patterns):
+                return target
+        return None
+
+    def _extract_board(self, normalized_question: str) -> Optional[str]:
+        for target, patterns in _BOARD_PATTERNS.items():
+            if any(pattern in normalized_question for pattern in patterns):
+                return target
+        return None
+
+    def _extract_market_type(self, normalized_question: str) -> Optional[str]:
+        for target, patterns in _MARKET_TYPE_PATTERNS.items():
+            if any(pattern in normalized_question for pattern in patterns):
+                return target
+        return None
+
+    def _extract_section_name(self, question: str) -> Optional[str]:
+        normalized_question = normalize_text(question)
+        for hint in _SECTION_HINTS:
+            if normalize_text(hint) in normalized_question:
+                return hint
+        return None
+
+    def _extract_industry_label(self, question: str) -> Optional[str]:
+        matches = re.findall(r"([A-Za-z0-9\u4e00-\u9fff·]{2,20})(?:行业|板块)", question)
+        if matches:
+            return matches[0]
+        return None
+
+    def _extract_chain_position(self, normalized_question: str) -> Optional[str]:
+        if "上游" in normalized_question:
+            return "上游资源"
+        if "中游" in normalized_question:
+            return "中游制造"
+        if "下游" in normalized_question:
+            return "下游应用"
         return None
 
     def _extract_report_type(self, normalized_question: str) -> Optional[str]:
@@ -224,6 +367,17 @@ class QuestionRewriter:
             if any(pattern in normalized_question for pattern in patterns):
                 topic_flags.append(topic_flag)
         return topic_flags
+
+    def _extract_tag_filters(self, normalized_question: str) -> dict[str, List[str]]:
+        extracted: dict[str, List[str]] = {}
+        for field, pattern_map in _TAG_FILTER_PATTERNS.items():
+            values: List[str] = []
+            for target, patterns in pattern_map.items():
+                if any(pattern in normalized_question for pattern in patterns):
+                    values.append(target)
+            if values:
+                extracted[field] = values
+        return extracted
 
     def _append_query(self, expanded_queries: List[str], candidate: str | None) -> None:
         normalized_candidate = (candidate or "").strip()

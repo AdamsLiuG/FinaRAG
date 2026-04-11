@@ -1,0 +1,1 @@
+"""Generator SFT build scripts."""

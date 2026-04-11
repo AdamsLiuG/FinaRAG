@@ -1,0 +1,10 @@
+input_path: training/reranker_distill/raw/pointwise_labels_raw.jsonl
+train_output_path: training/reranker_distill/processed/pointwise_train_raw.jsonl
+dev_output_path: training/reranker_distill/processed/pointwise_dev_raw.jsonl
+test_output_path: training/reranker_distill/processed/pointwise_test_raw.jsonl
+stats_output_path: training/reranker_distill/manifests/split_stats.json
+dev_ratio: 0.1
+test_ratio: 0.1
+split_salt: finarag_reranker_v1
+group_fields:
+  - query_id

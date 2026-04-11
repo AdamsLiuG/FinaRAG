@@ -6,7 +6,8 @@ from pathlib import Path
 
 from rank_bm25 import BM25Okapi
 
-from src.retrieval import BM25Retriever, HybridRetriever
+from src.questions_processing import QuestionsProcessor
+from src.retrieval import BM25Retriever, HybridRetriever, TagRetriever
 from src.text_normalization import tokenize_for_bm25
 
 
@@ -115,6 +116,75 @@ def _write_bm25_fixture(base_dir: Path, *, include_parent_schema: bool) -> tuple
     return documents_dir, bm25_dir
 
 
+def _write_tag_fixture(base_dir: Path) -> tuple[Path, Path]:
+    documents_dir = base_dir / "documents"
+    tag_dir = base_dir / "tag_dbs"
+    documents_dir.mkdir()
+    tag_dir.mkdir()
+
+    document = {
+        "metainfo": {
+            "company_name": "Alpha Corp",
+            "sha1_name": "alpha-sha",
+            "currency": "CNY",
+            "security_code": "600000",
+            "stock_code": "600000",
+            "report_year": 2024,
+        },
+        "content": {
+            "pages": [{"page": 3, "text": "管理层讨论与分析全文"}],
+            "chunks": [
+                {
+                    "page": 3,
+                    "text": "公司推进国产替代与AI平台建设。",
+                    "chunk_id": 0,
+                    "id": 0,
+                    "chunk_type": "content",
+                    "node_type": "child",
+                    "section_name": "管理层讨论与分析",
+                    "section_title": "管理层讨论与分析",
+                    "report_section": "管理层讨论与分析",
+                    "stock_code": "600000",
+                    "industry_l1": "半导体",
+                    "strategy_tags": ["国产替代", "人工智能"],
+                    "listing_tags": ["A股", "科创板"],
+                    "parent_chunk_id": 0,
+                }
+            ],
+            "parent_chunks": [
+                {
+                    "page": 3,
+                    "text": "公司推进国产替代与AI平台建设。",
+                    "chunk_id": 0,
+                    "id": 0,
+                    "chunk_type": "content",
+                    "node_type": "parent",
+                    "section_name": "管理层讨论与分析",
+                    "section_title": "管理层讨论与分析",
+                    "report_section": "管理层讨论与分析",
+                    "stock_code": "600000",
+                    "industry_l1": "半导体",
+                    "strategy_tags": ["国产替代", "人工智能"],
+                    "listing_tags": ["A股", "科创板"],
+                    "child_chunk_ids": [0],
+                }
+            ],
+        },
+    }
+    (documents_dir / "alpha.json").write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    (tag_dir / "alpha-sha.json").write_text(
+        json.dumps(
+            {
+                "chunk_terms": [["管理层讨论与分析", "半导体", "国产替代", "人工智能", "科创板"]],
+                "chunk_tag_values": [["管理层讨论与分析", "半导体", "国产替代", "人工智能", "科创板"]],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return documents_dir, tag_dir
+
+
 class ParentChildRetrievalTests(unittest.TestCase):
     def test_block_mode_aggregates_children_into_single_parent(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -219,6 +289,92 @@ class HybridMergeTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertCountEqual(merged[0]["matched_child_chunk_ids"], [1, 2])
         self.assertEqual(sorted(merged[0]["retrieval_sources"]), ["bm25", "vector"])
+
+    def test_merge_results_preserves_matched_tags(self):
+        hybrid = HybridRetriever.__new__(HybridRetriever)
+        hybrid.fusion_method = "rrf"
+        hybrid.rrf_k = 60
+
+        merged = hybrid._merge_retrieval_results(
+            {
+                "tag": [
+                    {
+                        "distance": 0.8,
+                        "page": 3,
+                        "text": "tag text",
+                        "chunk_id": 0,
+                        "chunk_type": "content",
+                        "metadata": {
+                            "sha1_name": "alpha-sha",
+                            "chunk_id": 0,
+                            "chunk_type": "content",
+                            "node_type": "child",
+                        },
+                        "matched_child_chunk_ids": [],
+                        "matched_tags": ["国产替代", "科创板"],
+                        "retrieval_sources": ["tag"],
+                        "result_scope": "child",
+                    }
+                ]
+            },
+            top_n=3,
+        )
+
+        self.assertEqual(merged[0]["matched_tags"], ["国产替代", "科创板"])
+
+
+class TagRetrievalTests(unittest.TestCase):
+    def test_tag_retriever_matches_section_and_metadata_tags(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            documents_dir, tag_dir = _write_tag_fixture(Path(tmp_dir))
+            retriever = TagRetriever(tag_db_dir=tag_dir, documents_dir=documents_dir)
+
+            results = retriever.retrieve_by_company_name(
+                company_name="Alpha Corp",
+                query="科创板半导体公司在管理层讨论与分析里关于国产替代的内容",
+                top_n=1,
+                parent_retrieval_mode="block",
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertIn("国产替代", results[0]["matched_tags"])
+            self.assertEqual(results[0]["metadata"]["section_name"], "管理层讨论与分析")
+
+    def test_questions_processor_aggregates_results_by_report(self):
+        processor = QuestionsProcessor()
+        retrieval_results = [
+            {
+                "page": 3,
+                "text": "chunk A",
+                "distance": 0.9,
+                "matched_tags": ["国产替代"],
+                "metadata": {
+                    "sha1_name": "alpha-sha",
+                    "company_name": "Alpha Corp",
+                    "stock_code": "600000",
+                    "report_year": 2024,
+                },
+            },
+            {
+                "page": 4,
+                "text": "chunk B",
+                "distance": 0.7,
+                "matched_tags": ["科创板"],
+                "metadata": {
+                    "sha1_name": "alpha-sha",
+                    "company_name": "Alpha Corp",
+                    "stock_code": "600000",
+                    "report_year": 2024,
+                },
+            },
+        ]
+
+        groups = processor._aggregate_retrieval_results_by_report(retrieval_results)
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["company_name"], "Alpha Corp")
+        self.assertEqual(groups[0]["evidence_count"], 2)
+        self.assertCountEqual(groups[0]["matched_tags"], ["国产替代", "科创板"])
 
 
 if __name__ == "__main__":

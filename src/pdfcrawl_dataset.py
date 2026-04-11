@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List
 
+from src.pdfcrawl_metadata import PdfcrawlMetadataBundle, load_pdfcrawl_metadata, write_jsonl
+
 
 DOCUMENT_MANIFEST_COLUMNS = [
     "doc_id",
@@ -22,6 +24,12 @@ DOCUMENT_MANIFEST_COLUMNS = [
     "major_industry",
     "language",
     "currency",
+    "exchange",
+    "board",
+    "market_type",
+    "industry_l1",
+    "industry_l2",
+    "has_pdfcrawl_metadata",
     "source_manifest",
     "source_file_path",
     "pdf_url",
@@ -64,7 +72,9 @@ def _iter_manifest_rows(
     *,
     currency: str,
     language: str,
+    metadata_bundle: PdfcrawlMetadataBundle,
 ) -> Iterable[Dict[str, str]]:
+    report_summaries = metadata_bundle.report_summaries
     for manifest_path in manifest_paths:
         source_label = manifest_path.parent.name
         inferred_industry = _normalize_industry_label(source_label)
@@ -80,8 +90,9 @@ def _iter_manifest_rows(
                     continue
 
                 doc_id = source_file_path.stem
-                security_code = (row.get("code") or "").strip()
-                company_name = (row.get("company_name") or "").strip()
+                report_summary = report_summaries.get(doc_id, {})
+                security_code = (row.get("code") or report_summary.get("stock_code") or "").strip()
+                company_name = (row.get("company_name") or report_summary.get("company_name") or "").strip()
                 industry_name = (row.get("industry_name") or "").strip() or inferred_industry
 
                 yield {
@@ -97,6 +108,12 @@ def _iter_manifest_rows(
                     "major_industry": industry_name,
                     "language": language,
                     "currency": currency,
+                    "exchange": (report_summary.get("exchange") or "").strip(),
+                    "board": (report_summary.get("board") or "").strip(),
+                    "market_type": (report_summary.get("market_type") or "").strip(),
+                    "industry_l1": (report_summary.get("industry_l1") or industry_name or "").strip(),
+                    "industry_l2": (report_summary.get("industry_l2") or industry_name or "").strip(),
+                    "has_pdfcrawl_metadata": "true" if report_summary.get("has_pdfcrawl_metadata") else "false",
                     "source_manifest": str(manifest_path),
                     "source_file_path": str(source_file_path),
                     "pdf_url": (row.get("pdf_url") or "").strip(),
@@ -128,6 +145,111 @@ def _prune_stale_pdfs(pdf_reports_dir: Path, active_doc_ids: set[str]) -> int:
     return removed
 
 
+def _build_company_master_rows(
+    manifest_rows: List[Dict[str, str]],
+    metadata_bundle: PdfcrawlMetadataBundle,
+) -> List[Dict[str, object]]:
+    company_rows: Dict[str, Dict[str, object]] = {}
+    report_snapshots = metadata_bundle.company_label_snapshots
+
+    for row in manifest_rows:
+        stock_code = str(row.get("security_code") or "").strip()
+        if not stock_code:
+            continue
+        snapshot = report_snapshots.get(row["doc_id"], {})
+        profile = metadata_bundle.company_profiles.get(stock_code, {})
+        existing = company_rows.get(stock_code) or {"stock_code": stock_code}
+        existing.update(
+            {
+                "stock_code": stock_code,
+                "company_name": row.get("company_name"),
+                "company_aliases": row.get("company_aliases", "").split("|") if row.get("company_aliases") else [],
+                "exchange": row.get("exchange") or snapshot.get("exchange"),
+                "board": row.get("board") or snapshot.get("board"),
+                "market_type": row.get("market_type") or snapshot.get("market_type"),
+                "industry_l1": row.get("industry_l1") or snapshot.get("industry_l1"),
+                "industry_l2": row.get("industry_l2") or snapshot.get("industry_l2"),
+                "major_industry": row.get("major_industry"),
+                "language": row.get("language"),
+                "currency": row.get("currency"),
+            }
+        )
+        existing.update(profile)
+        company_rows[stock_code] = existing
+
+    return sorted(company_rows.values(), key=lambda item: str(item.get("stock_code") or ""))
+
+
+def _build_annual_report_rows(
+    manifest_rows: List[Dict[str, str]],
+    metadata_bundle: PdfcrawlMetadataBundle,
+) -> List[Dict[str, object]]:
+    annual_report_rows: List[Dict[str, object]] = []
+    report_snapshots = metadata_bundle.company_label_snapshots
+
+    for row in manifest_rows:
+        snapshot = report_snapshots.get(row["doc_id"], {})
+        annual_report_rows.append(
+            {
+                "doc_id": row["doc_id"],
+                "report_id": row["doc_id"],
+                "stock_code": row.get("security_code"),
+                "company_name": row.get("company_name"),
+                "report_title": row.get("report_title"),
+                "report_date": row.get("report_date"),
+                "report_year": row.get("fiscal_year"),
+                "doc_source_type": row.get("doc_source_type"),
+                "source_manifest": row.get("source_manifest"),
+                "source_file_path": row.get("source_file_path"),
+                "pdf_url": row.get("pdf_url"),
+                "exchange": row.get("exchange") or snapshot.get("exchange"),
+                "board": row.get("board") or snapshot.get("board"),
+                "market_type": row.get("market_type") or snapshot.get("market_type"),
+                "industry_l1": row.get("industry_l1") or snapshot.get("industry_l1"),
+                "industry_l2": row.get("industry_l2") or snapshot.get("industry_l2"),
+                "has_pdfcrawl_metadata": str(row.get("has_pdfcrawl_metadata")).lower() == "true",
+            }
+        )
+
+    return annual_report_rows
+
+
+def _build_report_page_rows(metadata_bundle: PdfcrawlMetadataBundle) -> List[Dict[str, object]]:
+    return [
+        {
+            **record,
+            "page_key": f"{record['report_id']}:{record['page']}",
+        }
+        for record in sorted(
+            metadata_bundle.report_pages,
+            key=lambda item: (str(item.get("report_id") or ""), int(item.get("page") or 0)),
+        )
+    ]
+
+
+def _build_company_label_rows(metadata_bundle: PdfcrawlMetadataBundle) -> List[Dict[str, object]]:
+    return [
+        record
+        for _, record in sorted(
+            metadata_bundle.company_label_snapshots.items(),
+            key=lambda item: str(item[0]),
+        )
+    ]
+
+
+def _write_metadata_store(
+    dataset_dir: Path,
+    manifest_rows: List[Dict[str, str]],
+    metadata_bundle: PdfcrawlMetadataBundle,
+) -> None:
+    metadata_store_dir = dataset_dir / "metadata_store"
+    write_jsonl(metadata_store_dir / "company_master.jsonl", _build_company_master_rows(manifest_rows, metadata_bundle))
+    write_jsonl(metadata_store_dir / "annual_report.jsonl", _build_annual_report_rows(manifest_rows, metadata_bundle))
+    write_jsonl(metadata_store_dir / "report_page.jsonl", _build_report_page_rows(metadata_bundle))
+    write_jsonl(metadata_store_dir / "company_label_snapshot.jsonl", _build_company_label_rows(metadata_bundle))
+    write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", [])
+
+
 def prepare_pdfcrawl_dataset(
     pdfcrawl_root: Path,
     dataset_dir: Path,
@@ -136,6 +258,7 @@ def prepare_pdfcrawl_dataset(
     currency: str = "CNY",
     language: str = "zh",
     write_questions_stub: bool = True,
+    metadata_mode: str = "auto",
 ) -> PreparedDatasetSummary:
     manifest_paths = _discover_manifest_paths(pdfcrawl_root)
     if not manifest_paths:
@@ -148,12 +271,18 @@ def prepare_pdfcrawl_dataset(
     pdf_reports_dir = dataset_dir / "pdf_reports"
     document_manifest_path = dataset_dir / "document_manifest.csv"
     questions_path = dataset_dir / "questions.json"
+    metadata_bundle = load_pdfcrawl_metadata(manifest_paths, metadata_mode=metadata_mode)
 
     manifest_rows: List[Dict[str, str]] = []
     seen_doc_ids: Dict[str, str] = {}
     skipped_rows = 0
 
-    for row in _iter_manifest_rows(manifest_paths, currency=currency, language=language):
+    for row in _iter_manifest_rows(
+        manifest_paths,
+        currency=currency,
+        language=language,
+        metadata_bundle=metadata_bundle,
+    ):
         doc_id = row["doc_id"]
         source_file_path = row["source_file_path"]
         previous_source = seen_doc_ids.get(doc_id)
@@ -173,12 +302,20 @@ def prepare_pdfcrawl_dataset(
         _materialize_pdf(Path(source_file_path), target_pdf_path, link_mode)
 
     _prune_stale_pdfs(pdf_reports_dir, set(seen_doc_ids))
+    if metadata_mode == "required":
+        missing_metadata_doc_ids = sorted(doc_id for doc_id in seen_doc_ids if doc_id not in metadata_bundle.report_summaries)
+        if missing_metadata_doc_ids:
+            raise ValueError(
+                "The following manifest documents are missing matching PDFCrawl metadata.jsonl rows: "
+                + ", ".join(missing_metadata_doc_ids[:10])
+            )
 
     manifest_rows.sort(key=lambda item: item["doc_id"])
     with document_manifest_path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=DOCUMENT_MANIFEST_COLUMNS)
         writer.writeheader()
         writer.writerows(manifest_rows)
+    _write_metadata_store(dataset_dir, manifest_rows, metadata_bundle)
 
     if write_questions_stub and not questions_path.exists():
         questions_path.write_text("[]\n", encoding="utf-8")
@@ -190,6 +327,10 @@ def prepare_pdfcrawl_dataset(
         "link_mode": link_mode,
         "currency": currency,
         "language": language,
+        "metadata_mode": metadata_mode,
+        "metadata_files": [str(path) for path in metadata_bundle.metadata_paths],
+        "company_label_files": [str(path) for path in metadata_bundle.company_label_paths],
+        "company_profile_files": [str(path) for path in metadata_bundle.company_profile_paths],
     }
     (dataset_dir / "dataset_build_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n",

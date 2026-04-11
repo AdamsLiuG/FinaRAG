@@ -3,15 +3,16 @@ import logging
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import faiss
 import numpy as np
 
+from src.document_store import get_document_store
 from src.embedding_backend import EmbeddingBackend, BGEM3SparseEmbeddingBackend
 from src.retrieval_filters import RetrievalFilters, apply_retrieval_filters, build_result_metadata
-from src.reranking import LLMReranker, FlagEmbeddingReranker
-from src.text_normalization import tokenize_for_bm25
+from src.reranking import CascadeReranker, LLMReranker, FlagEmbeddingReranker, VLLMApiReranker
+from src.text_normalization import normalize_text, tokenize_for_bm25
 
 _log = logging.getLogger(__name__)
 _VALID_PARENT_RETRIEVAL_MODES = {"child", "page", "block"}
@@ -70,6 +71,50 @@ def _dedupe_preserve_order(values: List) -> List:
     return deduped
 
 
+def _query_tag_terms(query: str, filters: Optional[RetrievalFilters]) -> List[str]:
+    query_terms = tokenize_for_bm25(query)
+    extra_terms: List[str] = []
+    if filters is not None:
+        scalar_fields = (
+            filters.exchange,
+            filters.board,
+            filters.market_type,
+            filters.industry_l1,
+            filters.industry_l2,
+            filters.section_name,
+            filters.chain_position_major,
+        )
+        list_fields = (
+            filters.business_tags,
+            filters.strategy_tags,
+            filters.factor_tags,
+            filters.chain_position_minor,
+            filters.listing_tags,
+            filters.ownership_tags,
+            filters.status_tags,
+            filters.style_tags,
+        )
+        for value in scalar_fields:
+            if value:
+                extra_terms.extend(tokenize_for_bm25(str(value)))
+        for values in list_fields:
+            for value in values or []:
+                extra_terms.extend(tokenize_for_bm25(str(value)))
+    return _dedupe_preserve_order(query_terms + extra_terms)
+
+
+def _matched_tag_values(raw_tag_values: List[str], query: str, query_terms: List[str]) -> List[str]:
+    query_normalized = normalize_text(query)
+    matched: List[str] = []
+    for value in raw_tag_values:
+        value_normalized = normalize_text(str(value))
+        if not value_normalized:
+            continue
+        if value_normalized in query_normalized or any(term and term in value_normalized for term in query_terms):
+            matched.append(str(value))
+    return _dedupe_preserve_order(matched)
+
+
 def _build_retrieval_result(
     document_meta: Dict,
     chunk: Dict,
@@ -79,6 +124,7 @@ def _build_retrieval_result(
     source_name: str,
     *,
     result_scope: Optional[str] = None,
+    matched_tags: Optional[List[str]] = None,
 ) -> Dict:
     metadata = build_result_metadata(document_meta, chunk)
     scope = result_scope or ("parent" if metadata.get("node_type") == "parent" else "child")
@@ -93,37 +139,18 @@ def _build_retrieval_result(
         "table_id": metadata.get("table_id"),
         "retrieval_sources": [source_name],
         "matched_child_chunk_ids": list(chunk.get("matched_child_chunk_ids") or []),
+        "matched_tags": list(matched_tags or []),
         "result_scope": scope,
     }
 
 
 class _DocumentBackedRetriever:
     def __init__(self, documents_dir: Path):
-        self.documents_dir = documents_dir
+        self.documents_dir = Path(documents_dir)
         self.documents = self._load_documents()
 
-    def _load_documents(self) -> List[Dict]:
-        loaded_documents = []
-        for document_path in self.documents_dir.glob("*.json"):
-            try:
-                with open(document_path, "r", encoding="utf-8") as f:
-                    document = json.load(f)
-            except Exception as e:
-                _log.error(f"Error loading JSON from {document_path.name}: {e}")
-                continue
-
-            if not (isinstance(document, dict) and "metainfo" in document and "content" in document):
-                _log.warning(f"Skipping {document_path.name}: does not match the expected schema.")
-                continue
-
-            loaded_documents.append(
-                {
-                    "name": document_path.stem,
-                    "path": document_path,
-                    "document": document,
-                }
-            )
-        return loaded_documents
+    def _load_documents(self) -> Tuple[Dict, ...]:
+        return get_document_store(self.documents_dir).documents
 
     def _get_document_by_company_name(self, company_name: str) -> Dict:
         for entry in self.documents:
@@ -177,11 +204,19 @@ class _DocumentBackedRetriever:
     def _child_chunk_id(chunk: Dict) -> Optional[int]:
         return chunk.get("chunk_id", chunk.get("id"))
 
-    def _build_child_results(self, document: Dict, ranked_hits: List[Tuple[float, int]], source_name: str, top_n: int) -> List[Dict]:
+    def _build_child_results(
+        self,
+        document: Dict,
+        ranked_hits: List[Tuple[float, int]],
+        source_name: str,
+        top_n: int,
+        match_annotations: Optional[Dict[int, Dict]] = None,
+    ) -> List[Dict]:
         chunks = document.get("content", {}).get("chunks", [])
         results = []
         for score, index in ranked_hits[:top_n]:
             chunk = chunks[index]
+            annotation = (match_annotations or {}).get(index, {})
             results.append(
                 _build_retrieval_result(
                     document["metainfo"],
@@ -191,11 +226,19 @@ class _DocumentBackedRetriever:
                     score,
                     source_name,
                     result_scope="child",
+                    matched_tags=annotation.get("matched_tags"),
                 )
             )
         return results
 
-    def _build_page_results(self, document: Dict, ranked_hits: List[Tuple[float, int]], source_name: str, top_n: int) -> List[Dict]:
+    def _build_page_results(
+        self,
+        document: Dict,
+        ranked_hits: List[Tuple[float, int]],
+        source_name: str,
+        top_n: int,
+        match_annotations: Optional[Dict[int, Dict]] = None,
+    ) -> List[Dict]:
         chunks = document.get("content", {}).get("chunks", [])
         pages = self._page_lookup(document)
         results = []
@@ -203,6 +246,7 @@ class _DocumentBackedRetriever:
 
         for score, index in ranked_hits:
             chunk = chunks[index]
+            annotation = (match_annotations or {}).get(index, {})
             parent_page = pages.get(chunk["page"])
             if parent_page is None:
                 raise ValueError(f"Missing page {chunk['page']} in chunked report for source {document['metainfo'].get('sha1_name')}.")
@@ -219,6 +263,7 @@ class _DocumentBackedRetriever:
                     score,
                     source_name,
                     result_scope="page",
+                    matched_tags=annotation.get("matched_tags"),
                 )
             )
             if len(results) >= top_n:
@@ -233,6 +278,7 @@ class _DocumentBackedRetriever:
         ranked_hits: List[Tuple[float, int]],
         source_name: str,
         top_n: int,
+        match_annotations: Optional[Dict[int, Dict]] = None,
     ) -> List[Dict]:
         chunks = document.get("content", {}).get("chunks", [])
         if any("parent_chunk_id" not in chunk for chunk in chunks):
@@ -247,6 +293,7 @@ class _DocumentBackedRetriever:
 
         for score, index in ranked_hits:
             child_chunk = chunks[index]
+            annotation = (match_annotations or {}).get(index, {})
             parent_chunk_id = child_chunk.get("parent_chunk_id")
             parent_chunk = parent_lookup.get(parent_chunk_id)
             if parent_chunk is None:
@@ -272,6 +319,7 @@ class _DocumentBackedRetriever:
                     score,
                     source_name,
                     result_scope="parent",
+                    matched_tags=annotation.get("matched_tags"),
                 )
                 ordered_parent_ids.append(parent_chunk_id)
                 continue
@@ -284,6 +332,9 @@ class _DocumentBackedRetriever:
 
             if score > existing["distance"]:
                 existing["distance"] = round(float(score), 4)
+            existing["matched_tags"] = _dedupe_preserve_order(
+                list(existing.get("matched_tags", [])) + list(annotation.get("matched_tags", []))
+            )
 
         return [aggregated[parent_chunk_id] for parent_chunk_id in ordered_parent_ids]
 
@@ -297,15 +348,16 @@ class _DocumentBackedRetriever:
         top_n: int,
         parent_retrieval_mode: Optional[str],
         filters: Optional[RetrievalFilters],
+        match_annotations: Optional[Dict[int, Dict]] = None,
     ) -> List[Dict]:
         mode = _normalize_parent_retrieval_mode(parent_retrieval_mode)
 
         if mode == "page":
-            results = self._build_page_results(document, ranked_hits, source_name, top_n)
+            results = self._build_page_results(document, ranked_hits, source_name, top_n, match_annotations)
         elif mode == "block":
-            results = self._build_block_results(document, company_name, ranked_hits, source_name, top_n)
+            results = self._build_block_results(document, company_name, ranked_hits, source_name, top_n, match_annotations)
         else:
-            results = self._build_child_results(document, ranked_hits, source_name, top_n)
+            results = self._build_child_results(document, ranked_hits, source_name, top_n, match_annotations)
 
         return apply_retrieval_filters(results, filters)
 
@@ -400,6 +452,78 @@ class BGEM3SparseRetriever(_DocumentBackedRetriever):
                     top_n=max(top_n, 3),
                     parent_retrieval_mode=parent_retrieval_mode,
                     filters=filters,
+                )
+            )
+
+        aggregated_results.sort(key=lambda item: item.get("ranking_score", item.get("distance", 0.0)), reverse=True)
+        return aggregated_results[:top_n]
+
+
+class TagRetriever(_DocumentBackedRetriever):
+    def __init__(self, tag_db_dir: Path, documents_dir: Path):
+        self.tag_db_dir = tag_db_dir
+        super().__init__(documents_dir)
+
+    def retrieve_by_company_name(
+        self,
+        company_name: str,
+        query: str,
+        top_n: int = 3,
+        parent_retrieval_mode: str = "child",
+        filters: Optional[RetrievalFilters] = None,
+        candidate_doc_ids: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        aggregated_results: List[Dict] = []
+        query_terms = _query_tag_terms(query, filters)
+        if not query_terms:
+            return []
+
+        for document_entry in self._candidate_document_entries(company_name, candidate_doc_ids):
+            document = document_entry["document"]
+            tag_path = self.tag_db_dir / f"{document['metainfo']['sha1_name']}.json"
+            if not tag_path.exists():
+                continue
+
+            with open(tag_path, "r", encoding="utf-8") as file:
+                tag_index = json.load(file)
+
+            chunk_terms = tag_index.get("chunk_terms") or []
+            chunk_tag_values = tag_index.get("chunk_tag_values") or []
+            scored_hits: List[Tuple[float, int]] = []
+            match_annotations: Dict[int, Dict] = {}
+
+            for index, terms in enumerate(chunk_terms):
+                term_set = {normalize_text(str(term)) for term in terms if term}
+                overlap = [
+                    term
+                    for term in query_terms
+                    if any(
+                        normalize_text(str(term)) in candidate or candidate in normalize_text(str(term))
+                        for candidate in term_set
+                    )
+                ]
+                if not overlap:
+                    continue
+                raw_tag_values = chunk_tag_values[index] if index < len(chunk_tag_values) else []
+                matched_tags = _matched_tag_values(raw_tag_values, query, query_terms)
+                score = round(len(set(overlap)) / max(1, len(term_set)), 4)
+                scored_hits.append((score, index))
+                match_annotations[index] = {"matched_tags": matched_tags}
+
+            scored_hits.sort(key=lambda item: item[0], reverse=True)
+            if not scored_hits:
+                continue
+
+            aggregated_results.extend(
+                self._finalize_results(
+                    company_name=company_name,
+                    document=document,
+                    ranked_hits=scored_hits,
+                    source_name="tag",
+                    top_n=max(top_n, 3),
+                    parent_retrieval_mode=parent_retrieval_mode,
+                    filters=filters,
+                    match_annotations=match_annotations,
                 )
             )
 
@@ -584,23 +708,48 @@ class HybridRetriever:
         vector_db_dir: Optional[Path] = None,
         bm25_db_dir: Optional[Path] = None,
         sparse_db_dir: Optional[Path] = None,
+        tag_db_dir: Optional[Path] = None,
         use_vector_dbs: bool = True,
         use_bm25_db: bool = True,
         use_sparse_lexical_db: bool = False,
+        use_tag_db: bool = False,
         vector_search_k: Optional[int] = None,
         vector_ivf_nprobe: int = 8,
         vector_hnsw_ef_search: int = 64,
         provider: str = "qwen",
         model: str = None,
+        reranking_strategy: str = "single",
+        cascade_candidate_pool_cap: int = 50,
+        colbert_top_n: int = 10,
+        colbert_model: Optional[str] = None,
+        colbert_device: Optional[str] = None,
+        colbert_batch_size: int = 16,
+        colbert_query_max_length: int = 128,
+        colbert_passage_max_length: int = 512,
+        final_reranking_backend: Optional[str] = None,
+        final_reranking_model: Optional[str] = None,
     ):
-        if not use_vector_dbs and not use_bm25_db and not use_sparse_lexical_db:
+        if not use_vector_dbs and not use_bm25_db and not use_sparse_lexical_db and not use_tag_db:
             raise ValueError("At least one retrieval backend must be enabled.")
 
         self.use_vector_dbs = use_vector_dbs
         self.use_bm25_db = use_bm25_db
         self.use_sparse_lexical_db = use_sparse_lexical_db
+        self.use_tag_db = use_tag_db
         self.fusion_method = os.getenv("HYBRID_RETRIEVAL_FUSION", "rrf").strip().lower()
         self.rrf_k = int(os.getenv("HYBRID_RETRIEVAL_RRF_K", "60"))
+        self.reranking_strategy = (reranking_strategy or "single").strip().lower()
+        if self.reranking_strategy not in {"single", "cascade"}:
+            raise ValueError("reranking_strategy must be either 'single' or 'cascade'.")
+        self.cascade_candidate_pool_cap = max(1, int(cascade_candidate_pool_cap))
+        self.colbert_top_n = max(1, int(colbert_top_n))
+        default_backend = os.getenv("RERANKING_BACKEND", "llm_prompt").lower()
+        self.final_reranking_backend = (final_reranking_backend or default_backend).strip().lower()
+        if self.final_reranking_backend not in {"flag_embedding", "llm_prompt", "vllm_api"}:
+            raise ValueError(
+                "final_reranking_backend must be either 'flag_embedding', 'llm_prompt', or 'vllm_api'."
+            )
+        self.final_reranking_model = final_reranking_model
         self.vector_retriever = (
             VectorRetriever(
                 vector_db_dir,
@@ -614,12 +763,63 @@ class HybridRetriever:
         )
         self.bm25_retriever = BM25Retriever(bm25_db_dir, documents_dir) if use_bm25_db else None
         self.sparse_retriever = BGEM3SparseRetriever(sparse_db_dir, documents_dir) if use_sparse_lexical_db else None
-        backend = os.getenv("RERANKING_BACKEND", "llm_prompt").lower()
-        self.reranker = (
-            FlagEmbeddingReranker()
-            if backend == "flag_embedding"
-            else LLMReranker(provider=provider, model=model)
+        self.tag_retriever = TagRetriever(tag_db_dir, documents_dir) if use_tag_db and tag_db_dir else None
+        self.last_rerank_debug: Dict[str, object] = {}
+        self.reranker = self._build_reranker(
+            provider=provider,
+            model=model,
+            colbert_model=colbert_model,
+            colbert_device=colbert_device,
+            colbert_batch_size=colbert_batch_size,
+            colbert_query_max_length=colbert_query_max_length,
+            colbert_passage_max_length=colbert_passage_max_length,
         )
+
+    def _build_final_reranker(self, backend: str, provider: str, model: Optional[str]):
+        if backend == "flag_embedding":
+            return FlagEmbeddingReranker(model=model)
+        if backend == "llm_prompt":
+            return LLMReranker(provider=provider, model=model)
+        if backend == "vllm_api":
+            return VLLMApiReranker(model=model)
+        raise ValueError(f"Unsupported final reranking backend: {backend}")
+
+    def _build_reranker(
+        self,
+        *,
+        provider: str,
+        model: Optional[str],
+        colbert_model: Optional[str],
+        colbert_device: Optional[str],
+        colbert_batch_size: int,
+        colbert_query_max_length: int,
+        colbert_passage_max_length: int,
+    ):
+        if self.reranking_strategy == "cascade":
+            resolved_colbert_model = (
+                colbert_model
+                or os.getenv("COLBERT_MODEL")
+                or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
+            )
+            final_model = self.final_reranking_model or model
+            return CascadeReranker(
+                colbert_model=resolved_colbert_model,
+                colbert_device=colbert_device,
+                colbert_batch_size=colbert_batch_size,
+                colbert_query_max_length=colbert_query_max_length,
+                colbert_passage_max_length=colbert_passage_max_length,
+                cascade_candidate_pool_cap=self.cascade_candidate_pool_cap,
+                colbert_top_n=self.colbert_top_n,
+                final_reranker=self._build_final_reranker(self.final_reranking_backend, provider, final_model),
+                final_reranking_backend=self.final_reranking_backend,
+            )
+
+        backend = os.getenv("RERANKING_BACKEND", "llm_prompt").lower()
+        if backend == "flag_embedding":
+            return FlagEmbeddingReranker()
+        if backend == "vllm_api":
+            return VLLMApiReranker()
+        return LLMReranker(provider=provider, model=model)
 
     def _merge_retrieval_results(
         self,
@@ -630,6 +830,7 @@ class HybridRetriever:
             "vector": "vector_score",
             "bm25": "bm25_score",
             "sparse": "sparse_score",
+            "tag": "tag_score",
         }
         candidates: Dict[Tuple, Dict] = {}
         active_backends = max(1, len(retrieval_results_by_source))
@@ -647,9 +848,11 @@ class HybridRetriever:
                         "vector_score": 0.0,
                         "bm25_score": 0.0,
                         "sparse_score": 0.0,
+                        "tag_score": 0.0,
                         "rrf_score": 0.0,
                         "retrieval_sources": list(result.get("retrieval_sources", [])),
                         "matched_child_chunk_ids": list(result.get("matched_child_chunk_ids", [])),
+                        "matched_tags": list(result.get("matched_tags", [])),
                     }
                     existing = candidates[key]
 
@@ -661,10 +864,13 @@ class HybridRetriever:
                 existing["matched_child_chunk_ids"] = _dedupe_preserve_order(
                     list(existing.get("matched_child_chunk_ids", [])) + list(result.get("matched_child_chunk_ids", []))
                 )
+                existing["matched_tags"] = _dedupe_preserve_order(
+                    list(existing.get("matched_tags", [])) + list(result.get("matched_tags", []))
+                )
 
         for item in candidates.values():
             average_score = (
-                item["vector_score"] + item["bm25_score"] + item["sparse_score"]
+                item["vector_score"] + item["bm25_score"] + item["sparse_score"] + item["tag_score"]
             ) / active_backends
             item["average_score"] = round(float(average_score), 4)
 
@@ -686,10 +892,15 @@ class HybridRetriever:
         parent_retrieval_mode: str = "child",
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
+        backend_scope: Literal["all", "vector_only"] = "all",
     ) -> List[Dict]:
+        if backend_scope not in {"all", "vector_only"}:
+            raise ValueError("backend_scope must be either 'all' or 'vector_only'.")
+
         vector_results: List[Dict] = []
         bm25_results: List[Dict] = []
         sparse_results: List[Dict] = []
+        tag_results: List[Dict] = []
 
         if self.vector_retriever is not None:
             vector_results = self.vector_retriever.retrieve_by_company_name(
@@ -701,7 +912,7 @@ class HybridRetriever:
                 candidate_doc_ids=candidate_doc_ids,
             )
 
-        if self.bm25_retriever is not None:
+        if backend_scope == "all" and self.bm25_retriever is not None:
             bm25_results = self.bm25_retriever.retrieve_by_company_name(
                 company_name=company_name,
                 query=query,
@@ -711,8 +922,18 @@ class HybridRetriever:
                 candidate_doc_ids=candidate_doc_ids,
             )
 
-        if self.sparse_retriever is not None:
+        if backend_scope == "all" and self.sparse_retriever is not None:
             sparse_results = self.sparse_retriever.retrieve_by_company_name(
+                company_name=company_name,
+                query=query,
+                top_n=top_n,
+                parent_retrieval_mode=parent_retrieval_mode,
+                filters=filters,
+                candidate_doc_ids=candidate_doc_ids,
+            )
+
+        if backend_scope == "all" and self.tag_retriever is not None:
+            tag_results = self.tag_retriever.retrieve_by_company_name(
                 company_name=company_name,
                 query=query,
                 top_n=top_n,
@@ -728,6 +949,8 @@ class HybridRetriever:
             active_results["bm25"] = bm25_results
         if sparse_results:
             active_results["sparse"] = sparse_results
+        if tag_results:
+            active_results["tag"] = tag_results
 
         if len(active_results) == 1:
             return next(iter(active_results.values()))[:top_n]
@@ -748,14 +971,45 @@ class HybridRetriever:
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
+        retrieval_top_n = llm_reranking_sample_size
+        if self.reranking_strategy == "cascade":
+            retrieval_top_n = max(retrieval_top_n, self.cascade_candidate_pool_cap)
+
         candidate_results = self.retrieve_candidates_by_company_name(
             company_name=company_name,
             query=query,
-            top_n=llm_reranking_sample_size,
+            top_n=retrieval_top_n,
             parent_retrieval_mode=parent_retrieval_mode,
             filters=filters,
             candidate_doc_ids=candidate_doc_ids,
         )
+
+        reranked_results = self.rerank_candidates(
+            query=query,
+            candidate_results=candidate_results,
+            documents_batch_size=documents_batch_size,
+            top_n=top_n,
+            llm_weight=llm_weight,
+        )
+        return reranked_results
+
+    def rerank_candidates(
+        self,
+        query: str,
+        candidate_results: List[Dict],
+        documents_batch_size: int = 2,
+        top_n: int = 6,
+        llm_weight: float = 0.7,
+    ) -> List[Dict]:
+        if not candidate_results:
+            self.last_rerank_debug = {
+                "reranking_strategy": self.reranking_strategy,
+                "initial_candidate_pool_size": 0,
+                "colbert_candidate_pool_size": None,
+                "colbert_top_n": self.colbert_top_n if self.reranking_strategy == "cascade" else None,
+                "final_reranking_backend": self.final_reranking_backend if self.reranking_strategy == "cascade" else os.getenv("RERANKING_BACKEND", "llm_prompt").lower(),
+            }
+            return []
 
         reranked_results = self.reranker.rerank_documents(
             query=query,
@@ -763,5 +1017,14 @@ class HybridRetriever:
             documents_batch_size=documents_batch_size,
             llm_weight=llm_weight,
         )
-
+        self.last_rerank_debug = dict(getattr(self.reranker, "last_debug", {}) or {})
+        if not self.last_rerank_debug:
+            self.last_rerank_debug = {
+                "reranking_strategy": self.reranking_strategy,
+                "initial_candidate_pool_size": len(candidate_results),
+                "colbert_candidate_pool_size": None,
+                "colbert_top_n": self.colbert_top_n if self.reranking_strategy == "cascade" else None,
+                "final_reranking_backend": self.final_reranking_backend if self.reranking_strategy == "cascade" else os.getenv("RERANKING_BACKEND", "llm_prompt").lower(),
+            }
         return reranked_results[:top_n]
+    

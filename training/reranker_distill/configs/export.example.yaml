@@ -1,0 +1,3 @@
+export_input_path: training/reranker_distill/processed/pointwise_train_raw.jsonl
+export_output_path: training/reranker_distill/processed/pointwise_train.jsonl
+export_stats_output_path: training/reranker_distill/manifests/export_train_stats.json

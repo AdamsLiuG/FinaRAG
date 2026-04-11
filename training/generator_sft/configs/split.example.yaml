@@ -1,0 +1,14 @@
+input_path: training/generator_sft/processed/all.chat.jsonl
+train_output_path: training/generator_sft/processed/train.chat.jsonl
+dev_output_path: training/generator_sft/processed/dev.chat.jsonl
+test_output_path: training/generator_sft/processed/test.chat.jsonl
+stats_output_path: training/generator_sft/manifests/split_stats.json
+dev_ratio: 0.1
+test_ratio: 0.1
+split_salt: finarag_generator_v1
+group_fields:
+  - doc_ids
+  - company_name
+  - query_id
+llamafactory_dataset_dir: training/generator_sft/llamafactory_data
+llamafactory_dataset_prefix: finarag_generator

@@ -3,7 +3,7 @@ import json
 import ipaddress
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-from typing import Union, List, Dict, Type, Optional, Literal
+from typing import Union, List, Dict, Type, Optional
 import tiktoken
 import src.prompts as prompts
 import requests
@@ -27,12 +27,29 @@ class BaseCompatibleProcessor:
     def __init__(self, provider: str = "qwen"):
         load_dotenv()
         self.provider = provider.lower()
+        default_wire_api = "responses" if self.provider == "sub2api" else "chat_completions"
         self.api_key = self._get_env_value(f"{self.provider.upper()}_API_KEY", "LLM_API_KEY")
         self.base_url = self._get_env_value(f"{self.provider.upper()}_BASE_URL", "LLM_BASE_URL")
         self.default_model = self._get_env_value(
             f"{self.provider.upper()}_MODEL",
             "LLM_MODEL",
             default="Qwen3.5-35B-A3B-AWQ-4bit"
+        )
+        self.wire_api = self._normalize_wire_api(
+            self._get_env_value(
+                f"{self.provider.upper()}_WIRE_API",
+                "LLM_WIRE_API",
+                default=default_wire_api,
+            )
+        )
+        self.reasoning_effort = self._get_env_value(
+            f"{self.provider.upper()}_REASONING_EFFORT",
+            "LLM_REASONING_EFFORT",
+        )
+        self.disable_response_storage = _env_flag(
+            f"{self.provider.upper()}_DISABLE_RESPONSE_STORAGE",
+            "LLM_DISABLE_RESPONSE_STORAGE",
+            default=False,
         )
         max_tokens = self._get_env_value(
             f"{self.provider.upper()}_MAX_TOKENS",
@@ -58,6 +75,18 @@ class BaseCompatibleProcessor:
                 return value
         return default
 
+    @staticmethod
+    def _normalize_wire_api(value: Optional[str]) -> str:
+        normalized = (value or "chat_completions").strip().lower()
+        normalized = normalized.replace(".", "_").replace("/", "_")
+        alias_map = {
+            "chat": "chat_completions",
+            "chat_completions": "chat_completions",
+            "chatcompletions": "chat_completions",
+            "responses": "responses",
+        }
+        return alias_map.get(normalized, normalized)
+
     def _get_request_url(self) -> str:
         if not self.base_url:
             raise ValueError(
@@ -66,6 +95,15 @@ class BaseCompatibleProcessor:
             )
 
         normalized_base = self.base_url.rstrip("/")
+        if self.wire_api == "responses":
+            if normalized_base.endswith("/chat/completions"):
+                normalized_base = normalized_base[: -len("/chat/completions")]
+            if normalized_base.endswith("/responses"):
+                return normalized_base
+            return f"{normalized_base}/responses"
+
+        if normalized_base.endswith("/responses"):
+            normalized_base = normalized_base[: -len("/responses")]
         if normalized_base.endswith("/chat/completions"):
             return normalized_base
         return f"{normalized_base}/chat/completions"
@@ -141,10 +179,139 @@ class BaseCompatibleProcessor:
             return reparsed
         return json.dumps(reparsed, ensure_ascii=False)
 
+    def _build_chat_completions_payload(
+        self,
+        *,
+        model: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        seed,
+        system_content: str,
+        human_content: str,
+    ) -> Dict:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": human_content},
+            ],
+        }
+        if seed is not None:
+            payload["seed"] = seed
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = int(max_tokens)
+        if self.use_stream:
+            payload["stream"] = True
+        if self.provider == "qwen":
+            if self._is_dashscope_compatible():
+                payload["enable_thinking"] = self.enable_thinking
+            elif not self.enable_thinking:
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+        return payload
+
+    def _build_responses_payload(
+        self,
+        *,
+        model: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        seed,
+        system_content: str,
+        human_content: str,
+    ) -> Dict:
+        payload = {
+            "model": model,
+            "input": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": human_content},
+            ],
+        }
+        if seed is not None:
+            payload["seed"] = seed
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_output_tokens"] = int(max_tokens)
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+        if self.disable_response_storage:
+            payload["store"] = False
+        return payload
+
+    def _build_payload(
+        self,
+        *,
+        model: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        seed,
+        system_content: str,
+        human_content: str,
+    ) -> Dict:
+        if self.wire_api == "responses":
+            return self._build_responses_payload(
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                seed=seed,
+                system_content=system_content,
+                human_content=human_content,
+            )
+        return self._build_chat_completions_payload(
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+            system_content=system_content,
+            human_content=human_content,
+        )
+
+    @staticmethod
+    def _extract_responses_content(response_json: Dict) -> str:
+        output_text = response_json.get("output_text")
+        if isinstance(output_text, str) and output_text:
+            return output_text
+
+        chunks: List[str] = []
+        for item in response_json.get("output") or []:
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("type") == "message":
+                content_items = item.get("content") or []
+                for part in content_items:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if isinstance(text, str) and text:
+                            chunks.append(text)
+                            continue
+                        content = part.get("content")
+                        if isinstance(content, str) and content:
+                            chunks.append(content)
+                    elif part:
+                        chunks.append(str(part))
+                continue
+
+            text = item.get("text")
+            if isinstance(text, str) and text:
+                chunks.append(text)
+                continue
+
+            content = item.get("content")
+            if isinstance(content, str) and content:
+                chunks.append(content)
+
+        if chunks:
+            return "".join(chunks)
+        raise ValueError(f"Provider returned no text output. Response: {json.dumps(response_json)[:1000]}")
+
     def send_message(
         self,
         model=None,
         temperature: float = 0.5,
+        max_tokens: Optional[int] = None,
         seed=None,
         system_content='You are a helpful assistant.',
         human_content='Hello!',
@@ -156,26 +323,15 @@ class BaseCompatibleProcessor:
         if is_structured and response_format is not None:
             system_content = self._augment_system_prompt_with_schema(system_content, response_format)
 
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": human_content}
-            ]
-        }
-        if seed is not None:
-            payload["seed"] = seed
-        if temperature is not None:
-            payload["temperature"] = temperature
-        if self.max_tokens is not None:
-            payload["max_tokens"] = self.max_tokens
-        if self.provider == "qwen":
-            if self.use_stream:
-                payload["stream"] = True
-            if self._is_dashscope_compatible():
-                payload["enable_thinking"] = self.enable_thinking
-            elif not self.enable_thinking:
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
+        effective_max_tokens = self.max_tokens if max_tokens is None else max_tokens
+        payload = self._build_payload(
+            model=model,
+            temperature=temperature,
+            max_tokens=effective_max_tokens,
+            seed=seed,
+            system_content=system_content,
+            human_content=human_content,
+        )
 
         headers = {
             "Content-Type": "application/json"
@@ -188,7 +344,7 @@ class BaseCompatibleProcessor:
             "headers": headers,
             "json": payload,
             "timeout": 300,
-            "stream": bool(payload.get("stream")),
+            "stream": bool(payload.get("stream")) if self.wire_api == "chat_completions" else False,
         }
 
         if self._should_bypass_env_proxy():
@@ -203,37 +359,46 @@ class BaseCompatibleProcessor:
                 response=response
             )
 
-        if payload.get("stream"):
+        if self.wire_api == "chat_completions" and payload.get("stream"):
             content = self._read_streaming_content(response, model)
         else:
             completion = response.json()
-            choices = completion.get("choices") or []
-            if not choices:
-                raise ValueError(f"Provider returned no choices. Response: {json.dumps(completion)[:1000]}")
-
-            message_payload = choices[0].get("message") or {}
-            message = message_payload.get("content")
-            if isinstance(message, list):
-                content = "".join(
-                    part.get("text", "") if isinstance(part, dict) else str(part)
-                    for part in message
-                )
+            if self.wire_api == "responses":
+                content = self._extract_responses_content(completion)
+                usage = completion.get("usage", {})
+                self.response_data = {
+                    "model": completion.get("model", model),
+                    "input_tokens": usage.get("input_tokens", usage.get("prompt_tokens")),
+                    "output_tokens": usage.get("output_tokens", usage.get("completion_tokens")),
+                }
             else:
-                content = message
+                choices = completion.get("choices") or []
+                if not choices:
+                    raise ValueError(f"Provider returned no choices. Response: {json.dumps(completion)[:1000]}")
 
-            if not content:
-                content = (
-                    message_payload.get("reasoning")
-                    or message_payload.get("reasoning_content")
-                    or ""
-                )
+                message_payload = choices[0].get("message") or {}
+                message = message_payload.get("content")
+                if isinstance(message, list):
+                    content = "".join(
+                        part.get("text", "") if isinstance(part, dict) else str(part)
+                        for part in message
+                    )
+                else:
+                    content = message
 
-            usage = completion.get("usage", {})
-            self.response_data = {
-                "model": completion.get("model", model),
-                "input_tokens": usage.get("prompt_tokens"),
-                "output_tokens": usage.get("completion_tokens"),
-            }
+                if not content:
+                    content = (
+                        message_payload.get("reasoning")
+                        or message_payload.get("reasoning_content")
+                        or ""
+                    )
+
+                usage = completion.get("usage", {})
+                self.response_data = {
+                    "model": completion.get("model", model),
+                    "input_tokens": usage.get("prompt_tokens"),
+                    "output_tokens": usage.get("completion_tokens"),
+                }
             print(self.response_data)
 
         if is_structured and response_format is not None:
@@ -247,19 +412,11 @@ class BaseCompatibleProcessor:
         response_model = model
         usage = {}
 
-        for raw_line in response.iter_lines(decode_unicode=True):
-            if not raw_line:
-                continue
-
-            line = raw_line.strip()
-            if not line.startswith("data:"):
-                continue
-
-            data = line[5:].strip()
+        for data in self._iter_sse_event_data(response):
             if data == "[DONE]":
                 break
 
-            chunk = json.loads(data)
+            chunk = self._parse_streaming_chunk(data)
             response_model = chunk.get("model", response_model)
             usage = chunk.get("usage") or usage
             choices = chunk.get("choices") or []
@@ -267,11 +424,12 @@ class BaseCompatibleProcessor:
                 continue
 
             delta = choices[0].get("delta") or {}
-            collected_content.append(delta.get("content") or "")
+            collected_content.append(self._stringify_stream_delta_field(delta.get("content")))
             collected_reasoning.append(
-                delta.get("reasoning_content")
-                or delta.get("reasoning")
-                or ""
+                self._stringify_stream_delta_field(
+                    delta.get("reasoning_content")
+                    or delta.get("reasoning")
+                )
             )
 
         final_content = "".join(collected_content).strip() or "".join(collected_reasoning).strip()
@@ -285,6 +443,77 @@ class BaseCompatibleProcessor:
         }
         print(self.response_data)
         return final_content
+
+    @staticmethod
+    def _parse_streaming_chunk(data: str) -> Dict:
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            repaired = repair_json(data)
+            return json.loads(repaired)
+
+    @staticmethod
+    def _iter_sse_event_data(response: requests.Response):
+        data_lines: List[str] = []
+
+        for raw_line in response.iter_lines(decode_unicode=False):
+            if raw_line is None:
+                continue
+
+            if isinstance(raw_line, bytes):
+                line = raw_line.decode("utf-8", errors="replace").rstrip("\r")
+            else:
+                line = raw_line.rstrip("\r")
+            stripped = line.strip()
+            if not stripped:
+                if data_lines:
+                    yield "\n".join(data_lines)
+                    data_lines = []
+                continue
+
+            if stripped.startswith(":"):
+                continue
+
+            if stripped.startswith("data:"):
+                data_lines.append(stripped[5:].lstrip())
+                continue
+
+            if data_lines and not any(stripped.startswith(prefix) for prefix in ("event:", "id:", "retry:")):
+                # Some compatible proxies pretty-print one JSON event across multiple lines.
+                data_lines.append(stripped)
+
+        if data_lines:
+            yield "\n".join(data_lines)
+
+    @staticmethod
+    def _stringify_stream_delta_field(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            text = value.get("text")
+            if isinstance(text, str):
+                return text
+            content = value.get("content")
+            if isinstance(content, str):
+                return content
+            return ""
+        if isinstance(value, list):
+            parts: List[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+                        continue
+                    content = item.get("content")
+                    if isinstance(content, str):
+                        parts.append(content)
+                elif item is not None:
+                    parts.append(str(item))
+            return "".join(parts)
+        return str(value)
 
     @staticmethod
     def count_tokens(string, encoding_name="o200k_base"):
@@ -581,18 +810,14 @@ class BaseGeminiProcessor:
 
 
 class APIProcessor:
-    def __init__(self, provider: Literal["openai", "ibm", "gemini", "qwen"] ="qwen"):
+    def __init__(self, provider: str = "qwen"):
         self.provider = provider.lower()
-        if self.provider == "openai":
-            self.processor = BaseCompatibleProcessor(provider="openai")
-        elif self.provider == "qwen":
-            self.processor = BaseCompatibleProcessor(provider="qwen")
-        elif self.provider == "ibm":
+        if self.provider == "ibm":
             self.processor = BaseIBMAPIProcessor()
         elif self.provider == "gemini":
             self.processor = BaseGeminiProcessor()
         else:
-            raise ValueError(f"Unsupported provider: {provider}")
+            self.processor = BaseCompatibleProcessor(provider=self.provider)
 
     def send_message(
         self,

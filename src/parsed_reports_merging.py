@@ -182,7 +182,7 @@ class PageTextPreparation:
         """Check if block text ends with colon for relevant block types."""
         block_type = block.get("type")
         text = block.get("text", "").rstrip()
-        if block_type in {"text", "caption", "section_header", "paragraph"}:
+        if block_type in {"text", "caption", "section_header", "paragraph", "code"}:
             return text.endswith(":")
         return False
 
@@ -313,6 +313,7 @@ class PageTextPreparation:
                 "checkbox_selected",
                 "checkbox_unselected",
                 "formula",
+                "code",
             ):
                 if not text.strip():
                     i += 1
@@ -332,7 +333,7 @@ class PageTextPreparation:
         for blk in group_blocks:
             blk_type = blk.get("type")
             blk_text = blk.get("text", "").strip()
-            if blk_type in {"text", "caption", "section_header", "paragraph"}:
+            if blk_type in {"text", "caption", "section_header", "paragraph", "code"}:
                 chunk.append(f"{blk_text}\n")
 
             elif blk_type == "table":
@@ -359,7 +360,7 @@ class PageTextPreparation:
         for blk in group_blocks:
             blk_type = blk.get("type")
             blk_text = blk.get("text", "").strip()
-            if blk_type in {"text", "caption", "section_header", "paragraph"}:
+            if blk_type in {"text", "caption", "section_header", "paragraph", "code"}:
                 chunk.append(f"{blk_text}\n")
 
             elif blk_type == "list_item":

@@ -7,6 +7,21 @@ from src.query_plan import QueryPlan
 
 
 _CONFIDENCE_ORDER = ["low", "medium", "high"]
+_VALIDATION_FLAG_LABELS = {
+    "missing_citations": "缺少 citation 覆盖",
+    "missing_relevant_pages": "缺少相关页码",
+    "currency_mismatch": "币种与问题不一致",
+    "report_year_mismatch": "报告年份不一致",
+    "doc_source_type_mismatch": "文档类型不一致",
+    "period_filter_weak_match": "期间匹配较弱",
+    "topic_filter_weak_match": "主题匹配较弱",
+    "numeric_grounding_missing_value": "数字 grounding 缺少值",
+    "numeric_grounding_period_mismatch": "数字 grounding 的期间不匹配",
+    "numeric_grounding_currency_mismatch": "数字 grounding 的币种不一致",
+    "numeric_answer_without_table_grounding": "数字答案缺少表格 grounding",
+    "no_retrieval_results": "未返回检索证据",
+    "processing_error": "处理流程报错",
+}
 
 
 def _normalize_confidence(value: str | None) -> str:
@@ -17,6 +32,10 @@ def _normalize_confidence(value: str | None) -> str:
 def _downgrade_confidence(value: str, steps: int = 1) -> str:
     current = _CONFIDENCE_ORDER.index(_normalize_confidence(value))
     return _CONFIDENCE_ORDER[max(0, current - steps)]
+
+
+def _humanize_validation_flag(flag: str) -> str:
+    return _VALIDATION_FLAG_LABELS.get(flag, flag)
 
 
 def _union_metadata_flags(retrieval_results: List[Dict[str, Any]]) -> set[str]:
@@ -138,9 +157,11 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
         confidence = "low"
 
     if not validation_flags:
-        confidence_reason = "Grounded answer validated against retrieval metadata and citation coverage."
+        confidence_reason = "答案已通过检索元数据与 citation 覆盖校验。"
     else:
-        confidence_reason = "Validation adjusted answer confidence due to: " + ", ".join(validation_flags)
+        confidence_reason = "答案置信度已因以下因素下调：" + "，".join(
+            _humanize_validation_flag(flag) for flag in validation_flags
+        )
 
     answer["validation_flags"] = validation_flags
     answer["confidence"] = confidence

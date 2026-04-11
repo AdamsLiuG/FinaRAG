@@ -43,6 +43,27 @@ def _parse_devices(value: str | None, default: str = "cpu") -> List[str]:
     return devices
 
 
+def _env_positive_int(*names: str) -> int | None:
+    for name in names:
+        raw_value = os.getenv(name)
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        try:
+            value = int(str(raw_value).strip())
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def _limit_devices(devices: List[str], *env_names: str) -> List[str]:
+    max_devices = _env_positive_int(*env_names)
+    if max_devices is None:
+        return devices
+    return devices[:max(1, max_devices)]
+
+
 def _split_indexed_items(indexed_items: List[tuple], num_buckets: int) -> List[List[tuple]]:
     if num_buckets <= 1:
         return [indexed_items]
@@ -87,6 +108,8 @@ def _split_indexed_items(indexed_items: List[tuple], num_buckets: int) -> List[L
 
 _model_load_lock = threading.Lock()
 _bgem3_model_load_lock = threading.Lock()
+_bgem3_inference_locks_guard = threading.Lock()
+_bgem3_inference_locks: dict[int, threading.Lock] = {}
 
 
 @lru_cache(maxsize=4)
@@ -183,12 +206,22 @@ def _load_bgem3_model(
         )
 
 
+def _get_bgem3_inference_lock(model: "BGEM3FlagModel") -> threading.Lock:
+    model_id = id(model)
+    with _bgem3_inference_locks_guard:
+        lock = _bgem3_inference_locks.get(model_id)
+        if lock is None:
+            lock = threading.Lock()
+            _bgem3_inference_locks[model_id] = lock
+        return lock
+
+
 class EmbeddingBackend:
     def __init__(self, model_name: str = None, device: str = None, batch_size: int = None):
         load_dotenv()
         self.model_name = model_name or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
         raw_device = device if device is not None else os.getenv("EMBEDDING_DEVICE", "")
-        self.devices = _parse_devices(raw_device, default="cpu")
+        self.devices = _limit_devices(_parse_devices(raw_device, default="cpu"), "EMBEDDING_MAX_DEVICES")
         self.device = self.devices[0]
         self.batch_size = batch_size or int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
         self.trust_remote_code = _env_flag("EMBEDDING_TRUST_REMOTE_CODE", default=False)
@@ -267,7 +300,11 @@ class BGEM3SparseEmbeddingBackend:
             or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
         )
         raw_device = device or os.getenv("EMBEDDING_SPARSE_DEVICE") or os.getenv("EMBEDDING_DEVICE", "cpu")
-        self.devices = _parse_devices(raw_device, default="cpu")
+        self.devices = _limit_devices(
+            _parse_devices(raw_device, default="cpu"),
+            "EMBEDDING_SPARSE_MAX_DEVICES",
+            "EMBEDDING_MAX_DEVICES",
+        )
         self.device = self.devices[0]
         self.batch_size = batch_size or int(os.getenv("EMBEDDING_SPARSE_BATCH_SIZE", "32"))
         self.query_max_length = query_max_length or int(os.getenv("EMBEDDING_SPARSE_QUERY_MAX_LENGTH", "256"))
@@ -288,14 +325,17 @@ class BGEM3SparseEmbeddingBackend:
         self.model = self.models[0]
 
     def _encode_sparse_batch(self, model: "BGEM3FlagModel", texts: List[str], max_length: int) -> List[dict]:
-        outputs = model.encode(
-            texts,
-            batch_size=self.batch_size,
-            max_length=max_length,
-            return_dense=False,
-            return_sparse=True,
-            return_colbert_vecs=False,
-        )
+        # FlagEmbedding's bge-m3 path mutates model precision inside encode();
+        # serialize access per shared model instance to avoid concurrent fp16 races.
+        with _get_bgem3_inference_lock(model):
+            outputs = model.encode(
+                texts,
+                batch_size=self.batch_size,
+                max_length=max_length,
+                return_dense=False,
+                return_sparse=True,
+                return_colbert_vecs=False,
+            )
         return list(outputs["lexical_weights"])
 
     def encode_texts(self, texts: Iterable[str]) -> List[dict]:
@@ -334,20 +374,22 @@ class BGEM3SparseEmbeddingBackend:
         if not text or not text.strip():
             raise ValueError("Query text cannot be empty.")
 
-        outputs = self.model.encode(
-            [text],
-            batch_size=1,
-            max_length=self.query_max_length,
-            return_dense=False,
-            return_sparse=True,
-            return_colbert_vecs=False,
-        )
+        with _get_bgem3_inference_lock(self.model):
+            outputs = self.model.encode(
+                [text],
+                batch_size=1,
+                max_length=self.query_max_length,
+                return_dense=False,
+                return_sparse=True,
+                return_colbert_vecs=False,
+            )
         return outputs["lexical_weights"][0]
 
     def score_query_against_documents(self, query_weights: dict, document_weights: List[dict]) -> List[float]:
         if not document_weights:
             return []
 
-        scores = self.model.compute_lexical_matching_score([query_weights], document_weights)
+        with _get_bgem3_inference_lock(self.model):
+            scores = self.model.compute_lexical_matching_score([query_weights], document_weights)
         scores_array = np.asarray(scores, dtype=np.float32).reshape(-1)
         return scores_array.tolist()

@@ -20,6 +20,20 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertEqual(plan.expected_answer_type, "numeric")
         self.assertGreaterEqual(len(plan.search_queries), 2)
 
+    def test_rewrite_extracts_metadata_filters_for_sections_and_tags(self):
+        rewriter = QuestionRewriter()
+
+        plan = rewriter.rewrite(
+            "科创板半导体行业公司在管理层讨论与分析章节里关于国产替代的表述是什么？",
+            schema="name",
+        )
+
+        self.assertEqual(plan.filters.board, "科创板")
+        self.assertEqual(plan.filters.section_name, "管理层讨论与分析")
+        self.assertEqual(plan.filters.industry_l1, "科创板半导体")
+        self.assertIn("国产替代", plan.filters.strategy_tags)
+        self.assertIn("管理层讨论与分析", " ".join(plan.search_queries))
+
 
 if __name__ == "__main__":
     unittest.main()

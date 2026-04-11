@@ -1,0 +1,76 @@
+{
+  "questions": [
+    {
+      "question_text": "国网信通2024年年报中的法定代表人是谁？"
+    },
+    {
+      "question_text": "优博讯2024年年报中的研发投入金额是多少？"
+    },
+    {
+      "question_text": "国网信通2024年年报中是否披露了火星业务收入？"
+    }
+  ],
+  "answer_details": [
+    {
+      "retrieval_results": [
+        {
+          "page": 7,
+          "text": "法定代表人：王奔",
+          "metadata": {
+            "sha1_name": "600131_2024_20250425",
+            "company_name": "国网信通",
+            "security_code": "600131",
+            "stock_code": "600131",
+            "report_year": 2024,
+            "doc_source_type": "annual_report",
+            "currency": "CNY",
+            "chunk_type": "content"
+          }
+        },
+        {
+          "page": 38,
+          "text": "管理层信息附页",
+          "metadata": {
+            "sha1_name": "600131_2024_20250425",
+            "company_name": "国网信通",
+            "security_code": "600131",
+            "stock_code": "600131",
+            "report_year": 2024,
+            "doc_source_type": "annual_report",
+            "currency": "CNY",
+            "chunk_type": "content"
+          }
+        }
+      ],
+      "validation_flags": []
+    },
+    {
+      "retrieval_results": [
+        {
+          "page": 115,
+          "text": "研发投入合计 356,778,998.12 元",
+          "metadata": {
+            "sha1_name": "300531_2024_20250429",
+            "company_name": "优博讯",
+            "security_code": "300531",
+            "stock_code": "300531",
+            "report_year": 2024,
+            "doc_source_type": "annual_report",
+            "currency": "CNY",
+            "unit_hint": "元",
+            "period": "本期",
+            "chunk_type": "table"
+          }
+        }
+      ],
+      "validation_flags": []
+    },
+    {
+      "retrieval_results": [],
+      "validation_flags": []
+    }
+  ],
+  "statistics": {
+    "sample": true
+  }
+}

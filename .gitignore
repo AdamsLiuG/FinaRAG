@@ -180,3 +180,43 @@ data/erc2_set/answers_*.json
 # Local large datasets (do not commit)
 data/chinese_benchmark/
 data/chinese_annual_reports_2024/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Personal notes / local drafts
+FinaRAG_resume_analysis.md
+FinaRAG面试准备.md
+Project_Reference.tex
+resume.tex
+
+# Generated / local-only datasets and indexes
+data/**/debug_data/
+data/**/debug_data.zip
+data/**/databases/
+data/**/databases_ser_tab/
+data/**/metadata_store/
+data/chinese_annual_reports_2024_v1/pdf_reports/
+data/top10_industries_2024_20each/
+
+# Training artifacts
+training/**/__pycache__/
+training/generator_sft/raw/
+training/generator_sft/processed/
+training/generator_sft/manifests/
+
+Advanced_plan.md
+basebuild-retrievalfix.md
+dummy_report.json
+fina_payload.json
+FinaRAG_resume_analysis.md
+FinaRAG面试准备.md
+proj_ref.md
+Project_Reference.tex
+README_former.md
+resume.tex
