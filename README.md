@@ -478,6 +478,8 @@ document_language: "zh"
 | `qwen_zh_finance_colbert_cascade_bge.yaml` | ColBERT+BGE 级联重排 |
 | `qwen_zh_finance_colbert_cascade_qwen.yaml` | ColBERT+Qwen 级联重排 |
 | `qwen_zh_finance_hyde_fallback.yaml` | 启用 HyDE fallback |
+| `qwen_zh_finance_colbert_cascade_qwen_hyde_fallback.yaml` | ColBERT 级联重排 + HyDE fallback |
+| `qwen_zh_finance_colbert_cascade_vllm_reranker_hyde_fallback.yaml` | ColBERT + 本地 vLLM Qwen3-Reranker-8B + HyDE fallback |
 | `qwen_base.yaml` | 基础配置 (仅向量检索) |
 
 ---

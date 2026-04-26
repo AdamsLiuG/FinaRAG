@@ -5,10 +5,26 @@ from typing import Any, Dict, Iterable, List
 from eval.dataset_schema import FinanceGoldAnswer
 
 
-ANSWER_LAYER_WEIGHTS = {
-    "ragas_score": 0.5,
-    "semantic_score": 0.25,
-    "entity_score": 0.25,
+ANSWER_VALUE_WEIGHTS = {
+    "type_aware_value_score": 0.65,
+    "entity_score": 0.20,
+    "keyword_score": 0.15,
+}
+
+EVIDENCE_RETRIEVAL_WEIGHTS = {
+    "doc_hit": 0.15,
+    "page_hit": 0.25,
+    "page_recall": 0.20,
+    "table_hit": 0.15,
+    "ragas_context_recall": 0.15,
+    "ragas_context_precision": 0.10,
+}
+
+CITATION_GROUNDING_WEIGHTS = {
+    "citation_page_hit": 0.35,
+    "citation_precision": 0.25,
+    "citation_coverage": 0.20,
+    "ragas_faithfulness": 0.20,
 }
 
 FINAL_COMPONENT_WEIGHTS = {
@@ -29,6 +45,55 @@ CITATION_WEIGHTS = {
     "citation_precision": 0.3,
     "citation_coverage": 0.3,
 }
+
+RAGAS_INTERNAL_WEIGHTS = {
+    "answer_correctness": 0.30,
+    "faithfulness": 0.20,
+    "answer_relevancy": 0.10,
+    "context_recall": 0.25,
+    "context_precision": 0.15,
+}
+
+
+def get_finance_scoring_profile() -> Dict[str, Any]:
+    return {
+        "profile_name": "finance_atomic_answer_rag_three_layer_v3",
+        "answer_value_weights": ANSWER_VALUE_WEIGHTS,
+        "evidence_retrieval_weights": EVIDENCE_RETRIEVAL_WEIGHTS,
+        "citation_grounding_weights": CITATION_GROUNDING_WEIGHTS,
+        "ragas_internal_weights": RAGAS_INTERNAL_WEIGHTS,
+        "final_component_weights": FINAL_COMPONENT_WEIGHTS,
+        "retrieval_weights": RETRIEVAL_WEIGHTS,
+        "citation_weights": CITATION_WEIGHTS,
+        "layers": {
+            "layer_1_type_aware_answer_value": [
+                "type_aware_value_score",
+                "entity_score",
+                "keyword_score",
+            ],
+            "layer_2_evidence_retrieval_quality": [
+                "doc_hit",
+                "page_hit",
+                "page_recall",
+                "table_hit",
+                "ragas_context_recall",
+                "ragas_context_precision",
+            ],
+            "layer_3_citation_grounding": [
+                "citation_page_hit",
+                "citation_precision",
+                "citation_coverage",
+                "ragas_faithfulness",
+            ],
+            "ragas_auxiliary_breakdown": [
+                "answer_correctness",
+                "answer_relevancy",
+                "faithfulness",
+                "context_recall",
+                "context_precision",
+            ],
+        },
+    }
 
 
 def _weighted_average(scores: Dict[str, float | None], weights: Dict[str, float]) -> float | None:
@@ -207,30 +272,62 @@ def compute_finance_case_score(
     *,
     semantic_result: Dict[str, Any],
     entity_result: Dict[str, Any],
+    keyword_result: Dict[str, Any] | None,
     ragas_result: Dict[str, Any],
     retrieval_result: Dict[str, Any],
     citation_result: Dict[str, Any],
 ) -> Dict[str, Any]:
+    type_aware_value_score = semantic_result.get("semantic_score")
     answer_score = _weighted_average(
         {
-            "ragas_score": ragas_result.get("ragas_score"),
-            "semantic_score": semantic_result.get("semantic_score"),
+            "type_aware_value_score": type_aware_value_score,
             "entity_score": entity_result.get("entity_score"),
+            "keyword_score": (keyword_result or {}).get("keyword_score"),
         },
-        ANSWER_LAYER_WEIGHTS,
+        ANSWER_VALUE_WEIGHTS,
+    )
+    retrieval_score = _weighted_average(
+        {
+            "doc_hit": retrieval_result.get("doc_hit"),
+            "page_hit": retrieval_result.get("page_hit"),
+            "page_recall": retrieval_result.get("page_recall"),
+            "table_hit": retrieval_result.get("table_hit"),
+            "ragas_context_recall": ragas_result.get("context_recall"),
+            "ragas_context_precision": ragas_result.get("context_precision"),
+        },
+        EVIDENCE_RETRIEVAL_WEIGHTS,
+    )
+    citation_score = _weighted_average(
+        {
+            "citation_page_hit": citation_result.get("citation_page_hit"),
+            "citation_precision": citation_result.get("citation_precision"),
+            "citation_coverage": citation_result.get("citation_coverage"),
+            "ragas_faithfulness": ragas_result.get("faithfulness"),
+        },
+        CITATION_GROUNDING_WEIGHTS,
     )
 
     final_quality_score = _weighted_average(
         {
             "answer_score": answer_score,
-            "retrieval_score": retrieval_result.get("retrieval_score"),
-            "citation_score": citation_result.get("citation_score"),
+            "retrieval_score": retrieval_score,
+            "citation_score": citation_score,
         },
         FINAL_COMPONENT_WEIGHTS,
     )
     return {
         "answer_score": answer_score,
-        "retrieval_score": retrieval_result.get("retrieval_score"),
-        "citation_score": citation_result.get("citation_score"),
+        "type_aware_value_score": type_aware_value_score,
+        "semantic_score": semantic_result.get("semantic_score"),
+        "entity_score": entity_result.get("entity_score"),
+        "keyword_score": (keyword_result or {}).get("keyword_score"),
+        "retrieval_score": retrieval_score,
+        "retrieval_rule_score": retrieval_result.get("retrieval_score"),
+        "citation_score": citation_score,
+        "citation_rule_score": citation_result.get("citation_score"),
+        "ragas_context_recall": ragas_result.get("context_recall"),
+        "ragas_context_precision": ragas_result.get("context_precision"),
+        "ragas_faithfulness": ragas_result.get("faithfulness"),
+        "ragas_score": ragas_result.get("ragas_score"),
         "final_quality_score": final_quality_score,
     }

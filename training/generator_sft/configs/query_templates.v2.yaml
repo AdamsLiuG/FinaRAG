@@ -1,0 +1,528 @@
+version: v2
+templates:
+  - template_id: name_legal_representative
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: legal_representative
+    field_label: 法定代表人
+    surface_forms:
+      - "{company_name}{report_year}年年报中的法定代表人是谁？"
+      - "{company_name}{report_year}年年报披露的法定代表人是谁？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，法定代表人是谁？"
+    section_hints:
+      - 公司基本情况
+      - 公司简介和主要财务指标
+      - 公司治理
+      - 董事、监事和高级管理人员的情况
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: name_chairman
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: chairman
+    field_label: 董事长
+    surface_forms:
+      - "{company_name}{report_year}年年报中的董事长是谁？"
+      - "{company_name}{report_year}年年报披露的董事长是谁？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，董事长是谁？"
+    section_hints:
+      - 公司基本情况
+      - 公司治理
+      - 董事、监事和高级管理人员的情况
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: name_general_manager
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: general_manager
+    field_label: 总经理
+    surface_forms:
+      - "{company_name}{report_year}年年报中的总经理是谁？"
+      - "{company_name}{report_year}年年报披露的总经理是谁？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，总经理是谁？"
+    section_hints:
+      - 公司基本情况
+      - 公司治理
+      - 董事、监事和高级管理人员的情况
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: name_board_secretary
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: board_secretary
+    field_label: 董事会秘书
+    surface_forms:
+      - "{company_name}{report_year}年年报中的董事会秘书是谁？"
+      - "{company_name}{report_year}年年报披露的董事会秘书是谁？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，董事会秘书是谁？"
+    section_hints:
+      - 公司基本情况
+      - 公司治理
+      - 董事、监事和高级管理人员的情况
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: name_securities_affairs_representative
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: securities_affairs_representative
+    field_label: 证券事务代表
+    surface_forms:
+      - "{company_name}{report_year}年年报中的证券事务代表是谁？"
+      - "{company_name}{report_year}年年报披露的证券事务代表是谁？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，证券事务代表是谁？"
+    section_hints:
+      - 公司基本情况
+      - 公司治理
+      - 董事、监事和高级管理人员的情况
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: name_company_name
+    template_family: name_field
+    schema: name
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: company_name
+    field_label: 公司名称
+    surface_forms:
+      - "{company_name}{report_year}年年报中披露的公司名称是什么？"
+      - "{company_name}{report_year}年年报中的公司中文名称是什么？"
+      - "在{company_name}{report_year}年年报《{section_name}》章节中，公司名称是什么？"
+    section_hints:
+      - 公司基本情况
+      - 公司简介和主要财务指标
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: name_strict_v1
+    max_per_doc: 2
+    difficulty: easy
+
+  - template_id: number_revenue
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: revenue
+    metric_label: 营业收入
+    question_suffix: 是多少元
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报中的{metric_label}数值{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: number_attributable_net_profit
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: attributable_net_profit
+    metric_label: 归属于上市公司股东的净利润
+    question_suffix: 是多少元
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报中的归母净利润{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: number_deducted_attributable_net_profit
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: deducted_attributable_net_profit
+    metric_label: 归属于上市公司股东的扣除非经常性损益的净利润
+    question_suffix: 是多少元
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的扣非归母净利润{question_suffix}？"
+      - "{company_name}{report_year}年年报中的扣除非经常性损益后的归母净利润{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: number_operating_cashflow_net
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: operating_cashflow_net
+    metric_label: 经营活动产生的现金流量净额
+    question_suffix: 是多少元
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的经营活动现金流量净额{question_suffix}？"
+      - "{company_name}{report_year}年年报中的经营现金流净额{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: number_basic_eps
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: basic_eps
+    metric_label: 基本每股收益
+    question_suffix: 是多少
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的基本每股收益{question_suffix}？"
+      - "{company_name}{report_year}年年报中的每股收益{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: number_asset_liability_ratio
+    template_family: number_metric
+    schema: number
+    task_type: single_doc_fact
+    generation_mode: per_doc
+    target_key: asset_liability_ratio
+    metric_label: 资产负债率
+    question_suffix: 是多少
+    surface_forms:
+      - "{company_name}{report_year}年年报中的{metric_label}{question_suffix}？"
+      - "{company_name}{report_year}年年报披露的资产负债率{question_suffix}？"
+      - "{company_name}{report_year}年年报中的资产负债率数值{question_suffix}？"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: number_grounding_match_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: boolean_cash_dividend_plan
+    template_family: boolean_target
+    schema: boolean
+    task_type: single_doc_boolean
+    generation_mode: per_doc
+    target_key: cash_dividend_plan
+    question_aliases:
+      - 现金分红方案
+      - 现金分红
+      - 现金红利
+      - 现金股利
+      - 派现
+      - 派息
+    positive_aliases:
+      - 现金分红
+      - 现金红利
+      - 现金股利
+      - 派发现金红利
+      - 派发现金股利
+      - 派息
+      - 每10股派息
+    negative_patterns:
+      - 不进行现金分红
+      - 不派发现金红利
+      - 不派发现金股利
+      - 不派现
+      - 不分红
+      - 不进行利润分配
+    surface_forms:
+      - "{company_name}{report_year}年年报是否披露现金分红方案？"
+      - "{company_name}{report_year}年年报中是否明确提到现金分红？"
+      - "{company_name}{report_year}年年报《{section_name}》部分是否披露现金分红方案？"
+    section_hints:
+      - 重要事项
+      - 利润分配预案
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: boolean_trinary_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: boolean_share_buyback_plan
+    template_family: boolean_target
+    schema: boolean
+    task_type: single_doc_boolean
+    generation_mode: per_doc
+    target_key: share_buyback_plan
+    question_aliases:
+      - 股份回购
+      - 股票回购
+      - 回购计划
+      - 回购方案
+    positive_aliases:
+      - 股份回购
+      - 股票回购
+      - 回购方案
+      - 回购计划
+      - 拟回购
+      - 实施回购
+    negative_patterns:
+      - 不进行股份回购
+      - 不进行股票回购
+      - 无回购计划
+      - 未实施回购
+      - 不存在回购计划
+    surface_forms:
+      - "{company_name}{report_year}年年报是否披露股份回购计划？"
+      - "{company_name}{report_year}年年报中是否明确提到股份回购？"
+      - "{company_name}{report_year}年年报《{section_name}》部分是否披露回购方案？"
+    section_hints:
+      - 重要事项
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: boolean_trinary_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: boolean_nonstandard_audit_opinion
+    template_family: boolean_target
+    schema: boolean
+    task_type: single_doc_boolean
+    generation_mode: per_doc
+    target_key: nonstandard_audit_opinion
+    question_aliases:
+      - 非标准审计意见
+      - 非标审计意见
+      - 审计意见
+      - 审计报告
+    positive_aliases:
+      - 非标准审计意见
+      - 非标审计意见
+      - 保留意见
+      - 否定意见
+      - 无法表示意见
+      - 带强调事项段无保留意见
+      - 审计意见
+      - 审计意见类型
+    negative_patterns:
+      - 标准无保留意见
+      - 无保留意见审计报告
+      - 审计意见类型:标准无保留意见
+      - 审计意见类型：标准无保留意见
+    surface_forms:
+      - "{company_name}{report_year}年年报的审计报告是否为非标准审计意见？"
+      - "{company_name}{report_year}年年报是否披露非标准审计意见？"
+      - "{company_name}{report_year}年年报《{section_name}》部分是否为非标准审计意见？"
+    section_hints:
+      - 审计报告
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: boolean_trinary_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: boolean_controlling_shareholder_change
+    template_family: boolean_target
+    schema: boolean
+    task_type: single_doc_boolean
+    generation_mode: per_doc
+    target_key: controlling_shareholder_change
+    question_aliases:
+      - 控股股东变更
+      - 控股股东发生变更
+      - 实际控制人变更
+      - 控制权变更
+    positive_aliases:
+      - 控股股东变更
+      - 控股股东发生变更
+      - 实际控制人变更
+      - 实际控制人发生变更
+      - 控制权变更
+      - 控制权发生变更
+    negative_patterns:
+      - 控股股东未发生变更
+      - 实际控制人未发生变更
+      - 控制权未发生变更
+      - 控股股东无变化
+      - 实际控制人无变化
+    surface_forms:
+      - "{company_name}{report_year}年年报是否披露控股股东发生变更？"
+      - "{company_name}{report_year}年年报中是否明确提到实际控制人发生变更？"
+      - "{company_name}{report_year}年年报《{section_name}》部分是否披露控制权变更？"
+    section_hints:
+      - 股份变动及股东情况
+      - 公司治理
+    split_pool: core_single_doc
+    answer_policy: direct_extract_only
+    validator_target: boolean_trinary_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: names_domestic_substitution
+    template_family: strategy_tag_bucket
+    schema: names
+    task_type: metadata_tag_retrieval
+    generation_mode: per_bucket
+    target_key: domestic_substitution_mentions
+    strategy_tag: 国产替代
+    surface_forms:
+      - "哪些公司在{year}年年报中提到“{tag}”？"
+      - "在{industry}行业公司中，哪些公司在{year}年年报里提到“{tag}”？"
+      - "在{industry}{board}公司中，哪些公司在{year}年年报中提到“{tag}”？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: candidate_bucket_only
+    validator_target: names_bucket_v1
+    max_per_doc: 1
+    min_docs_per_bucket: 3
+    max_docs_per_bucket: 20
+    difficulty: hard
+
+  - template_id: names_artificial_intelligence
+    template_family: strategy_tag_bucket
+    schema: names
+    task_type: metadata_tag_retrieval
+    generation_mode: per_bucket
+    target_key: artificial_intelligence_mentions
+    strategy_tag: 人工智能
+    surface_forms:
+      - "哪些公司在{year}年年报中提到“{tag}”？"
+      - "在{industry}行业公司中，哪些公司在{year}年年报里提到“{tag}”？"
+      - "在{industry}{board}公司中，哪些公司在{year}年年报中提到“{tag}”？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: candidate_bucket_only
+    validator_target: names_bucket_v1
+    max_per_doc: 1
+    min_docs_per_bucket: 3
+    max_docs_per_bucket: 20
+    difficulty: hard
+
+  - template_id: names_go_global
+    template_family: strategy_tag_bucket
+    schema: names
+    task_type: metadata_tag_retrieval
+    generation_mode: per_bucket
+    target_key: go_global_mentions
+    strategy_tag: 出海
+    surface_forms:
+      - "哪些公司在{year}年年报中提到“{tag}”？"
+      - "在{industry}行业公司中，哪些公司在{year}年年报里提到“{tag}”？"
+      - "在{industry}{board}公司中，哪些公司在{year}年年报中提到“{tag}”？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: candidate_bucket_only
+    validator_target: names_bucket_v1
+    max_per_doc: 1
+    min_docs_per_bucket: 3
+    max_docs_per_bucket: 20
+    difficulty: hard
+
+  - template_id: names_green_transition
+    template_family: strategy_tag_bucket
+    schema: names
+    task_type: metadata_tag_retrieval
+    generation_mode: per_bucket
+    target_key: green_transition_mentions
+    strategy_tag: 绿色转型
+    surface_forms:
+      - "哪些公司在{year}年年报中提到“{tag}”？"
+      - "在{industry}行业公司中，哪些公司在{year}年年报里提到“{tag}”？"
+      - "在{industry}{board}公司中，哪些公司在{year}年年报中提到“{tag}”？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: candidate_bucket_only
+    validator_target: names_bucket_v1
+    max_per_doc: 1
+    min_docs_per_bucket: 3
+    max_docs_per_bucket: 20
+    difficulty: hard
+
+  - template_id: names_digital_transformation
+    template_family: strategy_tag_bucket
+    schema: names
+    task_type: metadata_tag_retrieval
+    generation_mode: per_bucket
+    target_key: digital_transformation_mentions
+    strategy_tag: 数字化转型
+    surface_forms:
+      - "哪些公司在{year}年年报中提到“{tag}”？"
+      - "在{industry}行业公司中，哪些公司在{year}年年报里提到“{tag}”？"
+      - "在{industry}{board}公司中，哪些公司在{year}年年报中提到“{tag}”？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: candidate_bucket_only
+    validator_target: names_bucket_v1
+    max_per_doc: 1
+    min_docs_per_bucket: 3
+    max_docs_per_bucket: 20
+    difficulty: hard
+
+  - template_id: comparative_revenue
+    template_family: comparative_pair
+    schema: comparative
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: revenue
+    metric_label: 营业收入
+    surface_forms:
+      - "在{year}年年报中，{company_a}和{company_b}谁的{metric_label}更高？"
+      - "按{year}年年报披露，{company_a}与{company_b}相比，谁的{metric_label}更高？"
+      - "{company_a}和{company_b}在{year}年年报中的{metric_label}相比，谁更高？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: compare_teacher_answers
+    validator_target: comparative_pair_v1
+    max_per_doc: 1
+    difficulty: hard
+
+  - template_id: comparative_attributable_net_profit
+    template_family: comparative_pair
+    schema: comparative
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: attributable_net_profit
+    metric_label: 归母净利润
+    surface_forms:
+      - "在{year}年年报中，{company_a}和{company_b}谁的{metric_label}更高？"
+      - "按{year}年年报披露，{company_a}与{company_b}相比，谁的{metric_label}更高？"
+      - "{company_a}和{company_b}在{year}年年报中的{metric_label}相比，谁更高？"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: compare_teacher_answers
+    validator_target: comparative_pair_v1
+    max_per_doc: 1
+    difficulty: hard

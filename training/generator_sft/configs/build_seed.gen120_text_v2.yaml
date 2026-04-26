@@ -1,0 +1,12 @@
+dataset_root_path: data/top10_industries_2024_20each
+questions_path: data/top10_industries_2024_20each/questions.json
+annual_report_path: data/top10_industries_2024_20each/metadata_store/annual_report.jsonl
+chunk_metadata_path: data/top10_industries_2024_20each/metadata_store/chunk_metadata.jsonl
+output_path: training/generator_sft/raw/seed_queries.gen120_text_v2.jsonl
+stats_output_path: training/generator_sft/manifests/seed_build_stats.gen120_text_v2.json
+template_catalog_path: training/generator_sft/configs/query_templates.gen120_text_v2.yaml
+template_version: v2
+legacy_questions_mode: none
+max_existing_questions: 0
+max_template_reports: 0
+include_template_bootstrap: true

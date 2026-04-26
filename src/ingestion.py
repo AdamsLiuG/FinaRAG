@@ -1,5 +1,6 @@
 import json
 import pickle
+import re
 from typing import List
 from pathlib import Path
 from tqdm import tqdm
@@ -14,7 +15,6 @@ from src.text_normalization import normalize_text, tokenize_for_bm25
 
 _TAG_ARRAY_FIELDS = (
     "business_tags",
-    "strategy_tags",
     "factor_tags",
     "chain_position_minor",
     "listing_tags",
@@ -23,6 +23,14 @@ _TAG_ARRAY_FIELDS = (
     "style_tags",
 )
 
+_STRATEGY_TAG_ALIASES = {
+    "国产替代": ["国产替代", "国产化", "自主可控", "信创"],
+    "数字化转型": ["数字化转型", "数字化", "数智化"],
+    "出海": ["出海", "海外", "海外市场", "海外业务", "国际化", "境外"],
+    "绿色转型": ["绿色转型", "绿色低碳", "双碳", "碳中和"],
+    "人工智能": ["人工智能", "AI", "大模型"],
+}
+
 
 def _vector_text_from_chunk(chunk: dict) -> str:
     return chunk.get("embedding_text") or chunk.get("search_text") or chunk.get("text") or ""
@@ -30,6 +38,30 @@ def _vector_text_from_chunk(chunk: dict) -> str:
 
 def _lexical_text_from_chunk(chunk: dict) -> str:
     return chunk.get("search_text") or chunk.get("embedding_text") or chunk.get("text") or ""
+
+
+def _strategy_tag_terms(tag: str) -> List[str]:
+    tag_text = str(tag or "").strip()
+    if not tag_text:
+        return []
+    terms = [tag_text] + _STRATEGY_TAG_ALIASES.get(tag_text, [])
+    deduped: List[str] = []
+    seen = set()
+    for term in terms:
+        marker = normalize_text(term)
+        if marker and marker not in seen:
+            seen.add(marker)
+            deduped.append(term)
+    return deduped
+
+
+def _strategy_tag_has_literal_evidence(text: str, tag: str) -> bool:
+    text = text or ""
+    for term in _strategy_tag_terms(tag):
+        flags = re.IGNORECASE if term.isascii() else 0
+        if re.search(re.escape(term), text, flags):
+            return True
+    return False
 
 
 def _chunk_tag_values(chunk: dict) -> List[str]:
@@ -51,6 +83,9 @@ def _chunk_tag_values(chunk: dict) -> List[str]:
             values.append(str(value))
     for field in _TAG_ARRAY_FIELDS:
         values.extend(str(item) for item in chunk.get(field) or [] if item not in (None, ""))
+    for item in chunk.get("strategy_tags") or []:
+        if item not in (None, "") and _strategy_tag_has_literal_evidence(chunk.get("text") or "", str(item)):
+            values.append(str(item))
     deduped: List[str] = []
     seen = set()
     for value in values:

@@ -50,13 +50,14 @@
   --gold-answers-file data/finance_eval_v1/answers_gold.sample.json \
   --pred-answers-file data/finance_eval_v1/pred_answers.sample.json \
   --debug-file data/finance_eval_v1/pred_answers_debug.sample.json \
-  --ragas-llm-base-url "$QWEN_BASE_URL" \
-  --ragas-llm-model "${QWEN_MODEL:-Qwen3.5-35B-A3B-AWQ-4bit}" \
+  --ragas-llm-base-url "$RAGAS_LLM_BASE_URL" \
+  --ragas-llm-api-key "$RAGAS_LLM_API_KEY" \
+  --ragas-llm-model "${RAGAS_LLM_MODEL:-Qwen3.5-35B-A3B-AWQ-4bit}" \
   --ragas-embedding-provider huggingface \
-  --ragas-embedding-model "${EMBEDDING_MODEL_NAME:-BAAI/bge-m3}"
+  --ragas-embedding-model "${RAGAS_EMBEDDING_MODEL:-BAAI/bge-m3}"
 ```
 
-如果已经在 `.env` 或 shell 里配置了 `QWEN_BASE_URL / QWEN_MODEL / EMBEDDING_MODEL_NAME`，则可以直接运行，不必额外传参。若只想跑原有评测而跳过 RAGAS，可追加 `--disable-ragas`。
+如果已经在 `.env` 或 shell 里配置了 `RAGAS_LLM_BASE_URL / RAGAS_LLM_API_KEY / RAGAS_LLM_MODEL / RAGAS_EMBEDDING_MODEL`，则可以直接运行，不必额外传参。RAGAS evaluator 现在与线上答题模型配置解耦，不会再复用 `QWEN_*`。若只想跑原有评测而跳过 RAGAS，可追加 `--disable-ragas`。
 
 ## 设计原则
 

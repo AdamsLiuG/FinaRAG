@@ -51,6 +51,7 @@ class ReportCatalog:
         self.documents_dir = Path(documents_dir) if documents_dir else None
         self._reports: List[CompanyReport] | None = None
         self._company_label_snapshots: Dict[str, Dict[str, Any]] | None = None
+        self._company_label_evidence: Dict[str, List[Dict[str, Any]]] | None = None
 
     def _metadata_store_dir(self) -> Path | None:
         if self.documents_dir is not None:
@@ -93,6 +94,37 @@ class ReportCatalog:
 
         self._company_label_snapshots = snapshots
         return snapshots
+
+    def _load_company_label_evidence(self) -> Dict[str, List[Dict[str, Any]]]:
+        if self._company_label_evidence is not None:
+            return self._company_label_evidence
+
+        evidence_by_report: Dict[str, List[Dict[str, Any]]] = {}
+        metadata_store_dir = self._metadata_store_dir()
+        if metadata_store_dir is None:
+            self._company_label_evidence = evidence_by_report
+            return evidence_by_report
+
+        evidence_path = metadata_store_dir / "company_label_evidence.jsonl"
+        if not evidence_path.exists():
+            self._company_label_evidence = evidence_by_report
+            return evidence_by_report
+
+        with open(evidence_path, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                report_id = payload.get("report_id") or payload.get("doc_id")
+                if report_id:
+                    evidence_by_report.setdefault(str(report_id), []).append(payload)
+
+        self._company_label_evidence = evidence_by_report
+        return evidence_by_report
 
     def _load_document_meta(self) -> Dict[str, Dict[str, Any]]:
         if self.documents_dir is None or not self.documents_dir.exists():
@@ -157,6 +189,31 @@ class ReportCatalog:
             if report.company_name == company_name:
                 return report
         return None
+
+    def get_report_by_doc_id(self, doc_id: str) -> CompanyReport | None:
+        doc_id = str(doc_id or "")
+        for report in self._load_reports():
+            if report.sha1 == doc_id:
+                return report
+        return None
+
+    def get_company_label_evidence(
+        self,
+        report_id: str,
+        *,
+        label_field: Optional[str] = None,
+        labels: Optional[List[str]] = None,
+        literal_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        rows = list(self._load_company_label_evidence().get(str(report_id), []))
+        if label_field:
+            rows = [row for row in rows if row.get("label_field") == label_field]
+        if labels:
+            expected = {normalize_text(str(label)) for label in labels if label not in (None, "")}
+            rows = [row for row in rows if normalize_text(str(row.get("label"))) in expected]
+        if literal_only:
+            rows = [row for row in rows if row.get("has_literal_evidence")]
+        return rows
 
     def extract_companies_from_question(self, question_text: str) -> List[str]:
         normalized_question = normalize_text(question_text)
@@ -331,6 +388,12 @@ class ReportCatalog:
             reasons.append("doc_source_type_filter_match")
 
         return True, reasons
+
+    def report_matches_query_filters(self, report: CompanyReport, query_plan: QueryPlan) -> tuple[bool, List[str]]:
+        return self._matches_query_filters(report, query_plan)
+
+    def get_report_filter_metadata(self, report: CompanyReport) -> Dict[str, Any]:
+        return self._report_filter_metadata(report)
 
     def rank_candidate_reports(self, query_plan: QueryPlan, limit: int = 5) -> List[Dict[str, Any]]:
         candidates: List[Dict[str, Any]] = []

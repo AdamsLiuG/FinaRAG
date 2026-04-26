@@ -1,0 +1,205 @@
+version: v2
+templates:
+  - template_id: long_text_summary_synthesis
+    template_family: gen120_summary
+    schema: long_text
+    task_type: generation_summary
+    generation_mode: per_doc
+    target_key: summary_synthesis
+    surface_forms:
+      - "请结合{company_name}{report_year}年年报中的经营情况或管理层讨论证据，概括公司年度经营表现变化的主要原因，列出2-3点。"
+      - "基于{company_name}{report_year}年年报披露内容，请归纳公司年度经营表现变化背后的2-3个主要原因。"
+      - "阅读{company_name}{report_year}年年报后，请用2-3点概括经营表现变化的主要驱动因素，并以年报证据为依据。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 2
+    difficulty: medium
+
+  - template_id: text_risk_synthesis
+    template_family: gen120_risk
+    schema: text
+    task_type: generation_risk_synthesis
+    generation_mode: per_doc
+    target_key: risk_synthesis
+    surface_forms:
+      - "请根据{company_name}{report_year}年年报披露的风险或挑战，按来源归纳2-3类主要风险，并说明每类风险的含义。"
+      - "结合{company_name}{report_year}年年报中的风险因素披露，概括公司主要面临的2-3类风险，并解释各类风险指向。"
+      - "{company_name}{report_year}年年报提到哪些主要风险或经营压力？请按类别归纳并说明含义。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 5
+    difficulty: medium
+
+  - template_id: long_text_strategy_synthesis
+    template_family: gen120_strategy
+    schema: long_text
+    task_type: generation_strategy_synthesis
+    generation_mode: per_doc
+    target_key: strategy_synthesis
+    surface_forms:
+      - "{company_name}{report_year}年年报中披露了哪些战略布局、重点投入或业务推进举措？请结合证据概括。"
+      - "请基于{company_name}{report_year}年年报，归纳公司在业务布局、研发推进或重点战略上的具体举措。"
+      - "阅读{company_name}{report_year}年年报后，请概括公司年度战略布局及其落地动作。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 2
+    difficulty: hard
+
+  - template_id: text_table_text_reasoning_alignment
+    template_family: gen120_table_text
+    schema: text
+    task_type: generation_table_text_reasoning
+    generation_mode: per_doc
+    target_key: table_text_reasoning_alignment
+    surface_forms:
+      - "请结合{company_name}{report_year}年年报中的营业收入或主要财务指标表格，以及经营情况说明，解释财务表现与业务叙述之间是否相互支撑。"
+      - "结合{company_name}{report_year}年年报中的财务指标表和经营讨论内容，说明数据表现与业务描述之间的对应关系。"
+      - "请根据{company_name}{report_year}年年报的主要财务指标和经营情况文字，分析两者是否形成一致支撑。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 5
+    difficulty: hard
+
+  - template_id: text_table_text_reasoning_driver
+    template_family: gen120_table_text
+    schema: text
+    task_type: generation_table_text_reasoning
+    generation_mode: per_doc
+    target_key: table_text_reasoning_driver
+    surface_forms:
+      - "请结合{company_name}{report_year}年年报中的主要财务指标和经营情况说明，判断业绩变化的关键驱动因素是否能互相印证。"
+      - "依据{company_name}{report_year}年年报的财务表格与经营叙述，分析收入、利润或现金流变化背后的业务驱动是否得到文字说明支撑。"
+      - "阅读{company_name}{report_year}年年报中的财务数据与经营分析后，请说明关键财务变化是否有对应的业务原因解释。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 5
+    difficulty: hard
+
+  - template_id: text_table_text_reasoning_consistency
+    template_family: gen120_table_text
+    schema: text
+    task_type: generation_table_text_reasoning
+    generation_mode: per_doc
+    target_key: table_text_reasoning_consistency
+    surface_forms:
+      - "请结合{company_name}{report_year}年年报中的财务指标表与管理层讨论，判断数据变化与经营叙述是否一致，并指出一致或不一致的地方。"
+      - "根据{company_name}{report_year}年年报披露的表格指标和经营分析内容，说明文字表述与财务结果之间是否存在明显一致性。"
+      - "请从{company_name}{report_year}年年报中的数字表现和业务解释两方面出发，分析公司经营叙述是否与财务结果保持一致。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 5
+    difficulty: hard
+
+  - template_id: text_evidence_based_classification
+    template_family: gen120_classification
+    schema: text
+    task_type: generation_evidence_based_classification
+    generation_mode: per_doc
+    target_key: evidence_based_classification
+    surface_forms:
+      - "根据{company_name}{report_year}年年报证据，将公司的年度经营叙述主要归类为“增长驱动”“成本/效率改善”“风险压力应对”或“战略转型布局”中的哪一类？请说明依据。"
+      - "请依据{company_name}{report_year}年年报，将公司年度经营变化判断为“增长驱动”“成本/效率改善”“风险压力应对”或“战略转型布局”中的主导类型，并说明理由。"
+      - "阅读{company_name}{report_year}年年报后，请在“增长驱动”“成本/效率改善”“风险压力应对”“战略转型布局”四类中判断公司年度经营主线，并给出证据。"
+    section_hints: []
+    split_pool: core_single_doc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 5
+    difficulty: hard
+
+  - template_id: text_cross_doc_compare_business
+    template_family: gen120_cross_doc
+    schema: text
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: cross_doc_compare_business
+    surface_forms:
+      - "对比{company_a}和{company_b}{year}年年报中关于业务发展或战略布局的表述，概括共同点和差异。"
+      - "请比较{company_a}与{company_b}{year}年年报中的业务推进或战略布局，分别说明共同点与差异。"
+      - "结合{company_a}和{company_b}{year}年年报披露内容，对比两家公司业务发展表述中的共性与不同。"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 1
+    difficulty: hard
+
+  - template_id: text_cross_doc_compare_investment
+    template_family: gen120_cross_doc
+    schema: text
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: cross_doc_compare_investment
+    surface_forms:
+      - "从年报证据出发，比较{company_a}和{company_b}{year}年在重点投入、业务推进或产品布局上的相同点和不同点。"
+      - "请基于{company_a}与{company_b}{year}年年报，对比两家公司在重点业务推进或产品布局方面的共性和差异。"
+      - "阅读{company_a}和{company_b}{year}年年报后，请概括两家公司在重点投入或业务方向上的相同点与差异。"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 1
+    difficulty: hard
+
+  - template_id: text_cross_doc_compare_risk
+    template_family: gen120_cross_doc
+    schema: text
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: cross_doc_compare_risk
+    surface_forms:
+      - "对比{company_a}和{company_b}{year}年年报中披露的主要风险或经营压力，概括两家公司风险关注点的共同点和差异。"
+      - "请依据{company_a}与{company_b}{year}年年报，比较两家公司面临的主要风险类别及其侧重点。"
+      - "结合{company_a}和{company_b}{year}年年报中的风险因素披露，对比两家公司风险来源和应对重点的异同。"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 1
+    difficulty: hard
+
+  - template_id: text_cross_doc_compare_operation
+    template_family: gen120_cross_doc
+    schema: text
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: cross_doc_compare_operation
+    surface_forms:
+      - "请比较{company_a}和{company_b}{year}年年报中关于经营推进、业务执行或产能建设的表述，概括共性与差异。"
+      - "基于{company_a}与{company_b}{year}年年报披露内容，对比两家公司在经营执行或业务推进层面的相同点和不同点。"
+      - "阅读{company_a}和{company_b}{year}年年报后，请比较两家公司在业务执行节奏、产能建设或经营推进方面的差异。"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 1
+    difficulty: hard
+
+  - template_id: text_cross_doc_compare_growth_path
+    template_family: gen120_cross_doc
+    schema: text
+    task_type: cross_doc_compare
+    generation_mode: per_pair
+    target_key: cross_doc_compare_growth_path
+    surface_forms:
+      - "请从年报证据出发，对比{company_a}和{company_b}{year}年在增长路径、业务扩张或市场推进方面的共同点与差异。"
+      - "结合{company_a}与{company_b}{year}年年报，比较两家公司增长方式或业务扩张路径上的异同。"
+      - "阅读{company_a}和{company_b}{year}年年报后，请概括两家公司在增长驱动和扩张路径上的共性与不同。"
+    section_hints: []
+    split_pool: aux_multidoc
+    answer_policy: evidence_grounded_synthesis
+    validator_target: generic_query_v1
+    max_per_doc: 1
+    difficulty: hard

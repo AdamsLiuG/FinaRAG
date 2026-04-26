@@ -1,0 +1,52 @@
+use_serialized_tables: true
+parent_document_retrieval: true
+parent_retrieval_mode: block
+use_vector_dbs: true
+vector_index_type: "flat"
+vector_search_k: 0
+vector_ivf_nlist: 32
+vector_ivf_nprobe: 8
+vector_hnsw_m: 32
+vector_hnsw_ef_construction: 200
+vector_hnsw_ef_search: 64
+retriever_cache_enabled: true
+use_bm25_db: true
+use_sparse_lexical_db: true
+use_tag_db: true
+llm_reranking: true
+llm_reranking_sample_size: 8
+top_n_retrieval: 3
+retrieval_debug_top_n: 10
+parallel_requests: 2
+pipeline_details: "中文Docling解析 + 中英OCR + 结构感知切块 + 文档候选路由 + BM25+BGE-M3(Dense/Sparse)混合召回 + RRF + BGE-M3 ColBERT-style中间层重排 + Qwen最终精排 + HyDE Dense Fallback + Table Grounding"
+full_context: false
+document_language: "zh"
+ocr_mode: "docling_rapidocr"
+doc_router_enabled: true
+candidate_doc_top_k: 5
+numeric_grounding_enabled: true
+reasoning_debug_enabled: false
+hyde_enabled: true
+hyde_trigger_mode: "fallback"
+# Keep null so HyDE follows answering_model and any QWEN_MODEL runtime override.
+hyde_generation_model: null
+hyde_generation_temperature: 0.2
+hyde_max_tokens: 192
+hyde_top_score_threshold: 0.55
+hyde_margin_threshold: 0.05
+reranking_strategy: "cascade"
+cascade_candidate_pool_cap: 24
+colbert_top_n: 8
+# Optional: defaults to COLBERT_MODEL / EMBEDDING_MODEL_NAME / BAAI/bge-m3.
+colbert_model: null
+colbert_device: null
+colbert_batch_size: 16
+colbert_query_max_length: 128
+colbert_passage_max_length: 512
+final_reranking_batch_size: 8
+final_reranking_backend: "llm_prompt"
+# Optional: set this to your Qwen3-Reranker compatible model if it differs from answering_model.
+final_reranking_model: null
+api_provider: "qwen"
+answering_model: "Qwen3.5-35B-A3B-AWQ-4bit"
+config_suffix: "_qwen_zh_finance_colbert_cascade_qwen_hyde_fallback"

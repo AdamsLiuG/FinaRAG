@@ -12,7 +12,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from src.api_requests import APIProcessor
-from src.embedding_backend import _get_bgem3_inference_lock, _load_bgem3_model
+from src.embedding_backend import _bgem3_encode_texts, _load_bgem3_model
 
 
 def _get_env_value(*names, default=None):
@@ -258,18 +258,38 @@ class FlagEmbeddingReranker:
             "1", "true", "yes", "on"
         }
         self.use_fp16 = use_fp16 and any(device.startswith("cuda") for device in self.devices)
+        self.trust_remote_code = trust_remote_code
+        self._fp16_runtime_disabled = False
+        self.models = self._load_models(self.use_fp16)
+
+    def _load_models(self, use_fp16: bool):
         # Keep one model per target device and shard work here. This also avoids
         # FlagEmbedding's prepare_for_model + tokenizer.pad path that triggers
         # the XLMRobertaTokenizerFast warning.
-        self.models = [
+        return [
             _load_flag_reranker_model(
                 model_name=self.model_name,
                 device=device,
-                use_fp16=self.use_fp16,
-                trust_remote_code=trust_remote_code,
+                use_fp16=use_fp16,
+                trust_remote_code=self.trust_remote_code,
             )
             for device in self.devices
         ]
+
+    @staticmethod
+    def _is_fp16_cublas_failure(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        return "cublas_status_invalid_value" in message or "cublasgemmex" in message
+
+    def _retry_with_fp32(self) -> None:
+        if not self.use_fp16 or self._fp16_runtime_disabled:
+            raise RuntimeError("fp16_fallback_unavailable")
+        print(
+            "Warning: FlagEmbedding reranker hit a CUDA fp16 GEMM failure. "
+            "Reloading reranker in fp32 and retrying once."
+        )
+        self.models = self._load_models(False)
+        self._fp16_runtime_disabled = True
 
     @staticmethod
     def _normalize_scores(scores):
@@ -277,34 +297,45 @@ class FlagEmbeddingReranker:
             return [float(scores)]
         return [float(score) for score in scores]
 
+    def _compute_scores(self, pairs: list[list[str]]) -> list[float]:
+        if len(self.models) == 1:
+            return self._normalize_scores(self.models[0].compute_score(pairs, normalize=True))
+
+        indexed_pairs = list(enumerate(pairs))
+        chunks = [indexed_pairs[i::len(self.models)] for i in range(len(self.models))]
+
+        def score_chunk(model, chunk):
+            if not chunk:
+                return []
+            indices = [index for index, _ in chunk]
+            chunk_pairs = [pair for _, pair in chunk]
+            chunk_scores = self._normalize_scores(model.compute_score(chunk_pairs, normalize=True))
+            return list(zip(indices, chunk_scores))
+
+        indexed_scores = []
+        with ThreadPoolExecutor(max_workers=len(self.models)) as executor:
+            futures = [
+                executor.submit(score_chunk, model, chunk)
+                for model, chunk in zip(self.models, chunks)
+            ]
+            for future in futures:
+                indexed_scores.extend(future.result())
+
+        scores = [0.0] * len(pairs)
+        for index, score in indexed_scores:
+            scores[index] = score
+        return scores
+
     def rerank_documents(self, query: str, documents: list, documents_batch_size: int = 4, llm_weight: float = 0.7):
         pairs = [[query, doc["text"]] for doc in documents]
-        if len(self.models) == 1:
-            scores = self._normalize_scores(self.models[0].compute_score(pairs, normalize=True))
-        else:
-            indexed_pairs = list(enumerate(pairs))
-            chunks = [indexed_pairs[i::len(self.models)] for i in range(len(self.models))]
-
-            def score_chunk(model, chunk):
-                if not chunk:
-                    return []
-                indices = [index for index, _ in chunk]
-                chunk_pairs = [pair for _, pair in chunk]
-                chunk_scores = self._normalize_scores(model.compute_score(chunk_pairs, normalize=True))
-                return list(zip(indices, chunk_scores))
-
-            indexed_scores = []
-            with ThreadPoolExecutor(max_workers=len(self.models)) as executor:
-                futures = [
-                    executor.submit(score_chunk, model, chunk)
-                    for model, chunk in zip(self.models, chunks)
-                ]
-                for future in futures:
-                    indexed_scores.extend(future.result())
-
-            scores = [0.0] * len(pairs)
-            for index, score in indexed_scores:
-                scores[index] = score
+        try:
+            scores = self._compute_scores(pairs)
+        except RuntimeError as exc:
+            if self._is_fp16_cublas_failure(exc) and self.use_fp16 and not self._fp16_runtime_disabled:
+                self._retry_with_fp32()
+                scores = self._compute_scores(pairs)
+            else:
+                raise
 
         vector_weight = 1 - llm_weight
         results = []
@@ -489,6 +520,46 @@ class LLMReranker:
             response_format=self.schema_for_multiple_blocks
         )
 
+    @staticmethod
+    def _build_scored_document(doc: dict, relevance_score: float, llm_weight: float, vector_weight: float) -> dict:
+        doc_with_score = doc.copy()
+        numeric_score = float(relevance_score)
+        doc_with_score["relevance_score"] = numeric_score
+        doc_with_score["final_relevance_score"] = numeric_score
+        doc_with_score["combined_score"] = round(
+            llm_weight * numeric_score +
+            vector_weight * float(doc.get("distance", 0.0)),
+            4
+        )
+        return doc_with_score
+
+    def _rerank_single_document(self, query: str, doc: dict, llm_weight: float, vector_weight: float) -> dict:
+        ranking = self.get_rank_for_single_block(query, doc["text"])
+        return self._build_scored_document(
+            doc,
+            ranking["relevance_score"],
+            llm_weight=llm_weight,
+            vector_weight=vector_weight,
+        )
+
+    def _fallback_batch_to_single_block(
+        self,
+        *,
+        query: str,
+        batch: list,
+        llm_weight: float,
+        vector_weight: float,
+        reason: str,
+    ) -> list[dict]:
+        print(
+            f"\nWarning: batch LLM reranking failed for {len(batch)} documents; "
+            f"falling back to single-block reranking. Reason: {reason}"
+        )
+        return [
+            self._rerank_single_document(query, doc, llm_weight=llm_weight, vector_weight=vector_weight)
+            for doc in batch
+        ]
+
     def rerank_documents(self, query: str, documents: list, documents_batch_size: int = 4, llm_weight: float = 0.7):
         """
         Rerank multiple documents using parallel processing with threading.
@@ -500,19 +571,12 @@ class LLMReranker:
         
         if documents_batch_size == 1:
             def process_single_doc(doc):
-                # Get ranking for single document
-                ranking = self.get_rank_for_single_block(query, doc['text'])
-                
-                doc_with_score = doc.copy()
-                doc_with_score["relevance_score"] = ranking["relevance_score"]
-                doc_with_score["final_relevance_score"] = doc_with_score["relevance_score"]
-                # Calculate combined score - note that distance is inverted since lower is better
-                doc_with_score["combined_score"] = round(
-                    llm_weight * ranking["relevance_score"] + 
-                    vector_weight * doc['distance'],
-                    4
+                return self._rerank_single_document(
+                    query,
+                    doc,
+                    llm_weight=llm_weight,
+                    vector_weight=vector_weight,
                 )
-                return doc_with_score
 
             # Process all documents in parallel using single-block method
             with ThreadPoolExecutor() as executor:
@@ -521,33 +585,64 @@ class LLMReranker:
         else:
             def process_batch(batch):
                 texts = [doc['text'] for doc in batch]
-                rankings = self.get_rank_for_multiple_blocks(query, texts)
+                try:
+                    rankings = self.get_rank_for_multiple_blocks(query, texts)
+                except Exception as exc:
+                    return self._fallback_batch_to_single_block(
+                        query=query,
+                        batch=batch,
+                        llm_weight=llm_weight,
+                        vector_weight=vector_weight,
+                        reason=str(exc),
+                    )
+
                 results = []
-                block_rankings = rankings.get('block_rankings', [])
-                
+                block_rankings = list(rankings.get('block_rankings', []) or [])
+
                 if len(block_rankings) < len(batch):
                     print(f"\nWarning: Expected {len(batch)} rankings but got {len(block_rankings)}")
                     for i in range(len(block_rankings), len(batch)):
                         doc = batch[i]
                         print(f"Missing ranking for document on page {doc.get('page', 'unknown')}:")
                         print(f"Text preview: {doc['text'][:100]}...\n")
-                    
-                    for _ in range(len(batch) - len(block_rankings)):
-                        block_rankings.append({
-                            "relevance_score": 0.0, 
-                            "reasoning": "Default ranking due to missing LLM response"
-                        })
-                
-                for doc, rank in zip(batch, block_rankings):
-                    doc_with_score = doc.copy()
-                    doc_with_score["relevance_score"] = rank["relevance_score"]
-                    doc_with_score["final_relevance_score"] = doc_with_score["relevance_score"]
-                    doc_with_score["combined_score"] = round(
-                        llm_weight * rank["relevance_score"] + 
-                        vector_weight * doc['distance'],
-                        4
+
+                for index, doc in enumerate(batch):
+                    if index >= len(block_rankings):
+                        results.append(
+                            self._rerank_single_document(
+                                query,
+                                doc,
+                                llm_weight=llm_weight,
+                                vector_weight=vector_weight,
+                            )
+                        )
+                        continue
+
+                    rank = block_rankings[index] or {}
+                    relevance_score = rank.get("relevance_score")
+                    if relevance_score is None:
+                        print(
+                            f"\nWarning: batch ranking missing relevance_score for document on page "
+                            f"{doc.get('page', 'unknown')}; falling back to single-block reranking."
+                        )
+                        results.append(
+                            self._rerank_single_document(
+                                query,
+                                doc,
+                                llm_weight=llm_weight,
+                                vector_weight=vector_weight,
+                            )
+                        )
+                        continue
+
+                    results.append(
+                        self._build_scored_document(
+                            doc,
+                            relevance_score,
+                            llm_weight=llm_weight,
+                            vector_weight=vector_weight,
+                        )
                     )
-                    results.append(doc_with_score)
                 return results
 
             # Process batches in parallel using threads
@@ -607,6 +702,10 @@ class ColBERTReranker:
         )
 
     @staticmethod
+    def _normalize_text(value: object) -> str:
+        return " ".join(str(value or "").split())
+
+    @staticmethod
     def _content_mask(input_ids: torch.Tensor, attention_mask: torch.Tensor, special_token_ids: list[int]) -> torch.Tensor:
         content_mask = attention_mask.bool()
         if not special_token_ids:
@@ -637,8 +736,12 @@ class ColBERTReranker:
         return float(value)
 
     def _encode_colbert_query(self, query: str):
-        outputs = self.model.encode(
-            [query],
+        normalized_query = self._normalize_text(query)
+        if not normalized_query:
+            raise ValueError("ColBERT query text cannot be empty.")
+        outputs = _bgem3_encode_texts(
+            self.model,
+            [normalized_query],
             batch_size=1,
             max_length=self.query_max_length,
             return_dense=False,
@@ -651,8 +754,10 @@ class ColBERTReranker:
         return colbert_vecs[0]
 
     def _encode_colbert_passages(self, texts: list[str]) -> list:
-        outputs = self.model.encode(
-            texts,
+        normalized_texts = [self._normalize_text(text) for text in texts]
+        outputs = _bgem3_encode_texts(
+            self.model,
+            normalized_texts,
             batch_size=self.batch_size,
             max_length=self.passage_max_length,
             return_dense=False,
@@ -672,13 +777,12 @@ class ColBERTReranker:
             return []
 
         texts = [doc.get("text", "") for doc in documents]
-        with _get_bgem3_inference_lock(self.model):
-            query_vecs = self._encode_colbert_query(query)
-            passage_vecs = self._encode_colbert_passages(texts)
-            return [
-                self._coerce_score(self.model.colbert_score(query_vecs, doc_vecs))
-                for doc_vecs in passage_vecs
-            ]
+        query_vecs = self._encode_colbert_query(query)
+        passage_vecs = self._encode_colbert_passages(texts)
+        return [
+            self._coerce_score(self.model.colbert_score(query_vecs, doc_vecs))
+            for doc_vecs in passage_vecs
+        ]
 
 
 class CascadeReranker:
@@ -692,12 +796,14 @@ class CascadeReranker:
         colbert_passage_max_length: int = 512,
         cascade_candidate_pool_cap: int = 50,
         colbert_top_n: int = 10,
+        final_reranking_batch_size: int = 2,
         final_reranker=None,
         final_reranking_backend: str = "flag_embedding",
         colbert_reranker: Optional[ColBERTReranker] = None,
     ):
         self.cascade_candidate_pool_cap = max(1, int(cascade_candidate_pool_cap))
         self.colbert_top_n = max(1, int(colbert_top_n))
+        self.final_reranking_batch_size = max(1, int(final_reranking_batch_size))
         self.final_reranker = final_reranker
         self.final_reranking_backend = final_reranking_backend
         self.colbert_reranker = colbert_reranker or ColBERTReranker(
@@ -739,7 +845,7 @@ class CascadeReranker:
         final_results = self.final_reranker.rerank_documents(
             query=query,
             documents=colbert_candidates,
-            documents_batch_size=documents_batch_size,
+            documents_batch_size=self.final_reranking_batch_size,
             llm_weight=llm_weight,
         )
         for item in final_results:

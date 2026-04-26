@@ -191,9 +191,11 @@ data/chinese_annual_reports_2024/
 
 # Personal notes / local drafts
 FinaRAG_resume_analysis.md
-FinaRAG面试准备.md
+FinaRAG面试准备*.md
 Project_Reference.tex
 resume.tex
+*面试问题解答.md
+*面问题解答.md
 
 # Generated / local-only datasets and indexes
 data/**/debug_data/
@@ -203,12 +205,25 @@ data/**/databases_ser_tab/
 data/**/metadata_store/
 data/chinese_annual_reports_2024_v1/pdf_reports/
 data/top10_industries_2024_20each/
+backups/
+outputs/
+RAG-Retrieval/
+Initializing
 
 # Training artifacts
 training/**/__pycache__/
-training/generator_sft/raw/
-training/generator_sft/processed/
-training/generator_sft/manifests/
+training/**/raw/
+training/**/processed/
+training/**/manifests/
+training/**/logs/
+training/**/saves/
+training/**/tmp/
+training/**/llamafactory_data/
+training/quantization/artifacts/
+*.safetensors
+*.ckpt
+*.pt
+pytorch_model*.bin
 
 Advanced_plan.md
 basebuild-retrievalfix.md

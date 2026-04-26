@@ -247,6 +247,7 @@ def _write_metadata_store(
     write_jsonl(metadata_store_dir / "annual_report.jsonl", _build_annual_report_rows(manifest_rows, metadata_bundle))
     write_jsonl(metadata_store_dir / "report_page.jsonl", _build_report_page_rows(metadata_bundle))
     write_jsonl(metadata_store_dir / "company_label_snapshot.jsonl", _build_company_label_rows(metadata_bundle))
+    write_jsonl(metadata_store_dir / "company_label_evidence.jsonl", [])
     write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", [])
 
 

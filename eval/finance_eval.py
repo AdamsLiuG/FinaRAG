@@ -12,6 +12,7 @@ if __package__ in {None, ""}:
 from eval.composite_score import (
     compute_citation_support,
     compute_finance_case_score,
+    get_finance_scoring_profile,
     compute_retrieval_support,
 )
 from eval.dataset_schema import (
@@ -22,6 +23,7 @@ from eval.dataset_schema import (
     validate_dataset_alignment,
 )
 from eval.entity_metrics import score_finance_entities
+from eval.keyword_metrics import score_answer_keywords
 from eval.metrics import build_debug_index, compare_answers, compare_ranked_retrieval, load_answers_bundle
 from eval.ragas_adapter import RagasRuntime, RagasRuntimeConfig, collect_ragas_contexts, prepare_ragas_runtime, score_with_ragas
 from eval.semantic_metrics import EmbeddingSimilarityScorer, score_semantic_similarity
@@ -32,6 +34,14 @@ def _mean(values: List[float | None]) -> float | None:
     if not valid_values:
         return None
     return round(sum(valid_values) / len(valid_values), 4)
+
+
+def _rate_at_threshold(values: List[float | None], threshold: float) -> float | None:
+    valid_values = [value for value in values if value is not None]
+    if not valid_values:
+        return None
+    hit_count = sum(1 for value in valid_values if value >= threshold)
+    return round(hit_count / len(valid_values), 4)
 
 
 def _normalize_prediction_answer(pred_answer: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,6 +88,12 @@ def evaluate_finance_case(
         question,
         debug_detail=debug_detail,
     )
+    keyword_result = score_answer_keywords(
+        pred_answer,
+        gold_answer,
+        question,
+        debug_detail=debug_detail,
+    )
     ragas_contexts = collect_ragas_contexts(pred_answer, debug_detail=debug_detail, limit=ragas_context_limit)
     ragas_result = score_with_ragas(
         question_text=gold_answer.question_text,
@@ -93,6 +109,7 @@ def evaluate_finance_case(
     composite_result = compute_finance_case_score(
         semantic_result=semantic_result,
         entity_result=entity_result,
+        keyword_result=keyword_result,
         ragas_result=ragas_result,
         retrieval_result=retrieval_result,
         citation_result=citation_result,
@@ -105,6 +122,7 @@ def evaluate_finance_case(
         "reference_value": gold_answer.value,
         "semantic": semantic_result,
         "entity": entity_result,
+        "keyword": keyword_result,
         "ragas": ragas_result,
         "retrieval": retrieval_result,
         "citation": citation_result,
@@ -190,10 +208,28 @@ def evaluate_finance_answers(
         "unmatched_predictions": unmatched_predictions,
         "mean_semantic_score": _mean([case["semantic"]["semantic_score"] for case in case_reports]),
         "mean_entity_score": _mean([case["entity"]["entity_score"] for case in case_reports]),
+        "mean_keyword_score": _mean([case["keyword"]["keyword_score"] for case in case_reports]),
+        "mean_type_aware_value_score": _mean([case["scores"]["type_aware_value_score"] for case in case_reports]),
+        "mean_ragas_score": _mean([case["ragas"]["ragas_score"] for case in case_reports]),
+        "mean_ragas_answer_correctness": _mean([case["ragas"]["answer_correctness"] for case in case_reports]),
+        "mean_ragas_faithfulness": _mean([case["ragas"]["faithfulness"] for case in case_reports]),
+        "mean_ragas_answer_relevancy": _mean([case["ragas"]["answer_relevancy"] for case in case_reports]),
+        "mean_ragas_context_recall": _mean([case["ragas"]["context_recall"] for case in case_reports]),
+        "mean_ragas_context_precision": _mean([case["ragas"]["context_precision"] for case in case_reports]),
         "mean_answer_score": _mean([case["scores"]["answer_score"] for case in case_reports]),
         "mean_retrieval_score": _mean([case["scores"]["retrieval_score"] for case in case_reports]),
+        "mean_retrieval_rule_score": _mean([case["scores"]["retrieval_rule_score"] for case in case_reports]),
         "mean_citation_score": _mean([case["scores"]["citation_score"] for case in case_reports]),
+        "mean_citation_rule_score": _mean([case["scores"]["citation_rule_score"] for case in case_reports]),
         "mean_final_quality_score": _mean([case["scores"]["final_quality_score"] for case in case_reports]),
+        "final_quality_pass_rate_at_0_8": _rate_at_threshold(
+            [case["scores"]["final_quality_score"] for case in case_reports],
+            threshold=0.8,
+        ),
+        "answer_pass_rate_at_0_8": _rate_at_threshold(
+            [case["scores"]["answer_score"] for case in case_reports],
+            threshold=0.8,
+        ),
         "ragas_ready_cases": sum(1 for case in case_reports if case["ragas"]["contexts_used"] > 0),
         "ragas_available_cases": sum(1 for case in case_reports if case["ragas"]["available"]),
     }
@@ -220,6 +256,7 @@ def evaluate_finance_answers(
             "runtime_reason": ragas_unavailable_reason or "ok",
             "runtime_error": ragas_unavailable_error,
         },
+        "scoring_profile": get_finance_scoring_profile(),
         "summary": summary,
         "aggregate_metrics": aggregate_metrics,
         "ranked_retrieval_metrics": ranked_retrieval_metrics,

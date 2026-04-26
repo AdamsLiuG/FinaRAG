@@ -27,7 +27,8 @@ numeric_grounding_enabled: true
 reasoning_debug_enabled: false
 hyde_enabled: true
 hyde_trigger_mode: "fallback"
-hyde_generation_model: "Qwen3.5-35B-A3B-AWQ-4bit"
+# Keep null so HyDE follows answering_model and any QWEN_MODEL runtime override.
+hyde_generation_model: null
 hyde_generation_temperature: 0.2
 hyde_max_tokens: 192
 hyde_top_score_threshold: 0.55

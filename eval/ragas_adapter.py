@@ -20,6 +20,14 @@ except Exception:
 DEFAULT_RAGAS_LLM_MODEL = "Qwen3.5-35B-A3B-AWQ-4bit"
 DEFAULT_RAGAS_EMBEDDING_MODEL = "BAAI/bge-m3"
 
+RAGAS_METRIC_WEIGHTS = {
+    "answer_correctness": 0.30,
+    "faithfulness": 0.20,
+    "answer_relevancy": 0.10,
+    "context_recall": 0.25,
+    "context_precision": 0.15,
+}
+
 
 def _env_value(*names: str, default: str | None = None) -> str | None:
     for name in names:
@@ -78,6 +86,22 @@ def _round_score(value: Any) -> float | None:
             return None
         return round(numeric_value, 4)
     return None
+
+
+def _weighted_score(scores: Dict[str, float | None], weights: Dict[str, float]) -> float | None:
+    weighted_sum = 0.0
+    active_weight = 0.0
+    for key, score in scores.items():
+        if score is None:
+            continue
+        weight = weights.get(key, 0.0)
+        if weight <= 0:
+            continue
+        weighted_sum += score * weight
+        active_weight += weight
+    if active_weight == 0:
+        return None
+    return round(weighted_sum / active_weight, 4)
 
 
 def _stringify_value(value: Any) -> str:
@@ -177,21 +201,37 @@ class RagasRuntimeConfig:
         timeout_raw = _env_value("RAGAS_LLM_TIMEOUT", "RAGAS_TIMEOUT", default="120")
         retries_raw = _env_value("RAGAS_LLM_MAX_RETRIES", default="2")
         context_limit_raw = _env_value("RAGAS_CONTEXT_LIMIT", default="5")
+        llm_provider = (_env_value("RAGAS_LLM_PROVIDER", "RAGAS_PROVIDER", default="openai") or "openai").strip().lower()
+        embedding_provider = (_env_value("RAGAS_EMBEDDING_PROVIDER", default="huggingface") or "huggingface").strip().lower()
         return cls(
             enabled=_env_bool("RAGAS_ENABLED", default=True),
-            llm_provider=(_env_value("RAGAS_LLM_PROVIDER", "RAGAS_PROVIDER", default="openai") or "openai").strip().lower(),
-            llm_model=_env_value("RAGAS_LLM_MODEL", "QWEN_MODEL", "LLM_MODEL", default=DEFAULT_RAGAS_LLM_MODEL),
-            llm_base_url=_env_value("RAGAS_LLM_BASE_URL", "RAGAS_BASE_URL", "QWEN_BASE_URL", "LLM_BASE_URL"),
-            llm_api_key=_env_value("RAGAS_LLM_API_KEY", "RAGAS_API_KEY", "QWEN_API_KEY", "LLM_API_KEY", "OPENAI_API_KEY"),
+            llm_provider=llm_provider,
+            llm_model=_env_value("RAGAS_LLM_MODEL", default=DEFAULT_RAGAS_LLM_MODEL),
+            llm_base_url=_env_value(
+                "RAGAS_LLM_BASE_URL",
+                "RAGAS_BASE_URL",
+                "OPENAI_BASE_URL" if llm_provider == "openai" else "",
+            ),
+            llm_api_key=_env_value(
+                "RAGAS_LLM_API_KEY",
+                "RAGAS_API_KEY",
+                "OPENAI_API_KEY" if llm_provider == "openai" else "",
+            ),
             llm_timeout=float(timeout_raw) if timeout_raw else 120.0,
             llm_max_retries=int(retries_raw) if retries_raw else 2,
             llm_adapter=_env_value("RAGAS_LLM_ADAPTER", default="auto") or "auto",
             llm_force_stream=_env_bool("RAGAS_LLM_FORCE_STREAM", default=False),
-            embedding_provider=(_env_value("RAGAS_EMBEDDING_PROVIDER", default="huggingface") or "huggingface").strip().lower(),
-            embedding_model=_env_value("RAGAS_EMBEDDING_MODEL", "EMBEDDING_MODEL_NAME", default=DEFAULT_RAGAS_EMBEDDING_MODEL),
+            embedding_provider=embedding_provider,
+            embedding_model=_env_value("RAGAS_EMBEDDING_MODEL", default=DEFAULT_RAGAS_EMBEDDING_MODEL),
             embedding_device=_env_value("RAGAS_EMBEDDING_DEVICE", "EMBEDDING_DEVICE"),
-            embedding_base_url=_env_value("RAGAS_EMBEDDING_BASE_URL", "OPENAI_BASE_URL", "QWEN_BASE_URL", "LLM_BASE_URL"),
-            embedding_api_key=_env_value("RAGAS_EMBEDDING_API_KEY", "OPENAI_API_KEY", "QWEN_API_KEY", "LLM_API_KEY"),
+            embedding_base_url=_env_value(
+                "RAGAS_EMBEDDING_BASE_URL",
+                "OPENAI_BASE_URL" if embedding_provider == "openai" else "",
+            ),
+            embedding_api_key=_env_value(
+                "RAGAS_EMBEDDING_API_KEY",
+                "OPENAI_API_KEY" if embedding_provider == "openai" else "",
+            ),
             context_limit=max(int(context_limit_raw or "5"), 1),
         )
 
@@ -263,10 +303,17 @@ class RagasRuntime:
 
     def _initialize(self) -> None:
         try:
+            from ragas.dataset_schema import SingleTurnSample
             from openai import AsyncOpenAI
             from ragas.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
             from ragas.llms import llm_factory
-            from ragas.metrics.collections import AnswerCorrectness, AnswerRelevancy, Faithfulness
+            from ragas.metrics.collections import (
+                AnswerCorrectness,
+                AnswerRelevancy,
+                ContextPrecisionWithReference,
+                ContextRecall,
+                Faithfulness,
+            )
         except ImportError as exc:
             raise ImportError("ragas_runtime_dependencies_missing") from exc
 
@@ -332,7 +379,18 @@ class RagasRuntime:
             "answer_correctness": AnswerCorrectness(llm=llm, embeddings=embeddings),
             "faithfulness": Faithfulness(llm=llm),
             "answer_relevancy": AnswerRelevancy(llm=llm, embeddings=embeddings),
+            "context_recall": ContextRecall(llm=llm),
+            "context_precision": ContextPrecisionWithReference(llm=llm),
         }
+        self._sample_type = SingleTurnSample
+
+    def _score_metric(self, metric: Any, sample_kwargs: Dict[str, Any]) -> float | None:
+        if hasattr(metric, "single_turn_score"):
+            sample = self._sample_type(**sample_kwargs)
+            return _round_score(metric.single_turn_score(sample))
+        if hasattr(metric, "score"):
+            return _round_score(metric.score(**sample_kwargs))
+        raise AttributeError(f"{metric.__class__.__name__} has no supported scoring method")
 
     def score(
         self,
@@ -344,33 +402,46 @@ class RagasRuntime:
     ) -> Dict[str, Any]:
         answer_text = _stringify_value(answer)
         reference_text = _stringify_value(reference)
-        common_kwargs = {
+        question_kwargs = {
             "user_input": question_text.strip(),
+        }
+        response_kwargs = {
+            **question_kwargs,
             "response": answer_text,
         }
         metric_kwargs = {
             "answer_correctness": {
-                **common_kwargs,
+                **response_kwargs,
                 "reference": reference_text,
             },
             "faithfulness": {
-                **common_kwargs,
+                **response_kwargs,
                 "retrieved_contexts": contexts,
             },
-            "answer_relevancy": common_kwargs,
+            "answer_relevancy": response_kwargs,
+            "context_recall": {
+                **question_kwargs,
+                "retrieved_contexts": contexts,
+                "reference": reference_text,
+            },
+            "context_precision": {
+                **question_kwargs,
+                "retrieved_contexts": contexts,
+                "reference": reference_text,
+            },
         }
 
         metric_scores: Dict[str, float | None] = {}
         metric_errors: List[str] = []
         for metric_name, metric in self._metrics.items():
             try:
-                metric_scores[metric_name] = _round_score(metric.score(**metric_kwargs[metric_name]))
+                metric_scores[metric_name] = self._score_metric(metric, metric_kwargs[metric_name])
             except Exception as exc:
                 metric_scores[metric_name] = None
                 metric_errors.append(f"{metric_name}: {_format_error(exc)}")
 
-        valid_scores = [score for score in metric_scores.values() if score is not None]
-        if not valid_scores:
+        ragas_score = _weighted_score(metric_scores, RAGAS_METRIC_WEIGHTS)
+        if ragas_score is None:
             return {
                 "available": False,
                 "reason": "metric_scoring_failed",
@@ -380,10 +451,11 @@ class RagasRuntime:
                 "answer_correctness": None,
                 "faithfulness": None,
                 "answer_relevancy": None,
+                "context_recall": None,
+                "context_precision": None,
                 "ragas_score": None,
             }
 
-        ragas_score = round(sum(valid_scores) / len(valid_scores), 4)
         return {
             "available": True,
             "reason": "ok" if not metric_errors else "partial_metric_failure",
@@ -393,6 +465,9 @@ class RagasRuntime:
             "answer_correctness": metric_scores.get("answer_correctness"),
             "faithfulness": metric_scores.get("faithfulness"),
             "answer_relevancy": metric_scores.get("answer_relevancy"),
+            "context_recall": metric_scores.get("context_recall"),
+            "context_precision": metric_scores.get("context_precision"),
+            "ragas_metric_weights": RAGAS_METRIC_WEIGHTS,
             "ragas_score": ragas_score,
         }
 
@@ -454,6 +529,9 @@ def score_with_ragas(
         "answer_correctness": None,
         "faithfulness": None,
         "answer_relevancy": None,
+        "context_recall": None,
+        "context_precision": None,
+        "ragas_metric_weights": RAGAS_METRIC_WEIGHTS,
         "ragas_score": None,
     }
 

@@ -1,13 +1,11 @@
-# Generator SFT Data Pipeline
+# Generator SFT 数据流水线
 
-This directory is the design anchor for building supervised fine-tuning data
-for the answer generation model used by FinaRAG.
+这个目录是为 FinaRAG 使用的答案生成模型构建监督微调数据的设计基线。
 
-The goal is not to train a free-form chatbot. The goal is to train a model
-that consumes retrieval-grounded context and emits the same structured schema
-already used in the online pipeline.
+目标并不是训练一个自由对话的聊天机器人，而是训练一个能够消费基于检索
+构建的上下文，并输出与当前在线流水线一致的结构化 schema 的模型。
 
-Relevant online code:
+相关在线代码：
 
 - `src/questions_processing.py`
 - `src/api_requests.py`
@@ -15,17 +13,17 @@ Relevant online code:
 - `src/table_grounding.py`
 - `src/answer_validation.py`
 
-## 1. Target Objective
+## 1. 目标
 
-Train a student answer model such as `Qwen3.5-9B` with LoRA so that it:
+使用 LoRA 训练一个类似 `Qwen3.5-9B` 的学生答案模型，使其能够：
 
-- follows the existing JSON schema reliably
-- answers using retrieved evidence only
-- refuses when evidence is insufficient
-- improves number/name/boolean/comparative behavior in financial reports
-- remains compatible with the current online prompt and validation chain
+- 稳定遵循现有 JSON schema
+- 仅基于检索到的证据作答
+- 在证据不足时拒答
+- 改善在财报场景下对数字、名称、布尔和比较类问题的表现
+- 与当前在线 prompt 和校验链保持兼容
 
-## 2. Proposed Directory Layout
+## 2. 建议的目录结构
 
 ```text
 training/generator_sft/
@@ -59,54 +57,54 @@ training/generator_sft/
     └── prompt_cache/
 ```
 
-## 3. Pipeline Stages
+## 3. 流水线阶段
 
-### Stage A. Build Seed Queries
+### 阶段 A：构建种子查询
 
 `build_seed_queries.py`
 
-Input sources:
+输入来源：
 
-- existing holdout question styles from `data/top10_industries_2024_20each/questions.json`
-- chunk metadata from `metadata_store/chunk_metadata.jsonl`
-- company metadata from `metadata_store/company_master.jsonl`
-- optional manually curated templates
+- `data/top10_industries_2024_20each/questions.json` 中现有的留出集问题风格
+- `metadata_store/chunk_metadata.jsonl` 中的 chunk 元数据
+- `metadata_store/company_master.jsonl` 中的公司元数据
+- 可选的人工整理模板
 
-Output:
+输出：
 
 - `raw/seed_queries.jsonl`
 
-Query families to include:
+建议覆盖的查询类型：
 
-- single-document fact
-- section-constrained fact
-- metadata/tag retrieval
-- cross-document comparison
-- boolean confirmation
-- refusal cases
+- 单文档事实型
+- 限定章节的事实型
+- 元数据或标签检索型
+- 跨文档比较型
+- 布尔确认型
+- 拒答场景
 
-Recommended initial ratio:
+建议的初始比例：
 
-- `number`: 40%
-- `name` and `names`: 25%
-- `boolean`: 20%
-- `comparative`: 10%
-- refusal and out-of-scope: 5% to 10%
+- `number`：40%
+- `name` 和 `names`：25%
+- `boolean`：20%
+- `comparative`：10%
+- 拒答与超出范围：5% 到 10%
 
-### Stage B. Mine Teacher Answers
+### 阶段 B：挖掘 Teacher 答案
 
 `mine_teacher_answers.py`
 
-High-level flow for each query:
+每个查询的高层流程：
 
-1. Run the strongest available retrieval pipeline.
-2. Build RAG context in the same format as the online system.
-3. Call the answer teacher with the same schema prompt family used online.
-4. Save both the structured answer and the retrieval debug payload.
+1. 运行当前最强的检索流水线。
+2. 以与在线系统相同的格式构建 RAG 上下文。
+3. 使用与在线一致的 schema prompt 家族调用答案 teacher。
+4. 同时保存结构化答案和检索调试载荷。
 
-Teacher model should be configurable, not hard-coded.
+Teacher 模型应该通过配置指定，而不是硬编码。
 
-Suggested config keys:
+建议的配置键：
 
 ```yaml
 teacher_answer_provider: qwen
@@ -118,21 +116,21 @@ max_queries: 5000
 parallel_requests: 4
 ```
 
-### Stage C. Filter and Validate
+### 阶段 C：过滤与校验
 
 `filter_sft_samples.py`
 
-Filtering rules should reuse the existing project logic as much as possible:
+过滤规则应尽可能复用项目里已有的逻辑：
 
-- `relevant_pages` must be a subset of retrieved pages after validation
-- answer must parse under the expected schema
-- number questions should prefer samples with successful table grounding
-- non-refusal positive samples should carry at least one citation or reference
-- validation flags from `answer_validation.py` should not indicate severe mismatch
-- duplicate or near-duplicate questions should be removed
-- exact repeated contexts should be deduplicated
+- `relevant_pages` 在校验后必须是检索页的子集
+- 答案必须能按预期 schema 成功解析
+- 数字类问题应优先保留表格 grounding 成功的样本
+- 非拒答的正样本至少应带有一个引用或参考依据
+- `answer_validation.py` 里的校验标志不应显示严重不匹配
+- 删除重复或近重复问题
+- 对完全相同的上下文去重
 
-Suggested rejection buckets:
+建议的拒绝桶：
 
 - schema_parse_failed
 - no_retrieval
@@ -143,34 +141,34 @@ Suggested rejection buckets:
 - duplicate_context
 - empty_final_answer
 
-### Stage D. Convert to Chat SFT
+### 阶段 D：转换为 Chat SFT
 
 `convert_to_chat_sft.py`
 
-Output format should match chat SFT training for Qwen-style models.
+输出格式应与 Qwen 风格模型的 chat SFT 训练格式保持一致。
 
-Each sample should preserve:
+每条样本应保留：
 
 - system prompt
-- user prompt with retrieval context
-- assistant JSON answer
-- lightweight metadata for tracking
+- 带检索上下文的 user prompt
+- assistant 的 JSON 答案
+- 便于追踪的轻量元数据
 
-### Stage E. Split Dataset
+### 阶段 E：切分数据集
 
 `split_train_dev_test.py`
 
-Recommended split strategy:
+建议的切分策略：
 
-- split by `report_id` or `company_name`, not by random row only
-- keep the current `top10_industries_2024_20each` as a holdout benchmark
-- keep comparison questions in dev/test if count is limited
+- 按 `report_id` 或 `company_name` 切分，而不只是随机按行切
+- 保留当前的 `top10_industries_2024_20each` 作为留出基准
+- 如果比较类问题数量有限，优先保留在 dev/test 中
 
-## 4. Record Definitions
+## 4. 记录定义
 
 ### 4.1 `seed_queries.jsonl`
 
-One line per candidate query before teacher generation.
+每行表示一条在生成 teacher 答案之前的候选查询。
 
 ```json
 {
@@ -191,25 +189,25 @@ One line per candidate query before teacher generation.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `query_id` | string | yes | stable ID for traceability |
-| `question_text` | string | yes | final natural-language query |
-| `schema` | string | yes | one of `name`, `number`, `boolean`, `names`, `comparative` |
-| `task_type` | string | yes | query family label |
-| `company_name` | string or null | no | primary company for single-doc tasks |
-| `mentioned_companies` | list[string] | yes | company mentions for comparison tasks |
-| `doc_ids` | list[string] | no | intended target reports if known |
-| `expected_filters` | object | no | retrieval hints derived from metadata |
-| `source` | string | yes | origin of the query |
-| `difficulty` | string | no | optional difficulty bucket |
-| `should_refuse` | bool | yes | whether the ideal answer should refuse |
+| `query_id` | string | 是 | 用于追踪的稳定 ID |
+| `question_text` | string | 是 | 最终自然语言查询 |
+| `schema` | string | 是 | `name`、`number`、`boolean`、`names`、`comparative` 之一 |
+| `task_type` | string | 是 | 查询家族标签 |
+| `company_name` | string or null | 否 | 单文档任务的主公司 |
+| `mentioned_companies` | list[string] | 是 | 比较任务中提到的公司 |
+| `doc_ids` | list[string] | 否 | 若已知则写目标报告 ID |
+| `expected_filters` | object | 否 | 基于元数据推导出的检索提示 |
+| `source` | string | 是 | 查询来源 |
+| `difficulty` | string | 否 | 可选的难度桶 |
+| `should_refuse` | bool | 是 | 理想答案是否应当拒答 |
 
 ### 4.2 `teacher_answers_raw.jsonl`
 
-One line per teacher run before filtering.
+每行表示过滤前的一次 teacher 运行结果。
 
 ```json
 {
@@ -238,27 +236,27 @@ One line per teacher run before filtering.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `query_id` | string | yes | joins back to the seed query |
-| `question_text` | string | yes | original query |
-| `schema` | string | yes | task schema |
-| `teacher_answer_model` | string | yes | answer teacher used |
-| `retrieval_config` | string | yes | retrieval stack used during mining |
-| `rag_context` | string | yes | exact context given to the teacher |
-| `retrieval_pages` | list[int] | yes | pages in retrieved order |
-| `retrieval_results` | list[object] | yes | serialized retrieval evidence |
-| `answer` | object | yes | raw teacher answer in online schema |
-| `response_data` | object | no | token usage and model info |
-| `table_grounding_result` | object or null | no | numeric grounding outcome |
-| `validation_result` | object or null | no | answer validation outcome |
-| `build_timestamp` | string | yes | UTC timestamp |
+| `query_id` | string | 是 | 可关联回种子查询 |
+| `question_text` | string | 是 | 原始查询 |
+| `schema` | string | 是 | 任务 schema |
+| `teacher_answer_model` | string | 是 | 使用的答案 teacher |
+| `retrieval_config` | string | 是 | 挖掘时使用的检索栈 |
+| `rag_context` | string | 是 | 提供给 teacher 的完整上下文 |
+| `retrieval_pages` | list[int] | 是 | 按检索顺序排列的页码 |
+| `retrieval_results` | list[object] | 是 | 序列化后的检索证据 |
+| `answer` | object | 是 | 在线 schema 下的原始 teacher 答案 |
+| `response_data` | object | 否 | token 用量和模型信息 |
+| `table_grounding_result` | object or null | 否 | 数值 grounding 结果 |
+| `validation_result` | object or null | 否 | 答案校验结果 |
+| `build_timestamp` | string | 是 | UTC 时间戳 |
 
 ### 4.3 `teacher_answers_filtered.jsonl`
 
-One line per accepted SFT sample after filtering.
+每行表示过滤后被接受的一条 SFT 样本。
 
 ```json
 {
@@ -286,28 +284,28 @@ One line per accepted SFT sample after filtering.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `sample_id` | string | yes | stable training sample ID |
-| `query_id` | string | yes | source query |
-| `question_text` | string | yes | original query text |
-| `schema` | string | yes | prompt family |
-| `system_prompt` | string | yes | exact system prompt used for SFT |
-| `user_prompt` | string | yes | exact user prompt with context |
-| `assistant_response_json` | object | yes | target structured answer |
-| `doc_ids` | list[string] | no | source reports |
-| `company_name` | string or null | no | primary company |
-| `retrieval_pages` | list[int] | yes | pages shown to the model |
-| `accepted_checks` | list[string] | yes | passed quality checks |
-| `source` | string | yes | provenance label |
+| `sample_id` | string | 是 | 稳定的训练样本 ID |
+| `query_id` | string | 是 | 来源查询 ID |
+| `question_text` | string | 是 | 原始查询文本 |
+| `schema` | string | 是 | prompt 家族 |
+| `system_prompt` | string | 是 | 用于 SFT 的完整 system prompt |
+| `user_prompt` | string | 是 | 带上下文的完整 user prompt |
+| `assistant_response_json` | object | 是 | 目标结构化答案 |
+| `doc_ids` | list[string] | 否 | 源报告 ID |
+| `company_name` | string or null | 否 | 主公司 |
+| `retrieval_pages` | list[int] | 是 | 展示给模型的页码 |
+| `accepted_checks` | list[string] | 是 | 通过的质量检查 |
+| `source` | string | 是 | 来源标签 |
 
-### 4.4 `train.chat.jsonl` and `dev.chat.jsonl`
+### 4.4 `train.chat.jsonl` 与 `dev.chat.jsonl`
 
-Final SFT training format.
+最终的 SFT 训练格式。
 
-Minimal required structure:
+最小必需结构：
 
 ```json
 {
@@ -335,21 +333,21 @@ Minimal required structure:
 }
 ```
 
-## 5. Quality Gates
+## 5. 质量门槛
 
-Recommended hard acceptance criteria:
+建议的硬性验收标准：
 
-- schema parse success rate above 98%
-- positive sample page alignment above 95%
-- number sample grounding success above 85%
-- refusal sample manual spot-check precision above 90%
-- duplicate query ratio below 5%
+- schema 解析成功率高于 98%
+- 正样本页码对齐率高于 95%
+- 数字类样本的 grounding 成功率高于 85%
+- 拒答样本的人工抽检精度高于 90%
+- 重复查询比例低于 5%
 
-## 6. Notes Specific to FinaRAG
+## 6. FinaRAG 特定说明
 
-- Keep `top10_industries_2024_20each` as holdout, not as the main training set.
-- Prefer reusing the online prompt family from `src/prompts.py`.
-- Prefer storing serialized retrieval results from `QuestionsProcessor` so that
-  every SFT sample can be audited later.
-- For number questions, treat grounded values as more trustworthy than pure
-  teacher text when conflicts appear.
+- 将 `top10_industries_2024_20each` 保留为留出集，而不是主训练集。
+- 优先复用 `src/prompts.py` 中的在线 prompt 家族。
+- 优先保存来自 `QuestionsProcessor` 的序列化检索结果，以便后续审计
+  每一条 SFT 样本。
+- 对数字类问题来说，如果出现冲突，应认为 grounding 后的值比纯
+  teacher 文本更可信。

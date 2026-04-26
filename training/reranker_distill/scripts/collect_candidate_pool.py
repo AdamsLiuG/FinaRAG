@@ -20,6 +20,7 @@ from training.common import (  # noqa: E402
     display_path,
     load_records,
     load_yaml_mapping,
+    reset_output_file,
     resolve_dataset_root,
     resolve_repo_path,
     utc_now_iso,
@@ -45,6 +46,14 @@ def build_candidate_payload(result: Dict[str, Any], rank_index: int) -> Dict[str
         "retrieval_sources": list(result.get("retrieval_sources", [])),
         "base_score": round(_result_score(result), 4),
         "section_name": metadata.get("section_name") or metadata.get("section_title"),
+        "report_section": metadata.get("report_section"),
+        "chunk_type": metadata.get("chunk_type"),
+        "node_type": metadata.get("node_type"),
+        "company_name": metadata.get("company_name"),
+        "report_year": metadata.get("report_year"),
+        "period": metadata.get("period"),
+        "currency": metadata.get("currency"),
+        "topic_flags": list(metadata.get("topic_flags", []) or []),
         "matched_queries": list(result.get("matched_queries", [])),
         "query_hit_count": int(result.get("query_hit_count", len(result.get("matched_queries", [])))),
         "result_scope": result.get("result_scope"),
@@ -163,7 +172,10 @@ def _resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     )
     query_input_path = resolve_repo_path(REPO_ROOT, _coalesce(args.query_input_path, config.get("query_input_path")))
     candidate_output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.candidate_output_path, config.get("candidate_output_path")))
-    stats_output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.stats_output_path, config.get("stats_output_path")))
+    stats_output_path = resolve_repo_path(
+        REPO_ROOT,
+        _coalesce(args.stats_output_path, config.get("candidate_stats_output_path"), config.get("stats_output_path")),
+    )
     dataset_root_path = resolve_dataset_root(REPO_ROOT, _coalesce(args.dataset_root_path, config.get("dataset_root_path")))
     if retrieval_config_path is None or query_input_path is None or candidate_output_path is None or stats_output_path is None:
         raise ValueError("retrieval/query-output/stats paths are required.")
@@ -186,6 +198,8 @@ def main() -> None:
     args = build_arg_parser().parse_args()
     settings = _resolve_settings(args)
     records = load_records(settings["query_input_path"])
+    if not settings["resume"]:
+        reset_output_file(settings["candidate_output_path"])
     existing_ids = collect_existing_ids(settings["candidate_output_path"]) if settings["resume"] else set()
     pending_records = [
         record

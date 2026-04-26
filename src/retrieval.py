@@ -376,6 +376,8 @@ class BM25Retriever(_DocumentBackedRetriever):
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
+        if not str(query or "").strip():
+            return []
         aggregated_results: List[Dict] = []
         for document_entry in self._candidate_document_entries(company_name, candidate_doc_ids):
             document = document_entry["document"]
@@ -422,6 +424,8 @@ class BGEM3SparseRetriever(_DocumentBackedRetriever):
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
+        if not str(query or "").strip():
+            return []
         aggregated_results: List[Dict] = []
         query_weights = self.embedding_backend.encode_query(query)
         for document_entry in self._candidate_document_entries(company_name, candidate_doc_ids):
@@ -728,6 +732,7 @@ class HybridRetriever:
         colbert_passage_max_length: int = 512,
         final_reranking_backend: Optional[str] = None,
         final_reranking_model: Optional[str] = None,
+        final_reranking_batch_size: int = 2,
     ):
         if not use_vector_dbs and not use_bm25_db and not use_sparse_lexical_db and not use_tag_db:
             raise ValueError("At least one retrieval backend must be enabled.")
@@ -750,6 +755,7 @@ class HybridRetriever:
                 "final_reranking_backend must be either 'flag_embedding', 'llm_prompt', or 'vllm_api'."
             )
         self.final_reranking_model = final_reranking_model
+        self.final_reranking_batch_size = max(1, int(final_reranking_batch_size))
         self.vector_retriever = (
             VectorRetriever(
                 vector_db_dir,
@@ -801,7 +807,12 @@ class HybridRetriever:
                 or os.getenv("COLBERT_MODEL")
                 or os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
             )
-            final_model = self.final_reranking_model or model
+            if self.final_reranking_backend == "flag_embedding":
+                final_model = self.final_reranking_model or os.getenv("RERANKING_MODEL")
+            elif self.final_reranking_backend == "vllm_api":
+                final_model = self.final_reranking_model or os.getenv("RERANKING_MODEL")
+            else:
+                final_model = self.final_reranking_model or model
             return CascadeReranker(
                 colbert_model=resolved_colbert_model,
                 colbert_device=colbert_device,
@@ -810,6 +821,7 @@ class HybridRetriever:
                 colbert_passage_max_length=colbert_passage_max_length,
                 cascade_candidate_pool_cap=self.cascade_candidate_pool_cap,
                 colbert_top_n=self.colbert_top_n,
+                final_reranking_batch_size=self.final_reranking_batch_size,
                 final_reranker=self._build_final_reranker(self.final_reranking_backend, provider, final_model),
                 final_reranking_backend=self.final_reranking_backend,
             )
@@ -896,6 +908,8 @@ class HybridRetriever:
     ) -> List[Dict]:
         if backend_scope not in {"all", "vector_only"}:
             raise ValueError("backend_scope must be either 'all' or 'vector_only'.")
+        if not str(query or "").strip():
+            return []
 
         vector_results: List[Dict] = []
         bm25_results: List[Dict] = []
@@ -971,6 +985,8 @@ class HybridRetriever:
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
+        if not str(query or "").strip():
+            return []
         retrieval_top_n = llm_reranking_sample_size
         if self.reranking_strategy == "cascade":
             retrieval_top_n = max(retrieval_top_n, self.cascade_candidate_pool_cap)

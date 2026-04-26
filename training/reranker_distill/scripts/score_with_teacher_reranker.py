@@ -20,6 +20,7 @@ from training.common import (  # noqa: E402
     display_path,
     load_records,
     load_yaml_mapping,
+    reset_output_file,
     resolve_repo_path,
     utc_now_iso,
     write_json,
@@ -58,23 +59,13 @@ def _request_url(base_url: str) -> str:
     return f"{normalized_base}/v1/rerank"
 
 
-def _minmax_normalize(values: List[float]) -> List[float]:
-    if not values:
-        return []
-    min_value = min(values)
-    max_value = max(values)
-    if max_value == min_value:
-        return [1.0 if max_value > 0 else 0.0 for _ in values]
-    scale = max_value - min_value
-    return [float((value - min_value) / scale) for value in values]
-
-
 def _normalize_remote_scores(scores: List[float]) -> List[float]:
     if not scores:
         return []
-    if all(0.0 <= float(score) <= 1.0 for score in scores):
-        return [float(score) for score in scores]
-    return _minmax_normalize([float(score) for score in scores])
+    # Preserve the teacher's original score scale. Query-level min-max
+    # normalization destroys absolute calibration and turns training targets
+    # into pool-relative ranks only.
+    return [float(score) for score in scores]
 
 
 def _extract_scores(response_json: Dict[str, Any], total_documents: int) -> List[float]:
@@ -179,6 +170,7 @@ def score_candidate_pool_record(
                 "teacher_score": round(float(scores[index]), 4),
                 "teacher_rank": int(teacher_rank_by_index[index]),
                 "doc_id": candidate.get("doc_id"),
+                "company_name": candidate.get("company_name"),
                 "page": candidate.get("page"),
                 "chunk_id": candidate.get("chunk_id"),
                 "text": candidate.get("text"),
@@ -235,6 +227,8 @@ def main() -> None:
     if settings["max_queries"] > 0:
         candidate_records = candidate_records[: settings["max_queries"]]
 
+    if not settings["resume"]:
+        reset_output_file(settings["output_path"])
     existing_ids = collect_existing_ids(settings["output_path"]) if settings["resume"] else set()
     pending_records = [
         record

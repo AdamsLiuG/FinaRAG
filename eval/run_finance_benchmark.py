@@ -37,12 +37,33 @@ def _default_export_paths(answers_file: Path) -> tuple[Path, Path, Path]:
     return pred_answers_out, debug_out, report_out
 
 
+def _resolve_named_config_path(config_name: str) -> Path | None:
+    candidate = Path(config_name)
+    if candidate.suffix.lower() not in {".yaml", ".yml"}:
+        return None
+
+    search_candidates = []
+    if candidate.is_absolute():
+        search_candidates.append(candidate)
+    else:
+        search_candidates.append(ROOT / candidate)
+        search_candidates.append(ROOT / "config" / candidate.name)
+
+    for path in search_candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
 def _resolve_run_config(config_name: str | None, config_path: Path | None):
     from src.pipeline import configs, load_run_config
 
     if config_path is not None:
         return load_run_config(config_path)
     if config_name is not None:
+        yaml_path = _resolve_named_config_path(config_name)
+        if yaml_path is not None:
+            return load_run_config(yaml_path)
         return configs[config_name]
     raise ValueError("Either config_name or config_path is required when running the pipeline.")
 
@@ -74,12 +95,20 @@ def run_pipeline_for_benchmark(
     questions_file: Path,
     config_name: str | None,
     config_path: Path | None,
+    output_path: Path | None = None,
+    resume: bool = False,
+    retry_errors: bool = True,
 ) -> Path:
     from src.pipeline import Pipeline
 
     run_config = _resolve_run_config(config_name, config_path)
-    pipeline = Pipeline(dataset_dir, questions_file_name=str(questions_file), run_config=run_config)
-    return pipeline.process_questions()
+    resolved_questions_file = questions_file if questions_file.is_absolute() else ROOT / questions_file
+    pipeline = Pipeline(dataset_dir, questions_file_name=str(resolved_questions_file), run_config=run_config)
+    return pipeline.process_questions(
+        output_path=output_path,
+        resume=resume,
+        retry_errors=retry_errors,
+    )
 
 
 def run_finance_benchmark(
@@ -97,7 +126,15 @@ def run_finance_benchmark(
     use_embedding_similarity: bool = False,
     include_cases: bool = True,
     ragas_config: RagasRuntimeConfig | None = None,
+    resume: bool = False,
+    resume_file: Path | None = None,
+    retry_errors: bool = True,
 ) -> Dict[str, Any]:
+    if resume and answers_file is not None:
+        raise ValueError("resume cannot be used together with answers_file because answers_file skips the pipeline.")
+    if resume_file is not None and answers_file is not None:
+        raise ValueError("resume_file cannot be used together with answers_file because answers_file skips the pipeline.")
+
     raw_answers_file = answers_file
     if raw_answers_file is None:
         raw_answers_file = run_pipeline_for_benchmark(
@@ -105,6 +142,9 @@ def run_finance_benchmark(
             questions_file=questions_file,
             config_name=config_name,
             config_path=config_path,
+            output_path=resume_file,
+            resume=resume,
+            retry_errors=retry_errors,
         )
 
     raw_debug_file = debug_file or _default_debug_bundle(raw_answers_file)
@@ -158,6 +198,17 @@ def main() -> None:
     parser.add_argument("--debug-file", type=Path, default=None)
     parser.add_argument("--config", default="qwen_base")
     parser.add_argument("--config-path", type=Path, default=None)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume the pipeline from an existing raw answers/debug bundle instead of starting a fresh answers file.",
+    )
+    parser.add_argument(
+        "--resume-file",
+        type=Path,
+        default=None,
+        help="Raw answers JSON path to resume into. Without --resume, this becomes the fresh raw answers output path.",
+    )
     parser.add_argument("--pred-answers-out", type=Path, default=None)
     parser.add_argument("--eval-debug-out", type=Path, default=None)
     parser.add_argument("--report-out", type=Path, default=None)
@@ -195,6 +246,8 @@ def main() -> None:
         use_embedding_similarity=args.use_embedding_similarity,
         include_cases=not args.no_case_details,
         ragas_config=ragas_config,
+        resume=args.resume,
+        resume_file=args.resume_file,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

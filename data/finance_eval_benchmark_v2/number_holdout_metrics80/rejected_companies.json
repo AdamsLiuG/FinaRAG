@@ -1,0 +1,115 @@
+[
+  {
+    "doc_id": "600016_2024_20250329",
+    "company_name": "民生银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600486_2024_20250325",
+    "company_name": "扬农化工",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600515_2024_20250415",
+    "company_name": "海南机场",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600665_2024_20250430",
+    "company_name": "天地源",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600697_2024_20250417",
+    "company_name": "欧亚集团",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600827_2024_20250415",
+    "company_name": "百联股份",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "600848_2024_20250412",
+    "company_name": "上海临港",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "601009_2024_20250422",
+    "company_name": "南京银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "601169_2024_20250415",
+    "company_name": "北京银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "601528_2024_20250328",
+    "company_name": "瑞丰银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment",
+      "operating_cash_flow"
+    ]
+  },
+  {
+    "doc_id": "601577_2024_20250426",
+    "company_name": "长沙银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "601825_2024_20250425",
+    "company_name": "沪农商行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "601860_2024_20250425",
+    "company_name": "紫金银行",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  },
+  {
+    "doc_id": "603101_2024_20250404",
+    "company_name": "汇嘉时代",
+    "reason": "missing_metric",
+    "missing_metric_keys": [
+      "rd_investment"
+    ]
+  }
+]

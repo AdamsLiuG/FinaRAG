@@ -13,6 +13,27 @@ from eval.metrics import compare_answers, load_answers_bundle, summarize_answers
 from src.pipeline import Pipeline, configs, load_run_config
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_named_config_path(config_name: str) -> Path | None:
+    candidate = Path(config_name)
+    if candidate.suffix.lower() not in {".yaml", ".yml"}:
+        return None
+
+    search_candidates = []
+    if candidate.is_absolute():
+        search_candidates.append(candidate)
+    else:
+        search_candidates.append(ROOT / candidate)
+        search_candidates.append(ROOT / "config" / candidate.name)
+
+    for path in search_candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
 def _default_reference_answers(dataset_dir: Path) -> Path | None:
     candidates = [
         dataset_dir / "answers_max_nst_o3m.json",
@@ -58,7 +79,8 @@ def run_pipeline(dataset_dir: Path, config_name: str | None, config_path: Path |
     if config_path is not None:
         run_config = load_run_config(config_path)
     elif config_name is not None:
-        run_config = configs[config_name]
+        yaml_path = _resolve_named_config_path(config_name)
+        run_config = load_run_config(yaml_path) if yaml_path is not None else configs[config_name]
     else:
         raise ValueError("Either config_name or config_path is required when --run-pipeline is used.")
 

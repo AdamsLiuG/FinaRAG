@@ -1,0 +1,54 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "finance_eval_benchmark_v2_gen120",
+  "description": "120 generation-required finance RAG questions, 20 for each synthesis/compare/reasoning capability.",
+  "source_corpora": [
+    "finance_eval_benchmark_v2/core200",
+    "top10_industries_2024_20each",
+    "top10_industries_2024_20each/metadata_store/report_chunk.jsonl"
+  ],
+  "question_count": 120,
+  "answer_count": 120,
+  "scoring_profile": "finance_generation_required_v1",
+  "strata_summary": {
+    "all": 120,
+    "capability/generation_cross_doc_compare": 20,
+    "capability/generation_evidence_based_classification": 20,
+    "capability/generation_risk_synthesis": 20,
+    "capability/generation_strategy_synthesis": 20,
+    "capability/generation_summary": 20,
+    "capability/generation_table_text_reasoning": 20,
+    "difficulty/hard": 80,
+    "difficulty/medium": 40,
+    "industry/专用设备制造业": 10,
+    "industry/信息技术": 14,
+    "industry/化学原料和化学制品制造业": 9,
+    "industry/医药生物": 14,
+    "industry/房地产业": 12,
+    "industry/汽车": 13,
+    "industry/电力、热力生产和供应业": 8,
+    "industry/电子": 14,
+    "industry/货币金融服务": 12,
+    "industry/零售业": 14,
+    "kind/text": 120,
+    "scenario/generation_cross_doc_compare": 20,
+    "scenario/generation_evidence_based_classification": 20,
+    "scenario/generation_risk_synthesis": 20,
+    "scenario/generation_strategy_synthesis": 20,
+    "scenario/generation_summary": 20,
+    "scenario/generation_table_text_reasoning": 20
+  },
+  "metadata": {
+    "requires_generation": true,
+    "rules_role": "evidence_only",
+    "recommended_run_note": "Use kind=text support; direct-answer rules should not produce final answers for this split.",
+    "capabilities": [
+      "generation_summary",
+      "generation_risk_synthesis",
+      "generation_strategy_synthesis",
+      "generation_table_text_reasoning",
+      "generation_cross_doc_compare",
+      "generation_evidence_based_classification"
+    ]
+  }
+}

@@ -7,4 +7,6 @@ dev_ratio: 0.1
 test_ratio: 0.1
 split_salt: finarag_reranker_v1
 group_fields:
+  - doc_id
+  - company_name
   - query_id

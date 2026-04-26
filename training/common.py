@@ -94,6 +94,11 @@ def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def reset_output_file(path: Path) -> None:
+    ensure_parent(path)
+    path.write_text("", encoding="utf-8")
+
+
 def _expand_env_placeholders(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _expand_env_placeholders(item) for key, item in value.items()}
@@ -218,6 +223,21 @@ def _coerce_list(value: Any) -> List[Any]:
     return [value]
 
 
+def _looks_comparative_question(question_text: Any) -> bool:
+    text = " ".join(str(question_text or "").strip().split()).lower()
+    if not text:
+        return False
+    comparative_markers = (
+        "谁的",
+        "哪家更高",
+        "哪家更低",
+        "相比",
+        "更高",
+        "更低",
+    )
+    return any(marker in text for marker in comparative_markers)
+
+
 def normalize_training_query_record(record: Dict[str, Any]) -> Dict[str, Any]:
     meta = record.get("meta") if isinstance(record.get("meta"), dict) else {}
     answer = record.get("answer") if isinstance(record.get("answer"), dict) else {}
@@ -239,6 +259,7 @@ def normalize_training_query_record(record: Dict[str, Any]) -> Dict[str, Any]:
     )
     schema = record.get("schema") or record.get("kind") or meta.get("schema")
     query_id = record.get("query_id") or record.get("id") or meta.get("query_id")
+    task_type = record.get("task_type") or record.get("capability") or meta.get("task_type")
 
     company_name = (
         record.get("company_name")
@@ -266,10 +287,21 @@ def normalize_training_query_record(record: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(group, dict) and group.get("doc_id")
         ]
 
+    if (
+        len([value for value in mentioned_companies if value not in (None, "")]) >= 2
+        and (
+            str(task_type or "") == "cross_doc_compare"
+            or _looks_comparative_question(question_text)
+        )
+        and str(schema or "") not in {"text", "long_text"}
+    ):
+        schema = "comparative"
+
     return {
         "query_id": str(query_id) if query_id not in (None, "") else None,
         "question_text": question_text,
         "schema": schema,
+        "task_type": task_type,
         "company_name": company_name,
         "mentioned_companies": _dedupe_preserve_order(str(value) for value in mentioned_companies if value not in (None, "")),
         "doc_ids": _dedupe_preserve_order(str(value) for value in doc_ids if value not in (None, "")),
@@ -277,6 +309,14 @@ def normalize_training_query_record(record: Dict[str, Any]) -> Dict[str, Any]:
         "source": record.get("source") or meta.get("source"),
         "difficulty": record.get("difficulty"),
         "should_refuse": bool(record.get("should_refuse", False)),
+        "template_id": record.get("template_id") or meta.get("template_id"),
+        "template_family": record.get("template_family") or meta.get("template_family"),
+        "template_version": record.get("template_version") or meta.get("template_version"),
+        "target_key": record.get("target_key") or meta.get("target_key"),
+        "surface_variant_id": record.get("surface_variant_id") or meta.get("surface_variant_id"),
+        "split_pool": record.get("split_pool") or meta.get("split_pool"),
+        "answer_policy": record.get("answer_policy") or meta.get("answer_policy"),
+        "validator_target": record.get("validator_target") or meta.get("validator_target"),
         "route_info": route_info,
         "query_plan": query_plan,
         "original_record": record,
@@ -350,6 +390,8 @@ def build_rag_prompt_bundle(schema: str, provider: str = "qwen") -> tuple[str, s
         "number": prompts.AnswerWithRAGContextNumberPrompt,
         "boolean": prompts.AnswerWithRAGContextBooleanPrompt,
         "names": prompts.AnswerWithRAGContextNamesPrompt,
+        "text": prompts.AnswerWithRAGContextTextPrompt,
+        "long_text": prompts.AnswerWithRAGContextTextPrompt,
         "comparative": prompts.ComparativeAnswerPrompt,
     }
     prompt_cls = prompt_map.get(schema)

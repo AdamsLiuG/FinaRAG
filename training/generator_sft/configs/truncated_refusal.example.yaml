@@ -1,0 +1,19 @@
+input_path: training/generator_sft/processed/teacher_answers_filtered.v2.jsonl
+retrieved_cache_input_path: training/generator_sft/raw/retrieved_cache.jsonl
+anchor_input_path: training/generator_sft/processed/anchor_clean_positive.v1.jsonl
+output_path: training/generator_sft/processed/truncated_refusal.v1.jsonl
+chat_output_path: training/generator_sft/processed/truncated_refusal.chat.v1.jsonl
+rejected_output_path: training/generator_sft/manifests/truncated_refusal.rejected.v1.jsonl
+stats_output_path: training/generator_sft/manifests/truncated_refusal.stats.v1.json
+teacher_answer_provider: sub2api
+teacher_answer_model: ${SUB2API_MODEL}
+answer_temperature: 0.0
+source_priority:
+  - key_page_removed
+  - top1_truncation
+  - top2_truncation
+  - table_support_truncated
+max_context_results: 3
+max_context_chars: 12000
+max_doc_chars: 1800
+max_queries: 0

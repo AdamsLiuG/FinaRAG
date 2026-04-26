@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from eval.ragas_adapter import (
     OpenAIStreamingInstructorLLM,
+    RagasRuntime,
     RagasRuntimeConfig,
     collect_ragas_contexts,
     prepare_ragas_runtime,
@@ -28,8 +29,27 @@ class FakeRagasRuntime:
             "answer_correctness": 0.9,
             "faithfulness": 0.8,
             "answer_relevancy": 0.7,
+            "context_recall": 0.95,
+            "context_precision": 0.85,
             "ragas_score": 0.8,
         }
+
+
+class StrictScoreMetric:
+    def __init__(self, allowed_keys, value):
+        self.allowed_keys = set(allowed_keys)
+        self.value = value
+        self.last_kwargs = None
+
+    def score(self, **kwargs):
+        unexpected = set(kwargs) - self.allowed_keys
+        if unexpected:
+            raise TypeError(f"unexpected keyword argument(s): {sorted(unexpected)}")
+        missing = self.allowed_keys - set(kwargs)
+        if missing:
+            raise TypeError(f"missing keyword argument(s): {sorted(missing)}")
+        self.last_kwargs = kwargs
+        return {"value": self.value}
 
 
 class FakeResponseModel(BaseModel):
@@ -105,6 +125,8 @@ class RagasAdapterTests(unittest.TestCase):
         self.assertTrue(result["available"])
         self.assertEqual(result["ragas_score"], 0.8)
         self.assertEqual(result["answer_correctness"], 0.9)
+        self.assertEqual(result["context_recall"], 0.95)
+        self.assertEqual(result["context_precision"], 0.85)
         self.assertEqual(runtime.last_call["contexts"], ["营业收入 100 亿元"])
 
     def test_score_with_ragas_reports_runtime_unavailable_reason(self):
@@ -128,6 +150,46 @@ class RagasAdapterTests(unittest.TestCase):
         self.assertIsNone(runtime)
         self.assertEqual(reason, "ragas_disabled")
         self.assertIsNone(error)
+
+    def test_ragas_runtime_only_passes_supported_kwargs_to_context_metrics(self):
+        runtime = object.__new__(RagasRuntime)
+        runtime._metrics = {
+            "answer_correctness": StrictScoreMetric(
+                {"user_input", "response", "reference"},
+                1.0,
+            ),
+            "faithfulness": StrictScoreMetric(
+                {"user_input", "response", "retrieved_contexts"},
+                0.8,
+            ),
+            "answer_relevancy": StrictScoreMetric(
+                {"user_input", "response"},
+                0.7,
+            ),
+            "context_recall": StrictScoreMetric(
+                {"user_input", "retrieved_contexts", "reference"},
+                0.6,
+            ),
+            "context_precision": StrictScoreMetric(
+                {"user_input", "reference", "retrieved_contexts"},
+                0.5,
+            ),
+        }
+
+        result = runtime.score(
+            question_text="2024年营业收入是多少？",
+            answer="100亿元",
+            reference="100亿元",
+            contexts=["营业收入 100 亿元"],
+        )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["reason"], "ok")
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["context_recall"], 0.6)
+        self.assertEqual(result["context_precision"], 0.5)
+        self.assertNotIn("response", runtime._metrics["context_recall"].last_kwargs)
+        self.assertNotIn("response", runtime._metrics["context_precision"].last_kwargs)
 
     def test_streaming_instructor_llm_parses_streamed_json(self):
         llm = OpenAIStreamingInstructorLLM(

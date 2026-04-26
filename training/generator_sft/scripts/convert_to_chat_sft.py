@@ -55,19 +55,58 @@ def build_chat_record(record: Dict[str, Any]) -> Dict[str, Any]:
             "content": assistant_response_json,
         },
     ]
+    meta = {
+        "sample_id": record.get("sample_id"),
+        "query_id": record.get("query_id"),
+        "schema": record.get("schema"),
+        "task_type": record.get("task_type"),
+        "company_name": record.get("company_name"),
+        "doc_ids": list(record.get("doc_ids", [])),
+        "source": record.get("source"),
+        "accepted_checks": list(record.get("accepted_checks", [])),
+        "retrieval_pages": list(record.get("retrieval_pages", [])),
+        "should_refuse": bool(record.get("should_refuse", False)),
+    }
+    for optional_field in (
+        "variant_type",
+        "parent_sample_id",
+        "parent_query_id",
+        "parent_assistant_response",
+        "anchor_id",
+        "anchor_source_bucket",
+        "anchor_final_answer",
+        "anchor_pages",
+        "name_validation_result",
+        "boolean_validation_result",
+        "template_id",
+        "template_family",
+        "template_version",
+        "target_key",
+        "surface_variant_id",
+        "split_pool",
+        "answer_policy",
+        "validator_target",
+        "hard_context_parent_sample_id",
+        "context_doc_ids",
+        "hard_context_pages",
+        "hard_context_stats",
+        "hard_context_recheck",
+        "candidate_pool_source",
+        "wrong_context_pages",
+        "wrong_context_stats",
+        "wrong_context_source_type",
+        "wrong_context_source_mix",
+        "truncated_refusal_source_type",
+        "truncated_refusal_source_mix",
+        "truncated_refusal_stats",
+        "truncated_refusal_validation",
+    ):
+        if optional_field in record and record.get(optional_field) is not None:
+            meta[optional_field] = record.get(optional_field)
+
     return {
         "messages": messages,
-        "meta": {
-            "sample_id": record.get("sample_id"),
-            "query_id": record.get("query_id"),
-            "schema": record.get("schema"),
-            "company_name": record.get("company_name"),
-            "doc_ids": list(record.get("doc_ids", [])),
-            "source": record.get("source"),
-            "accepted_checks": list(record.get("accepted_checks", [])),
-            "retrieval_pages": list(record.get("retrieval_pages", [])),
-            "should_refuse": bool(record.get("should_refuse", False)),
-        },
+        "meta": meta,
     }
 
 
@@ -76,7 +115,8 @@ def _resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     config_path = args.config_path or (default_config_path if default_config_path.exists() else None)
     config = load_yaml_mapping(config_path)
 
-    input_path = resolve_repo_path(REPO_ROOT, _coalesce(args.input_path, config.get("filtered_input_path") or config.get("input_path")))
+    filtered_input_path = config.get("filtered_input_path") or config.get("output_path") or config.get("input_path")
+    input_path = resolve_repo_path(REPO_ROOT, _coalesce(args.input_path, filtered_input_path))
     output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.output_path, config.get("chat_output_path")))
     stats_output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.stats_output_path, config.get("chat_stats_output_path")))
     if input_path is None or output_path is None or stats_output_path is None:

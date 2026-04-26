@@ -14,7 +14,16 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _NUMBER_COMMA_RE = re.compile(r"(?<=\d)[,，](?=\d)")
 _LATIN_TOKEN_RE = re.compile(r"[a-z0-9]+(?:[./_-][a-z0-9]+)?")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
-_SECURITY_CODE_RE = re.compile(r"(?<!\d)(?:[036]\d{5})(?!\d)|\b(?:[A-Z]{1,4}\d{0,4}|[A-Z]{2,6})\b")
+_SECURITY_CODE_RE = re.compile(
+    r"(?<![A-Z0-9])"
+    r"(?:"
+    r"(?:SH|SZ|SSE|SZSE|BJ|BSE)[\s:._-]?([03468]\d{5})"
+    r"|([03468]\d{5})[\s:._-]?(?:SH|SZ|SSE|SZSE|BJ|BSE)"
+    r"|([03468]\d{5})"
+    r")"
+    r"(?![A-Z0-9])",
+    re.IGNORECASE,
+)
 _PERIOD_RE = re.compile(r"(20\d{2}\s*(?:q[1-4]|年报|半年报|中报|季报|一季报|三季报))", re.IGNORECASE)
 
 _CURRENCY_ALIASES = {
@@ -174,7 +183,7 @@ def parse_numeric_value(text: str | None, unit_hint: str | None = None) -> Optio
     if "%" in unit_text or "百分点" in unit_text:
         return value
 
-    for unit, factor in _NUMERIC_UNIT_FACTORS.items():
+    for unit, factor in sorted(_NUMERIC_UNIT_FACTORS.items(), key=lambda item: len(item[0]), reverse=True):
         if unit in unit_text:
             return value * factor
     return value
@@ -183,8 +192,8 @@ def parse_numeric_value(text: str | None, unit_hint: str | None = None) -> Optio
 def extract_security_codes(text: str) -> List[str]:
     codes: List[str] = []
     for match in _SECURITY_CODE_RE.finditer(unicodedata.normalize("NFKC", text or "")):
-        token = match.group(0).strip()
-        if len(token) < 2 or token in codes:
+        token = next((group for group in match.groups() if group), "").strip()
+        if len(token) != 6 or token in codes:
             continue
         codes.append(token)
     return codes

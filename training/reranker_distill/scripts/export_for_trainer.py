@@ -50,6 +50,7 @@ def build_export_record(record: Dict[str, Any]) -> Dict[str, Any]:
             "query_id": record.get("query_id"),
             "candidate_id": record.get("candidate_id"),
             "doc_id": record.get("doc_id"),
+            "company_name": record.get("company_name"),
             "page": record.get("page"),
             "schema": record.get("schema"),
             "teacher_rank": int(record.get("teacher_rank") or 0),

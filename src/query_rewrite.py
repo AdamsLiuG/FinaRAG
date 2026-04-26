@@ -323,9 +323,11 @@ class QuestionRewriter:
         return None
 
     def _extract_industry_label(self, question: str) -> Optional[str]:
-        matches = re.findall(r"([A-Za-z0-9\u4e00-\u9fff·]{2,20})(?:行业|板块)", question)
+        matches = re.findall(r"([A-Za-z0-9\u4e00-\u9fff·、，,（）() -]{2,40}?)(?:行业|板块)", question)
         if matches:
-            return matches[0]
+            candidate = matches[0].strip(" ，,、")
+            candidate = re.sub(r"^(?:在|于|属于|的)+", "", candidate).strip(" ，,、")
+            return candidate or None
         return None
 
     def _extract_chain_position(self, normalized_question: str) -> Optional[str]:

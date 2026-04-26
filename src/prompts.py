@@ -29,7 +29,8 @@ _RELEVANT_PAGES_DESCRIPTION = """
 - 明确给出答案的页码
 - 对答案提供关键直接支持的页码
 不要包含只有弱相关信息的页码。
-至少填写 1 个页码。
+- 当 `final_answer` 不是 `N/A` 时，至少填写 1 个页码。
+- 当证据不足并返回 `N/A` 时，填写空列表 `[]`。
 """
 
 
@@ -368,6 +369,64 @@ class AnswerWithRAGContextNamesPrompt:
 
     system_prompt_with_schema = build_system_prompt(instruction, example, pydantic_schema)
 
+
+class AnswerWithRAGContextTextPrompt:
+    instruction = """
+你是一个基于检索结果回答公司年报综合问题的系统。
+只能依据给定的年报上下文作答，不得使用外部知识。
+
+回答前请先核对问题中的公司、年份、章节、主题和限定条件，再给出可追溯的综合结论。
+- 这类问题要求归纳、对比、解释或分类，不是抽取单个字段。
+- 可以在证据范围内合并同义表述、概括多个要点、比较不同证据之间的异同。
+- 不要编造未被上下文支持的原因、风险、战略或判断。
+- 只填写被上下文直接支持的页码。
+- 如果上下文不足以完成综合回答，返回 `N/A`。
+""" + _SIMPLIFIED_CHINESE_REASONING_INSTRUCTION
+
+    user_prompt = AnswerWithRAGContextSharedPrompt.user_prompt
+
+    class AnswerSchema(BaseModel):
+        step_by_step_analysis: str = Field(
+            description=f"{_SIMPLIFIED_CHINESE_REASONING_FIELD_HINT} 用 3-6 个简短步骤说明证据选择、归纳或对比过程，尽量控制在 180 字以内。"
+        )
+
+        reasoning_summary: str = Field(
+            description=f"{_SIMPLIFIED_CHINESE_REASONING_FIELD_HINT} 对综合判断做简洁总结，尽量控制在 80 字以内。"
+        )
+
+        relevant_pages: List[int] = Field(description=_RELEVANT_PAGES_DESCRIPTION)
+
+        final_answer: Union[str, Literal["N/A"]] = Field(description="""
+最终答案必须是简体中文字符串或 `N/A`。
+- 应直接回答问题，允许使用 2-4 个短句或短项目符号。
+- 必须体现证据支持的关键原因、风险、举措、异同点或分类判断。
+- 不要输出未在上下文中出现或无法由上下文支持的信息。
+- 如果上下文不足，返回 `N/A`。
+""")
+
+    pydantic_schema = re.sub(r"^ {4}", "", inspect.getsource(AnswerSchema), flags=re.MULTILINE)
+
+    example = r"""
+示例：
+问题：
+"某公司2024年年报中，管理层如何解释营业收入变化？请归纳主要原因。"
+
+回答：
+```
+{
+  "step_by_step_analysis": "1. 问题要求解释收入变化原因，而不是抽取收入数值。\n2. 上下文第18页说明主营业务订单增长，第42页说明重点产品销量提升。\n3. 第88页财务表只作为收入变化背景，不单独构成解释。\n4. 因此答案应综合业务拓展和产品销量两个原因。",
+  "reasoning_summary": "年报将收入变化主要归因于订单增长和重点产品销量提升。",
+  "relevant_pages": [18, 42, 88],
+  "final_answer": "管理层主要从两方面解释收入变化：一是主营业务订单增长带动收入规模提升；二是重点产品销量提升，对收入形成支撑。财务表中的收入数据可作为背景，但具体原因来自经营讨论部分。"
+}
+```
+"""
+
+    system_prompt = build_system_prompt(instruction, example)
+
+    system_prompt_with_schema = build_system_prompt(instruction, example, pydantic_schema)
+
+
 class ComparativeAnswerPrompt:
     instruction = """
 你是一个比较问答系统。
@@ -438,9 +497,11 @@ class ComparativeAnswerPrompt:
 class AnswerSchemaFixPrompt:
     system_prompt = """
 You are a JSON formatter.
-Your task is to format raw LLM response into a valid JSON object.
+Your task is to format raw LLM response into one valid JSON object that matches the target schema.
 Your answer should always start with '{' and end with '}'
 Your answer should contain only json string, without any preambles, comments, or triple backticks.
+Never return a JSON array. If the source suggests a single answer, output one JSON object only.
+Return a JSON data object instance, not the JSON schema. Never copy `$defs`, `properties`, `required`, `title`, or `type` from the schema unless those names are actual output fields.
 """
 
     user_prompt = """
@@ -448,6 +509,15 @@ Here is the system prompt that defines schema of the json object and provides an
 \"\"\"
 {system_prompt}
 \"\"\"
+
+---
+
+Here is the target JSON schema:
+\"\"\"
+{target_schema}
+\"\"\"
+
+Use the target schema only to learn the required output fields. Do not output the schema itself.
 
 ---
 
@@ -488,6 +558,10 @@ Instructions:
    - Objectivity: Evaluate block based only on their content relative to the query.
    - Clarity: Be clear and concise in your justifications.
    - No assumptions: Do not infer information beyond what's explicitly stated in the block.
+
+Return exactly one JSON object in this shape:
+{"reasoning": "...", "relevance_score": 0.0}
+Do not return a JSON schema or schema fields such as "$defs", "properties", "required", "title", or "type".
 """
 
     system_prompt_rerank_multiple_blocks = """
@@ -517,6 +591,10 @@ Instructions:
    - Objectivity: Evaluate blocks based only on their content relative to the query.
    - Clarity: Be clear and concise in your justifications.
    - No assumptions: Do not infer information beyond what's explicitly stated in the block.
+
+Return exactly one JSON object in this shape, with one ranking per input block and in the same order:
+{"block_rankings": [{"reasoning": "...", "relevance_score": 0.0}]}
+Do not return a JSON schema or schema fields such as "$defs", "properties", "required", "title", or "type".
 """
 
 class RetrievalRankingSingleBlock(BaseModel):

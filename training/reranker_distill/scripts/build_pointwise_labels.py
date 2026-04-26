@@ -18,6 +18,7 @@ from training.common import (  # noqa: E402
     load_yaml_mapping,
     normalize_training_query_record,
     read_jsonl,
+    reset_output_file,
     resolve_repo_path,
     utc_now_iso,
     write_json,
@@ -223,7 +224,10 @@ def _resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     teacher_answers_path = resolve_repo_path(REPO_ROOT, _coalesce(args.teacher_answers_path, config.get("teacher_answers_path")))
     output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.output_path, config.get("pointwise_output_path")))
     rejected_pairs_path = resolve_repo_path(REPO_ROOT, _coalesce(args.rejected_pairs_path, config.get("rejected_pairs_path")))
-    stats_output_path = resolve_repo_path(REPO_ROOT, _coalesce(args.stats_output_path, config.get("stats_output_path")))
+    stats_output_path = resolve_repo_path(
+        REPO_ROOT,
+        _coalesce(args.stats_output_path, config.get("pointwise_stats_output_path"), config.get("stats_output_path")),
+    )
     if teacher_scores_path is None or output_path is None or rejected_pairs_path is None or stats_output_path is None:
         raise ValueError("teacher_scores/output/rejected/stats paths are required.")
 
@@ -247,6 +251,8 @@ def _resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
 def main() -> None:
     args = build_arg_parser().parse_args()
     settings = _resolve_settings(args)
+    reset_output_file(settings["output_path"])
+    reset_output_file(settings["rejected_pairs_path"])
     evidence_by_query = _load_teacher_answers(settings["teacher_answers_path"])
     score_records = list(read_jsonl(settings["teacher_scores_path"]))
     grouped_scores = _group_by_query_id(score_records)
@@ -256,6 +262,9 @@ def main() -> None:
     queries_without_label2: List[str] = []
     queries_without_three_negatives: List[str] = []
     rejected_count = 0
+    accepted_query_count = 0
+    filtered_query_count = 0
+    filtered_pair_count = 0
 
     for query_id in sorted(grouped_scores):
         query_records = sorted(
@@ -280,6 +289,7 @@ def main() -> None:
         evidence = evidence_by_query.get(query_id, fallback_evidence)
         query_label2 = 0
         query_negatives = 0
+        query_output_records: List[Dict[str, Any]] = []
 
         for record in query_records:
             if not record.get("candidate_id") or not record.get("query_id") or not record.get("text"):
@@ -320,6 +330,7 @@ def main() -> None:
                 "hard_label": hard_label,
                 "label_source": label_source,
                 "doc_id": record.get("doc_id"),
+                "company_name": record.get("company_name"),
                 "page": record.get("page"),
                 "chunk_id": record.get("chunk_id"),
                 "base_score": round(float(record.get("base_score") or 0.0), 4),
@@ -327,12 +338,38 @@ def main() -> None:
                 "section_name": record.get("section_name"),
                 "is_hard_negative": bool(is_hard_negative),
             }
-            append_jsonl(settings["output_path"], output_record)
+            query_output_records.append(output_record)
 
         if query_label2 == 0:
             queries_without_label2.append(query_id)
         if query_negatives < 3:
             queries_without_three_negatives.append(query_id)
+        if query_label2 == 0 or query_negatives < 3:
+            filtered_query_count += 1
+            filtered_pair_count += len(query_output_records)
+            quality_gate_reasons: List[str] = []
+            if query_label2 == 0:
+                quality_gate_reasons.append("missing_label2")
+            if query_negatives < 3:
+                quality_gate_reasons.append("fewer_than_three_negatives")
+            for output_record in query_output_records:
+                append_jsonl(
+                    settings["rejected_pairs_path"],
+                    {
+                        "query_id": output_record["query_id"],
+                        "candidate_id": output_record["candidate_id"],
+                        "reason": "quality_gate_missing_label2_or_min_negatives",
+                        "quality_gate_reasons": quality_gate_reasons,
+                        "record": output_record,
+                        "build_timestamp": utc_now_iso(),
+                    },
+                )
+                rejected_count += 1
+            continue
+
+        accepted_query_count += 1
+        for output_record in query_output_records:
+            append_jsonl(settings["output_path"], output_record)
 
     stats = {
         "build_timestamp": utc_now_iso(),
@@ -347,7 +384,10 @@ def main() -> None:
         "rejected_pairs_path": display_path(settings["rejected_pairs_path"], REPO_ROOT),
         "label_config": json.loads(json.dumps(settings["label_config"].__dict__, ensure_ascii=False)),
         "total_queries": len(grouped_scores),
+        "accepted_queries": accepted_query_count,
+        "filtered_queries": filtered_query_count,
         "total_pairs_written": pair_counter,
+        "filtered_pairs": filtered_pair_count,
         "rejected_pairs": rejected_count,
         "label_histogram": label_histogram,
         "queries_without_label2": queries_without_label2,

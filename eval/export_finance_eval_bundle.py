@@ -46,13 +46,13 @@ def _normalize_reference(reference: Dict[str, Any]) -> Dict[str, Any]:
     if pdf_sha1:
         normalized["pdf_sha1"] = str(pdf_sha1)
 
-    page_index = normalized.get("page_index")
-    if isinstance(page_index, int):
-        normalized["page_index"] = page_index
+    page = normalized.get("page")
+    if isinstance(page, int) and page > 0:
+        normalized["page_index"] = page - 1
     else:
-        page = normalized.get("page")
-        if isinstance(page, int) and page > 0:
-            normalized["page_index"] = page - 1
+        page_index = normalized.get("page_index")
+        if isinstance(page_index, int):
+            normalized["page_index"] = page_index
 
     return {
         key: value

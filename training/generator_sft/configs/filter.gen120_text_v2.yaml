@@ -1,0 +1,9 @@
+input_path: training/generator_sft/raw/teacher_answers_raw.gen120_text_v2.jsonl
+retrieved_cache_input_path: training/generator_sft/raw/retrieved_cache.gen120_text_v2.jsonl
+anchor_input_path: training/generator_sft/processed/anchor_clean_positive.gen120_text_v2.jsonl
+output_path: training/generator_sft/processed/teacher_answers_filtered.gen120_text_v2.jsonl
+filtered_input_path: training/generator_sft/processed/teacher_answers_filtered.gen120_text_v2.jsonl
+rejected_output_path: training/generator_sft/manifests/rejected_samples.gen120_text_v2.jsonl
+stats_output_path: training/generator_sft/manifests/filter_stats.gen120_text_v2.json
+chat_output_path: training/generator_sft/processed/all.chat.gen120_text_v2.jsonl
+chat_stats_output_path: training/generator_sft/manifests/chat_export_stats.gen120_text_v2.json

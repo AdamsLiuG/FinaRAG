@@ -199,7 +199,8 @@ class ParentChildSplitterTests(unittest.TestCase):
             self.assertEqual(child_chunk["industry_l1"], "半导体")
             self.assertEqual(child_chunk["strategy_tags"], ["国产替代"])
             self.assertIn("章节：第一节 重要提示", child_chunk["embedding_text"])
-            self.assertIn("国产替代", child_chunk["search_text"])
+            self.assertNotIn("战略主题：国产替代", child_chunk["embedding_text"])
+            self.assertNotIn("国产替代", child_chunk["search_text"])
 
             chunk_metadata_rows = [
                 json.loads(line)
@@ -208,6 +209,66 @@ class ParentChildSplitterTests(unittest.TestCase):
             ]
             self.assertGreaterEqual(len(chunk_metadata_rows), 2)
             self.assertEqual(chunk_metadata_rows[0]["doc_id"], "688981_2024_20250328")
+            evidence_rows = [
+                json.loads(line)
+                for line in (metadata_store_dir / "company_label_evidence.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(evidence_rows), 1)
+            self.assertEqual(evidence_rows[0]["label_field"], "strategy_tags")
+            self.assertEqual(evidence_rows[0]["label"], "国产替代")
+            self.assertFalse(evidence_rows[0]["has_literal_evidence"])
+            self.assertIsNone(evidence_rows[0]["evidence_page"])
+
+    def test_company_label_evidence_index_records_literal_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            reports_dir = Path(tmp_dir) / "reports"
+            output_dir = Path(tmp_dir) / "chunked"
+            metadata_store_dir = Path(tmp_dir) / "metadata_store"
+            reports_dir.mkdir()
+            metadata_store_dir.mkdir()
+
+            report = {
+                "metainfo": {
+                    "sha1_name": "688981_2024_20250328",
+                    "company_name": "中芯国际",
+                    "security_code": "688981",
+                    "doc_source_type": "annual_report",
+                    "report_year": 2024,
+                },
+                "content": {
+                    "pages": [
+                        {"page": 1, "text": "# 第一节 重要提示\n公司持续推进自主可控技术。"}
+                    ]
+                },
+            }
+            (reports_dir / "688981_2024_20250328.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+            (metadata_store_dir / "company_label_snapshot.jsonl").write_text(
+                json.dumps(
+                    {
+                        "report_id": "688981_2024_20250328",
+                        "strategy_tags": ["国产替代"],
+                        "label_source": "company_labels.jsonl",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            splitter = TextSplitter(child_chunk_size=200, child_chunk_overlap=20)
+            splitter.split_all_reports(reports_dir, output_dir, metadata_store_dir=metadata_store_dir)
+
+            evidence_rows = [
+                json.loads(line)
+                for line in (metadata_store_dir / "company_label_evidence.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(evidence_rows[0]["label"], "国产替代")
+            self.assertTrue(evidence_rows[0]["has_literal_evidence"])
+            self.assertEqual(evidence_rows[0]["evidence_page"], 1)
+            self.assertEqual(evidence_rows[0]["match_term"], "自主可控")
+            self.assertIn("自主可控技术", evidence_rows[0]["evidence_snippet"])
 
 
 if __name__ == "__main__":

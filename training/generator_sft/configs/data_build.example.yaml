@@ -3,6 +3,7 @@ retrieval_config_path: config/qwen_zh_finance_colbert_cascade_qwen.yaml
 input_path: training/generator_sft/raw/seed_queries.jsonl
 output_path: training/generator_sft/raw/teacher_answers_raw.jsonl
 debug_output_path: training/generator_sft/raw/teacher_answers_debug.jsonl
+retrieved_cache_output_path: training/generator_sft/raw/retrieved_cache.jsonl
 stats_output_path: training/generator_sft/manifests/build_stats.json
 teacher_answer_provider: sub2api
 teacher_answer_model: ${SUB2API_MODEL}

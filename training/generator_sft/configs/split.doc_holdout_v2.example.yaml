@@ -1,0 +1,19 @@
+input_path: training/generator_sft/processed/all.chat.v2.jsonl
+core_output_path: training/generator_sft/processed/core_single_doc.chat.v2.jsonl
+aux_output_path: training/generator_sft/processed/aux_multidoc.chat.v2.jsonl
+split_manifest_output_path: training/generator_sft/manifests/split_manifest.v2.jsonl
+train_output_path: training/generator_sft/processed/train.chat.v2.jsonl
+dev_output_path: training/generator_sft/processed/dev.chat.v2.jsonl
+test_output_path: training/generator_sft/processed/test.chat.v2.jsonl
+stats_output_path: training/generator_sft/manifests/split_stats.v2.json
+dev_ratio: 0.1
+test_ratio: 0.1
+split_salt: finarag_generator_v2_doc_holdout
+core_only: true
+strict_doc_holdout: true
+core_schemas:
+  - name
+  - number
+  - boolean
+llamafactory_dataset_dir: training/generator_sft/llamafactory_data
+llamafactory_dataset_prefix: finarag_generator_v2

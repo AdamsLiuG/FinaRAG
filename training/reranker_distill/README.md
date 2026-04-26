@@ -1,27 +1,27 @@
-# Reranker Distillation Pipeline
+# Reranker 蒸馏流水线
 
-This directory is the design anchor for distilling a compact reranker such as
-`Qwen3-Reranker-0.6B` from a stronger teacher such as `Qwen3-Reranker-4B`.
+这个目录是从更强的 teacher（例如 `Qwen3-Reranker-4B`）蒸馏出紧凑型
+reranker（例如 `Qwen3-Reranker-0.6B`）的设计基线。
 
-The target training style is pointwise distillation with optional hard labels.
+目标训练形式是 pointwise 蒸馏，并可选加入 hard label。
 
-Relevant online code:
+相关在线代码：
 
 - `src/reranking.py`
 - `src/retrieval.py`
 - `src/questions_processing.py`
 - `config/qwen_zh_finance_colbert_cascade_qwen.yaml`
 
-## 1. Target Objective
+## 1. 目标
 
-Train a small reranker student that:
+训练一个小型 reranker 学生模型，使其能够：
 
-- ranks answer-bearing passages above nearby distractors
-- preserves financial precision around year, company, metric, section, and unit
-- can be deployed through the existing `/v1/rerank` compatible path
-- improves downstream retrieval metrics and end-to-end answer quality
+- 将真正包含答案的段落排在相邻干扰项之前
+- 保留与年份、公司、指标、章节和单位相关的金融精度
+- 能通过现有兼容 `/v1/rerank` 的路径部署
+- 改善下游检索指标和端到端回答质量
 
-## 2. Proposed Directory Layout
+## 2. 建议的目录结构
 
 ```text
 training/reranker_distill/
@@ -30,8 +30,10 @@ training/reranker_distill/
 │   └── pointwise_record.json
 ├── configs/
 │   ├── data_build.example.yaml
+│   ├── data_build.local_vllm_reranker.example.yaml
 │   └── train.example.yaml
 ├── scripts/
+│   ├── build_distill_dataset.py
 │   ├── collect_candidate_pool.py
 │   ├── score_with_teacher_reranker.py
 │   ├── build_pointwise_labels.py
@@ -54,80 +56,102 @@ training/reranker_distill/
     └── retrieval_candidates/
 ```
 
-## 3. Pipeline Stages
+## 3. 流水线阶段
 
-### Stage A. Collect Candidate Pool
+### 本地 vLLM Teacher 快速开始
+
+如果你更强的 teacher reranker 已经通过本地、兼容 OpenAI 的
+`/v1/rerank` 接口提供服务，可以用一条命令跑完整个数据集构建流程：
+
+```bash
+cd /media/main/lgd/llm/FinaRAG
+PYTHON_BIN=/media/main/lgd/llm/FinaRAG/.venv/bin/python
+
+$PYTHON_BIN training/reranker_distill/scripts/build_distill_dataset.py \
+  --data-config-path training/reranker_distill/configs/data_build.local_vllm_reranker.example.yaml \
+  --split-config-path training/reranker_distill/configs/split.example.yaml \
+  --export-config-path training/reranker_distill/configs/export.example.yaml
+```
+
+本地 vLLM 示例配置会从 `.env` 读取以下值：
+
+- `RERANKING_BASE_URL`
+- `RERANKING_MODEL`
+- `RERANKING_API_KEY`
+
+### 阶段 A：收集候选池
 
 `collect_candidate_pool.py`
 
-For each high-quality query:
+对每个高质量查询：
 
-1. Run the hybrid retriever before final top-k truncation.
-2. Preserve a larger candidate set, such as 20 to 50 passages.
-3. Keep candidate provenance including retrieval source and original score.
+1. 在最终 top-k 截断之前运行混合检索器。
+2. 保留更大的候选集，例如 20 到 50 个段落。
+3. 保留候选来源信息，包括检索来源和原始分数。
 
-Important:
+注意事项：
 
-- candidate collection should happen before the last reranking cut
-- use the same retrieval family intended for production
-- preserve hard negatives from the same company and same report whenever possible
+- 候选收集应发生在最后一次 reranking 截断之前
+- 使用与生产环境一致的检索家族
+- 尽量保留来自同一公司、同一份报告的 hard negative
 
-### Stage B. Score with Teacher Reranker
+### 阶段 B：使用 Teacher Reranker 打分
 
 `score_with_teacher_reranker.py`
 
-For each `(query, passage)` pair:
+对于每个 `(query, passage)` 对：
 
-1. Call `Qwen3-Reranker-4B`
-2. Save the teacher score
-3. Save the rank position induced by teacher sorting
+1. 调用 `Qwen3-Reranker-4B`
+2. 保存 teacher 分数
+3. 保存 teacher 排序产生的名次
 
-Teacher should be configurable through a `/v1/rerank` compatible endpoint so
-that it can reuse the existing API style in `src/reranking.py`.
+Teacher 应通过兼容 `/v1/rerank` 的接口进行配置，这样就可以复用
+`src/reranking.py` 中现有的 API 风格。
 
-### Stage C. Build Pointwise Labels
+### 阶段 C：构建 Pointwise 标签
 
 `build_pointwise_labels.py`
 
-Soft scores alone are not enough. Build hybrid labels:
+仅有软分数还不够，需要构建混合标签：
 
-- `label = 2`: directly cited or on validated relevant pages
-- `label = 1`: semantically relevant or same-page neighboring evidence
-- `label = 0`: hard negative
+- `label = 2`：被直接引用，或位于已验证的相关页上
+- `label = 1`：语义相关，或是同页邻近证据
+- `label = 0`：hard negative
 
-Best practice is to combine:
+最佳实践是组合以下信号：
 
-- teacher reranker score
-- answer teacher page references
-- citation hits
-- table grounding hits for number questions
+- teacher reranker 分数
+- 答案 teacher 的页码引用
+- 引文命中
+- 数字类问题的表格 grounding 命中
 
-### Stage D. Split the Dataset
+### 阶段 D：切分数据集
 
 `split_train_dev_test.py`
 
-Recommended split strategy:
+建议的切分策略：
 
-- split by `report_id` or `company_name`
-- do not randomly split pairs from the same question into different sets
-- keep a separate downstream benchmark for full RAG evaluation
+- 按 `report_id` 或 `company_name` 切分
+- 不要把同一问题的 pair 随机拆到不同集合
+- 为完整 RAG 评估保留一个单独的下游基准集
 
-### Stage E. Export for Trainer
+### 阶段 E：导出给训练器
 
 `export_for_trainer.py`
 
-Export the pointwise records into the format expected by the chosen trainer.
+将 pointwise 记录导出为所选训练器期望的格式。
 
-Recommended training target:
+建议的训练目标：
 
-- main target: teacher score regression or KL-style soft target
-- auxiliary target: hard label classification
+- 对通用 reranker，保留 pointwise teacher 分数和 hard label
+- 对 `Qwen3-Reranker-0.6B`，把 pointwise 记录转换为原生 `yes/no`
+  监督，并将其作为 causal-LM reranker 训练
 
-## 4. Record Definitions
+## 4. 记录定义
 
 ### 4.1 `candidate_pool.jsonl`
 
-One line per query before teacher reranking.
+每行表示 teacher reranking 之前的一条查询记录。
 
 ```json
 {
@@ -150,32 +174,32 @@ One line per query before teacher reranking.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `query_id` | string | yes | stable query identifier |
-| `question_text` | string | yes | natural-language query |
-| `schema` | string | yes | task schema |
-| `doc_ids` | list[string] | no | intended reports |
-| `candidates` | list[object] | yes | candidate passages before teacher rerank |
+| `query_id` | string | 是 | 稳定的查询标识 |
+| `question_text` | string | 是 | 自然语言查询 |
+| `schema` | string | 是 | 任务 schema |
+| `doc_ids` | list[string] | 否 | 目标报告 ID |
+| `candidates` | list[object] | 是 | teacher rerank 前的候选段落 |
 
-Candidate object fields:
+候选对象字段：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `candidate_id` | string | yes | stable candidate identifier within the query |
-| `doc_id` | string | yes | report identifier |
-| `page` | int | yes | page index in 1-based online form |
-| `chunk_id` | int or null | no | chunk identifier if available |
-| `text` | string | yes | passage text sent to reranker |
-| `retrieval_sources` | list[string] | yes | provenance such as `vector`, `bm25`, `sparse`, `tag` |
-| `base_score` | float | yes | pre-rerank score |
-| `section_name` | string or null | no | section hint |
+| `candidate_id` | string | 是 | 查询内稳定的候选标识 |
+| `doc_id` | string | 是 | 报告 ID |
+| `page` | int | 是 | 在线 1-based 形式的页码索引 |
+| `chunk_id` | int or null | 否 | 如果可用则填写 chunk ID |
+| `text` | string | 是 | 发给 reranker 的段落文本 |
+| `retrieval_sources` | list[string] | 是 | 候选来源，如 `vector`、`bm25`、`sparse`、`tag` |
+| `base_score` | float | 是 | rerank 前分数 |
+| `section_name` | string or null | 否 | 章节提示 |
 
 ### 4.2 `teacher_scores.jsonl`
 
-One line per candidate after teacher scoring.
+每行表示一条候选在 teacher 打分之后的结果。
 
 ```json
 {
@@ -194,26 +218,26 @@ One line per candidate after teacher scoring.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `query_id` | string | yes | query identifier |
-| `candidate_id` | string | yes | candidate identifier |
-| `question_text` | string | yes | original query |
-| `teacher_reranker_model` | string | yes | teacher model name |
-| `teacher_score` | float | yes | normalized soft target |
-| `teacher_rank` | int | yes | rank under teacher ordering |
-| `doc_id` | string | yes | report identifier |
-| `page` | int | yes | page number |
-| `chunk_id` | int or null | no | chunk identifier |
-| `text` | string | yes | passage text |
-| `base_score` | float | yes | pre-rerank score |
-| `retrieval_sources` | list[string] | yes | candidate provenance |
+| `query_id` | string | 是 | 查询标识 |
+| `candidate_id` | string | 是 | 候选标识 |
+| `question_text` | string | 是 | 原始查询 |
+| `teacher_reranker_model` | string | 是 | teacher 模型名 |
+| `teacher_score` | float | 是 | 归一化软目标 |
+| `teacher_rank` | int | 是 | teacher 排序中的名次 |
+| `doc_id` | string | 是 | 报告 ID |
+| `page` | int | 是 | 页码 |
+| `chunk_id` | int or null | 否 | chunk ID |
+| `text` | string | 是 | 段落文本 |
+| `base_score` | float | 是 | rerank 前分数 |
+| `retrieval_sources` | list[string] | 是 | 候选来源信息 |
 
 ### 4.3 `pointwise_labels_raw.jsonl`
 
-One line per pair after combining soft and hard supervision.
+每行表示结合软监督与硬监督之后的一条 pair 记录。
 
 ```json
 {
@@ -241,33 +265,33 @@ One line per pair after combining soft and hard supervision.
 }
 ```
 
-Field definitions:
+字段定义：
 
-| Field | Type | Required | Meaning |
+| 字段 | 类型 | 必填 | 含义 |
 | --- | --- | --- | --- |
-| `pair_id` | string | yes | unique pair identifier |
-| `query_id` | string | yes | parent query identifier |
-| `candidate_id` | string | yes | candidate identifier |
-| `query` | string | yes | query text for training |
-| `passage` | string | yes | passage text for training |
-| `schema` | string | yes | query schema |
-| `teacher_score` | float | yes | soft target from teacher reranker |
-| `teacher_rank` | int | yes | teacher order |
-| `hard_label` | int | yes | `0`, `1`, or `2` |
-| `label_source` | list[string] | yes | why the hard label was assigned |
-| `doc_id` | string | yes | report ID |
-| `page` | int | yes | page |
-| `chunk_id` | int or null | no | chunk ID |
-| `base_score` | float | yes | retriever score before rerank |
-| `retrieval_sources` | list[string] | yes | candidate provenance |
-| `section_name` | string or null | no | optional section hint |
-| `is_hard_negative` | bool | yes | whether this pair is a deliberately strong negative |
+| `pair_id` | string | 是 | 唯一 pair 标识 |
+| `query_id` | string | 是 | 父查询标识 |
+| `candidate_id` | string | 是 | 候选标识 |
+| `query` | string | 是 | 训练用查询文本 |
+| `passage` | string | 是 | 训练用段落文本 |
+| `schema` | string | 是 | 查询 schema |
+| `teacher_score` | float | 是 | 来自 teacher reranker 的软目标 |
+| `teacher_rank` | int | 是 | teacher 排名 |
+| `hard_label` | int | 是 | `0`、`1` 或 `2` |
+| `label_source` | list[string] | 是 | hard label 的赋值原因 |
+| `doc_id` | string | 是 | 报告 ID |
+| `page` | int | 是 | 页码 |
+| `chunk_id` | int or null | 否 | chunk ID |
+| `base_score` | float | 是 | rerank 前的检索分数 |
+| `retrieval_sources` | list[string] | 是 | 候选来源信息 |
+| `section_name` | string or null | 否 | 可选章节提示 |
+| `is_hard_negative` | bool | 是 | 该 pair 是否是刻意构造的强负样本 |
 
 ### 4.4 `pointwise_train.jsonl`
 
-This is the final training file consumed by the reranker trainer.
+这是 reranker 训练器消费的最终训练文件。
 
-Minimal structure:
+最小结构：
 
 ```json
 {
@@ -287,43 +311,75 @@ Minimal structure:
 }
 ```
 
-## 5. Hard-Negative Policy
+## 5. Hard-Negative 策略
 
-The reranker gains most value from difficult negatives, not random negatives.
+reranker 从困难负样本中获得的收益最大，而不是从随机负样本中。
 
-Recommended hard-negative categories:
+建议的 hard-negative 类别：
 
-- same company, same report, wrong page
-- same company, same section family, wrong metric
-- same table, wrong row
-- same metric term, wrong year or period
-- same industry, different company
-- semantically related narrative that does not answer the question
+- 同公司、同报告、错误页码
+- 同公司、同章节家族、错误指标
+- 同一张表、错误行
+- 同一指标术语、错误年份或期间
+- 同行业、不同公司
+- 语义相关但并不回答问题的叙述性文本
 
-Recommended ratio inside the final pair set:
+最终 pair 集合中的建议比例：
 
-- strong positives with `hard_label=2`: 20% to 30%
-- medium positives with `hard_label=1`: 20% to 30%
-- hard negatives with `hard_label=0`: 40% to 60%
+- `hard_label=2` 的强正样本：20% 到 30%
+- `hard_label=1` 的中等正样本：20% 到 30%
+- `hard_label=0` 的 hard negative：40% 到 60%
 
-## 6. Quality Gates
+## 6. 质量门槛
 
-Recommended acceptance checks:
+建议的验收检查：
 
-- every query should have at least one `hard_label=2`
-- every query should have at least three negatives
-- score distribution should not collapse near 0 or 1
-- dev and test splits should contain unseen reports
-- number-question positives should align with grounded pages when possible
+- 每个查询都至少要有一个 `hard_label=2`
+- 每个查询都至少要有三个负样本
+- 分数分布不应塌缩到接近 0 或 1
+- dev 和 test 切分中应包含未见过的报告
+- 数字类问题的正样本在可能的情况下应与 grounded 页码对齐
 
-## 7. Deployment Mapping
+## 7. 部署映射
 
-After training, the student reranker should be exposed through the same API
-shape expected by `VLLMApiReranker`:
+训练完成后，学生 reranker 应通过 `VLLMApiReranker` 期望的同一套 API
+形状暴露出来：
 
-- endpoint: `/v1/rerank`
-- input: `model`, `query`, `documents`, `top_n`
-- output: `results[index, relevance_score]`
+- endpoint：`/v1/rerank`
+- input：`model`、`query`、`documents`、`top_n`
+- output：`results[index, relevance_score]`
 
-This keeps the online integration simple and lets the existing code path in
-`src/reranking.py` continue to work.
+这样可以保持在线集成简单，并让 `src/reranking.py` 中现有的代码路径继续
+工作。
+
+## 8. Qwen3-Reranker-0.6B 原生 SFT
+
+`Qwen3-Reranker-0.6B` 不是一个普通的 sequence-classification checkpoint。
+它的原生推理路径是一个 causal-LM prompt，用来对 `Query` + `Document`
+pair 预测 `yes` 或 `no`。因此，这个仓库里推荐的学生训练路径是：
+
+1. 使用上面的脚本先构建 pointwise teacher-score 数据集。
+2. 将这些 pointwise 记录转换成二分类 `yes/no` SFT 样本。
+3. 以 causal LM 的方式使用 LoRA/QLoRA 训练模型。
+
+示例命令：
+
+```bash
+cd /media/main/lgd/llm/FinaRAG
+PYTHON_BIN=/media/main/lgd/llm/FinaRAG/.venv/bin/python
+
+$PYTHON_BIN training/reranker_distill/scripts/export_to_qwen3_reranker_sft.py \
+  --config-path training/reranker_distill/configs/sft_export.example.yaml
+
+torchrun --nproc_per_node=2 training/reranker_distill/scripts/train_qwen3_reranker_sft.py \
+  --config-path training/reranker_distill/configs/sft_train.example.yaml
+```
+
+标签转换默认规则：
+
+- 正样本：`hard_label=2`
+- 负样本：`hard_label=0`
+- 仅当 `hard_label` 缺失或含义不明确时，才回退为只使用 teacher 分数
+
+这样既能让上游数据构建兼容现有 `RAG-Retrieval` 风格的 pointwise 挖掘流，
+也能与 Qwen3 reranker 模型本身文档中的原生 prompt 格式保持一致。

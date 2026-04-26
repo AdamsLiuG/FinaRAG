@@ -96,14 +96,16 @@ def process_reports(config, config_path, export_markdown):
 @cli.command()
 @click.option('--config', type=click.Choice(['qwen_base', 'qwen_vector_rerank', 'qwen_rerank', 'qwen_sparse_rerank', 'qwen_ser_vector_rerank', 'qwen_ser_rerank', 'qwen_ser_sparse_rerank']), default='qwen_base', help='选择配置预设')
 @click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
-def process_questions(config, config_path):
+@click.option('--resume/--no-resume', default=False, show_default=True, help='从已有 answers/debug 继续处理剩余问题')
+@click.option('--output-path', type=click.Path(dir_okay=False, path_type=Path), default=None, help='answers 输出路径；resume 时也作为恢复目标文件')
+def process_questions(config, config_path, resume, output_path):
     """基于指定配置处理问答"""
     root_path = Path.cwd()
     run_config = load_run_config(config_path) if config_path else configs[config]
     pipeline = Pipeline(root_path, run_config=run_config)
     
-    click.echo(f"处理问答 (config={config_path or config})...")
-    pipeline.process_questions()
+    click.echo(f"处理问答 (config={config_path or config}, resume={resume})...")
+    pipeline.process_questions(output_path=output_path, resume=resume)
 
 if __name__ == '__main__':
     cli()

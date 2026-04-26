@@ -13,7 +13,10 @@ def _build_evidence_snippet(text: str, limit: int = 220) -> str:
 def dedupe_references(references: Iterable[Dict]) -> List[Dict]:
     deduped = {}
     for reference in references:
-        key = (reference.get("pdf_sha1"), reference.get("page_index"))
+        key = (
+            reference.get("pdf_sha1"),
+            reference.get("page") if reference.get("page") is not None else reference.get("page_index"),
+        )
         deduped[key] = reference
     return list(deduped.values())
 
@@ -34,13 +37,17 @@ def dedupe_citations(citations: Iterable[Dict]) -> List[Dict]:
     return list(deduped.values())
 
 
-def _build_table_grounding_citation(table_grounding_result: Optional[Dict]) -> Optional[Dict]:
+def _build_table_grounding_citation(
+    table_grounding_result: Optional[Dict],
+    *,
+    chunk_type: str = "table_grounding",
+) -> Optional[Dict]:
     if not table_grounding_result:
         return None
     return {
         "page": table_grounding_result.get("page"),
         "chunk_id": None,
-        "chunk_type": "table_grounding",
+        "chunk_type": chunk_type,
         "node_type": "table",
         "parent_chunk_id": None,
         "matched_child_chunk_ids": [],
@@ -49,10 +56,13 @@ def _build_table_grounding_citation(table_grounding_result: Optional[Dict]) -> O
         "section_name": None,
         "report_section": None,
         "source": table_grounding_result.get("source_doc_id"),
-        "company_name": None,
-        "currency": None,
-        "report_year": None,
-        "report_type": None,
+        "company_name": table_grounding_result.get("company_name"),
+        "security_code": table_grounding_result.get("security_code"),
+        "stock_code": table_grounding_result.get("security_code"),
+        "currency": table_grounding_result.get("currency"),
+        "report_year": table_grounding_result.get("report_year"),
+        "report_type": table_grounding_result.get("report_type"),
+        "doc_source_type": table_grounding_result.get("doc_source_type"),
         "major_industry": None,
         "topic_flags": [],
         "table_id": table_grounding_result.get("table_id"),
@@ -65,7 +75,7 @@ def _build_table_grounding_citation(table_grounding_result: Optional[Dict]) -> O
         "parent_block_id": None,
         "evidence_type": "table",
         "has_table_context": True,
-        "retrieval_sources": ["table_grounding"],
+        "retrieval_sources": [chunk_type],
         "evidence_snippet": _build_evidence_snippet(table_grounding_result.get("table_snippet", "")),
         "score": round(float(table_grounding_result.get("match_score", 0.0)), 4),
     }
@@ -75,6 +85,7 @@ def build_citations(
     retrieval_results: List[Dict],
     relevant_pages: List[int],
     table_grounding_result: Optional[Dict] = None,
+    table_support_results: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     citations: List[Dict] = []
     relevant_pages_set = set(relevant_pages or [])
@@ -106,10 +117,10 @@ def build_citations(
                 "major_industry": metadata.get("major_industry"),
                 "topic_flags": metadata.get("topic_flags", []),
                 "table_id": metadata.get("table_id"),
-                "row_idx": None,
-                "col_idx": None,
-                "matched_row_headers": [],
-                "matched_col_headers": [],
+                "row_idx": metadata.get("row_idx"),
+                "col_idx": metadata.get("col_idx"),
+                "matched_row_headers": metadata.get("matched_row_headers", []),
+                "matched_col_headers": metadata.get("matched_col_headers", []),
                 "unit": metadata.get("unit_hint"),
                 "footnote_refs": [],
                 "parent_block_id": metadata.get("parent_block_id"),
@@ -125,6 +136,12 @@ def build_citations(
         not relevant_pages_set or table_citation.get("page") in relevant_pages_set
     ):
         citations.append(table_citation)
+    for support_result in table_support_results or []:
+        support_citation = _build_table_grounding_citation(support_result, chunk_type="table_support")
+        if support_citation and (
+            not relevant_pages_set or support_citation.get("page") in relevant_pages_set
+        ):
+            citations.append(support_citation)
     return dedupe_citations(citations)
 
 

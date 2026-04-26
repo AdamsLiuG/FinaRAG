@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import tiktoken
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    # Backward compatibility for older LangChain releases.
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from src.pdfcrawl_metadata import (
     load_company_label_snapshot_lookup,
@@ -13,6 +18,16 @@ from src.pdfcrawl_metadata import (
     write_jsonl,
 )
 from src.text_normalization import contains_cjk, dedupe_preserve_order, normalize_period_token, parse_numeric_value
+
+
+_COMPANY_LABEL_EVIDENCE_ALIASES = {
+    "国产替代": ["国产替代", "国产化", "自主可控", "信创"],
+    "数字化转型": ["数字化转型", "数字化", "数智化"],
+    "出海": ["出海", "海外", "海外市场", "海外业务", "国际化", "境外"],
+    "绿色转型": ["绿色转型", "绿色低碳", "双碳", "碳中和"],
+    "人工智能": ["人工智能", "AI", "大模型"],
+}
+
 
 class TextSplitter():
     def __init__(self, child_chunk_size: int = 320, child_chunk_overlap: int = 50):
@@ -28,6 +43,7 @@ class TextSplitter():
             "status_tags",
             "style_tags",
         )
+        self._company_label_evidence_fields = ("strategy_tags",)
 
     def _infer_report_year(self, pages: List[Dict[str, any]]) -> Optional[int]:
         year_counter: Counter[int] = Counter()
@@ -222,8 +238,6 @@ class TextSplitter():
             lines.append(f"章节：{payload['section_name']}")
         if payload.get("business_tags"):
             lines.append(f"业务主题：{'、'.join(payload['business_tags'])}")
-        if payload.get("strategy_tags"):
-            lines.append(f"战略主题：{'、'.join(payload['strategy_tags'])}")
         if payload.get("factor_tags"):
             lines.append(f"因子主题：{'、'.join(payload['factor_tags'])}")
         chain_minor = payload.get("chain_position_minor") or []
@@ -262,9 +276,79 @@ class TextSplitter():
             if value not in (None, ""):
                 parts.append(str(value))
         for field in self._metadata_tag_fields:
+            if field == "strategy_tags":
+                continue
             parts.extend(str(item) for item in payload.get(field) or [] if item)
         parts.append(payload.get("text") or "")
         return "\n".join(parts).strip()
+
+    @staticmethod
+    def _label_evidence_terms(label: Any) -> List[str]:
+        label_text = str(label or "").strip()
+        if not label_text:
+            return []
+        return dedupe_preserve_order([label_text] + _COMPANY_LABEL_EVIDENCE_ALIASES.get(label_text, []))
+
+    @staticmethod
+    def _snippet_around_match(text: str, start: int, end: int, before: int = 80, after: int = 140) -> str:
+        snippet_start = max(0, start - before)
+        snippet_end = min(len(text), end + after)
+        snippet = text[snippet_start:snippet_end]
+        return " ".join(snippet.split())
+
+    def _find_company_label_evidence(self, pages: List[Dict[str, Any]], label: Any) -> Optional[Dict[str, Any]]:
+        for term in self._label_evidence_terms(label):
+            flags = re.IGNORECASE if term.isascii() else 0
+            pattern = re.compile(re.escape(term), flags)
+            for page in pages:
+                text = str(page.get("text") or "")
+                match = pattern.search(text)
+                if not match:
+                    continue
+                return {
+                    "evidence_page": page.get("page"),
+                    "evidence_snippet": self._snippet_around_match(text, match.start(), match.end()),
+                    "match_term": term,
+                    "has_literal_evidence": True,
+                }
+        return None
+
+    def _build_company_label_evidence_rows(
+        self,
+        report_id: str,
+        file_content: Dict[str, Any],
+        report_snapshot: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        report_meta = self._merge_report_snapshot(file_content.get("metainfo", {}), report_snapshot)
+        pages = file_content.get("content", {}).get("pages", [])
+        label_source = (report_snapshot or {}).get("label_source") or "company_label_snapshot"
+        rows: List[Dict[str, Any]] = []
+
+        for field in self._company_label_evidence_fields:
+            for label in self._coerce_list(report_meta.get(field)):
+                evidence = self._find_company_label_evidence(pages, label) or {
+                    "evidence_page": None,
+                    "evidence_snippet": "",
+                    "match_term": None,
+                    "has_literal_evidence": False,
+                }
+                rows.append(
+                    {
+                        "report_id": report_id,
+                        "doc_id": report_id,
+                        "company_name": report_meta.get("company_name"),
+                        "stock_code": report_meta.get("stock_code") or report_meta.get("security_code"),
+                        "report_year": report_meta.get("report_year") or report_meta.get("fiscal_year"),
+                        "doc_source_type": report_meta.get("doc_source_type"),
+                        "label_field": field,
+                        "label": label,
+                        "source": label_source,
+                        "evidence_source": "annual_report_text" if evidence["has_literal_evidence"] else label_source,
+                        **evidence,
+                    }
+                )
+
+        return rows
 
     def _build_chunk_payload(
         self,
@@ -603,6 +687,7 @@ class TextSplitter():
         report_page_lookup = load_report_page_lookup(metadata_store_dir) if metadata_store_dir else {}
         company_snapshot_lookup = load_company_label_snapshot_lookup(metadata_store_dir) if metadata_store_dir else {}
         chunk_metadata_rows: List[Dict[str, Any]] = []
+        company_label_evidence_rows: List[Dict[str, Any]] = []
         
         for report_path in all_report_paths:
             serialized_tables_path = None
@@ -615,11 +700,19 @@ class TextSplitter():
                 report_data = json.load(file)
 
             report_id = str((report_data.get("metainfo") or {}).get("sha1_name") or report_path.stem)
+            report_snapshot = company_snapshot_lookup.get(report_id)
+            company_label_evidence_rows.extend(
+                self._build_company_label_evidence_rows(
+                    report_id,
+                    report_data,
+                    report_snapshot,
+                )
+            )
             updated_report = self._split_report(
                 report_data,
                 serialized_tables_path,
                 report_page_metadata=report_page_lookup.get(report_id),
-                report_snapshot=company_snapshot_lookup.get(report_id),
+                report_snapshot=report_snapshot,
             )
             output_dir.mkdir(parents=True, exist_ok=True)
             
@@ -631,5 +724,6 @@ class TextSplitter():
             metadata_store_dir.mkdir(parents=True, exist_ok=True)
             write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", chunk_metadata_rows)
             write_jsonl(metadata_store_dir / "report_chunk.jsonl", chunk_metadata_rows)
+            write_jsonl(metadata_store_dir / "company_label_evidence.jsonl", company_label_evidence_rows)
                 
         print(f"Split {len(all_report_paths)} files")

@@ -141,6 +141,18 @@ class FakeHybridRetriever:
 
 
 class MultiQueryRerankTests(unittest.TestCase):
+    def test_validate_page_references_keeps_single_evidence_page(self):
+        processor = QuestionsProcessor()
+        result = processor._validate_page_references(
+            [2],
+            [
+                _make_result(page=2, chunk_id=22, score=0.9, source="vector"),
+                _make_result(page=3, chunk_id=33, score=0.8, source="bm25"),
+            ],
+        )
+
+        self.assertEqual(result, [2])
+
     def test_merge_multi_query_candidates_tracks_provenance_and_respects_pool_cap(self):
         processor = QuestionsProcessor()
         retrieval_runs = [
@@ -239,6 +251,60 @@ class MultiQueryRerankTests(unittest.TestCase):
         self.assertEqual(second_result["matched_queries"], ["orig", "alias"])
         self.assertEqual(second_result["query_hit_count"], 2)
         self.assertEqual(second_result["retrieval_sources"], ["bm25", "sparse"])
+
+    def test_retrieval_debug_top_n_can_exceed_answer_context_top_n(self):
+        processor = QuestionsProcessor(
+            llm_reranking=True,
+            top_n_retrieval=2,
+            retrieval_debug_top_n=3,
+            llm_reranking_sample_size=8,
+            parallel_requests=1,
+        )
+        retriever = FakeHybridRetriever(
+            candidate_map={
+                "orig": [
+                    _make_result(page=1, chunk_id=11, score=0.91, source="vector"),
+                    _make_result(page=2, chunk_id=22, score=0.82, source="bm25"),
+                    _make_result(page=3, chunk_id=33, score=0.73, source="sparse"),
+                ],
+            }
+        )
+        query_plan = QueryPlan(
+            original_query="original user question",
+            normalized_query="original user question",
+            search_queries=["orig", "expanded"],
+            filters=RetrievalFilters(company_name="Alpha Corp", question_kind="name"),
+            route_mode="explicit_company",
+            expected_answer_type="entity",
+        )
+
+        processor._build_retriever = lambda: (retriever, "hybrid_rerank")
+        captured = {}
+
+        def fake_answer(**kwargs):
+            captured["rag_context"] = kwargs["rag_context"]
+            return {
+                "final_answer": "Alpha",
+                "relevant_pages": [1],
+                "reasoning_summary": "Grounded answer.",
+                "step_by_step_analysis": "Grounded answer.",
+            }
+
+        processor.api_processor.get_answer_from_rag_context = fake_answer
+
+        answer = processor.get_answer_for_company(
+            company_name="Alpha Corp",
+            question="original user question",
+            schema="name",
+            query_plan=query_plan,
+            route_info={"route_mode": "explicit_company", "selected_report": {"sha1": "alpha-sha"}},
+        )
+
+        self.assertEqual(retriever.rerank_calls[0]["top_n"], 3)
+        self.assertEqual([item["page"] for item in answer["retrieval_results"]], [1, 2, 3])
+        self.assertIn("page 1", captured["rag_context"])
+        self.assertIn("page 2", captured["rag_context"])
+        self.assertNotIn("page 3", captured["rag_context"])
 
     def test_multi_query_cascade_debug_fields_are_exposed(self):
         processor = QuestionsProcessor(

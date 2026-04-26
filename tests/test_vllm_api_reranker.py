@@ -151,6 +151,34 @@ class VLLMApiRerankerTests(unittest.TestCase):
 
         self.assertEqual(mock_cascade.call_args.kwargs["colbert_model"], "BAAI/bge-m3")
 
+    def test_hybrid_retriever_uses_reranking_model_for_flag_embedding_cascade_final_stage(self):
+        with patch.dict(
+            os.environ,
+            {
+                "RERANKING_MODEL": "BAAI/bge-reranker-v2-m3",
+            },
+            clear=False,
+        ):
+            with patch("src.retrieval.VectorRetriever", return_value=object()):
+                with patch("src.retrieval.HybridRetriever._build_final_reranker", return_value=object()) as mock_final:
+                    with patch("src.retrieval.CascadeReranker", return_value=object()):
+                        HybridRetriever(
+                            documents_dir=Path("."),
+                            vector_db_dir=Path("."),
+                            use_vector_dbs=True,
+                            use_bm25_db=False,
+                            use_sparse_lexical_db=False,
+                            use_tag_db=False,
+                            reranking_strategy="cascade",
+                            final_reranking_backend="flag_embedding",
+                            model="Qwopus3.5-27B-v3",
+                        )
+
+        self.assertEqual(
+            mock_final.call_args.args,
+            ("flag_embedding", "qwen", "BAAI/bge-reranker-v2-m3"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

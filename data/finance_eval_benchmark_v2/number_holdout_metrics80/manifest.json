@@ -1,0 +1,165 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "number_holdout_metrics80",
+  "description": "Company-holdout number benchmark with four non-revenue financial metrics per company.",
+  "source_corpora": [
+    "data/top10_industries_2024_20each"
+  ],
+  "question_count": 80,
+  "answer_count": 80,
+  "scoring_profile": "finance_atomic_answer_rag_three_layer_v3",
+  "strata_summary": {
+    "all": 80,
+    "kind/number": 80,
+    "metric/net_profit": 20,
+    "metric/rd_investment": 20,
+    "metric/total_assets": 20,
+    "metric/operating_cash_flow": 20,
+    "companies": 20
+  },
+  "metadata": {
+    "owner": "FinaRAG",
+    "quality_tier": "auto_extracted_gold",
+    "review_required": true,
+    "holdout_policy": "company names/security codes excluded from qwen3_reranker_sft_train query text",
+    "train_file": "training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl",
+    "raw_teacher_query_holdout_feasibility": {
+      "raw_query_files": [
+        "training/reranker_distill/raw/candidate_pool.jsonl",
+        "training/reranker_distill/raw/teacher_answers_with_auto_evidence.jsonl"
+      ],
+      "raw_holdout_company_count": 1,
+      "note": "Using all raw teacher/candidate queries leaves too few companies for a 20-company holdout in this corpus."
+    },
+    "metric_keys": [
+      "net_profit",
+      "rd_investment",
+      "total_assets",
+      "operating_cash_flow"
+    ],
+    "selected_companies": [
+      {
+        "company_name": "天准科技",
+        "doc_id": "688003_2024_20250412",
+        "security_code": "688003",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "*ST宁科",
+        "doc_id": "600165_2024_20250315",
+        "security_code": "600165",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "科兴制药",
+        "doc_id": "688136_2024_20250411",
+        "security_code": "688136",
+        "industry": "医药制造业"
+      },
+      {
+        "company_name": "珠江股份",
+        "doc_id": "600684_2024_20250402",
+        "security_code": "600684",
+        "industry": "房地产业"
+      },
+      {
+        "company_name": "威迈斯",
+        "doc_id": "688612_2024_20250426",
+        "security_code": "688612",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "江苏新能",
+        "doc_id": "603693_2024_20250423",
+        "security_code": "603693",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "振华新材",
+        "doc_id": "688707_2024_20250426",
+        "security_code": "688707",
+        "industry": "计算机、通信和其他电子设备制造业"
+      },
+      {
+        "company_name": "永安行",
+        "doc_id": "603776_2024_20250412",
+        "security_code": "603776",
+        "industry": "软件和信息技术服务业"
+      },
+      {
+        "company_name": "安杰思",
+        "doc_id": "688581_2024_20250423",
+        "security_code": "688581",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "江化微",
+        "doc_id": "603078_2024_20250322",
+        "security_code": "603078",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "步长制药",
+        "doc_id": "603858_2024_20250426",
+        "security_code": "603858",
+        "industry": "医药制造业"
+      },
+      {
+        "company_name": "ST 曙光",
+        "doc_id": "600303_2024_20250411",
+        "security_code": "600303",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "浙江新能",
+        "doc_id": "600032_2024_20250422",
+        "security_code": "600032",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "高华科技",
+        "doc_id": "688539_2024_20250419",
+        "security_code": "688539",
+        "industry": "计算机、通信和其他电子设备制造业"
+      },
+      {
+        "company_name": "浪潮软件",
+        "doc_id": "600756_2024_20250329",
+        "security_code": "600756",
+        "industry": "软件和信息技术服务业"
+      },
+      {
+        "company_name": "高测股份",
+        "doc_id": "688556_2024_20250429",
+        "security_code": "688556",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "金瑞矿业",
+        "doc_id": "600714_2024_20250411",
+        "security_code": "600714",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "广汽集团",
+        "doc_id": "601238_2024_20250329",
+        "security_code": "601238",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "芯能科技",
+        "doc_id": "603105_2024_20250425",
+        "security_code": "603105",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "四川长虹",
+        "doc_id": "600839_2024_20250426",
+        "security_code": "600839",
+        "industry": "计算机、通信和其他电子设备制造业"
+      }
+    ],
+    "candidate_company_count": 25,
+    "rejected_company_count": 14
+  }
+}

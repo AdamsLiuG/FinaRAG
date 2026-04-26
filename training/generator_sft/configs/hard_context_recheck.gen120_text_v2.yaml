@@ -1,0 +1,11 @@
+input_path: training/generator_sft/processed/hard_context_samples.gen120_text_v2.jsonl
+retrieved_cache_input_path: training/generator_sft/raw/retrieved_cache.gen120_text_v2.jsonl
+output_path: training/generator_sft/processed/hard_context_rechecked.gen120_text_v2.jsonl
+chat_output_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.jsonl
+rejected_output_path: training/generator_sft/manifests/hard_context_rechecked.gen120_text_v2.rejected.jsonl
+stats_output_path: training/generator_sft/manifests/hard_context_rechecked.gen120_text_v2.stats.json
+teacher_answer_provider: sub2api
+teacher_answer_model: ${SUB2API_MODEL}
+answer_temperature: 0.0
+parallel_requests: 4
+max_queries: 0

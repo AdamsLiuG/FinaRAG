@@ -89,6 +89,7 @@ class RunConfig:
     llm_reranking: bool = False
     llm_reranking_sample_size: int = 30
     top_n_retrieval: int = 10
+    retrieval_debug_top_n: int = 10
     parallel_requests: int = 10
     pipeline_details: str = ""
     full_context: bool = False
@@ -118,6 +119,7 @@ class RunConfig:
     colbert_passage_max_length: int = 512
     final_reranking_backend: str | None = None
     final_reranking_model: str | None = None
+    final_reranking_batch_size: int = 2
 
 
 def run_config_from_dict(data: dict) -> RunConfig:
@@ -140,6 +142,7 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "llm_reranking",
         "llm_reranking_sample_size",
         "top_n_retrieval",
+        "retrieval_debug_top_n",
         "parallel_requests",
         "pipeline_details",
         "full_context",
@@ -169,6 +172,7 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "colbert_passage_max_length",
         "final_reranking_backend",
         "final_reranking_model",
+        "final_reranking_batch_size",
     }
     payload = {key: value for key, value in data.items() if key in allowed_fields}
     return RunConfig(**payload)
@@ -182,10 +186,17 @@ def load_run_config(config_path: Path) -> RunConfig:
     return run_config_from_dict(data)
 
 
+def _provider_model_env(provider: str, default: str | None = None) -> str | None:
+    normalized_provider = (provider or "").strip().upper()
+    if not normalized_provider:
+        return default
+    return os.getenv(f"{normalized_provider}_MODEL", default)
+
+
 def apply_runtime_overrides(run_config: RunConfig) -> RunConfig:
     provider = (run_config.api_provider or "").strip().lower()
     if provider:
-        provider_model = os.getenv(f"{provider.upper()}_MODEL")
+        provider_model = _provider_model_env(provider)
         if provider_model:
             run_config.answering_model = provider_model
     return run_config
@@ -432,7 +443,36 @@ class Pipeline:
                 return new_path
             counter += 1
 
-    def process_questions(self):
+    def _get_latest_existing_filename(self, base_path: Path) -> Path | None:
+        latest_path = base_path if base_path.exists() else None
+        stem = base_path.stem
+        suffix = base_path.suffix
+        parent = base_path.parent
+
+        counter = 1
+        while True:
+            candidate = parent / f"{stem}_{counter:02d}{suffix}"
+            if not candidate.exists():
+                break
+            latest_path = candidate
+            counter += 1
+        return latest_path
+
+    def _resolve_answers_output_path(self, output_path: str | Path | None = None, resume: bool = False) -> Path:
+        if output_path is not None:
+            return Path(output_path)
+
+        base_path = self.paths.answers_file_path
+        if resume:
+            return self._get_latest_existing_filename(base_path) or base_path
+        return self._get_next_available_filename(base_path)
+
+    def process_questions(
+        self,
+        output_path: str | Path | None = None,
+        resume: bool = False,
+        retry_errors: bool = True,
+    ):
         processor = QuestionsProcessor(
             vector_db_dir=self.paths.vector_db_dir,
             bm25_db_path=self.paths.bm25_db_path,
@@ -450,6 +490,7 @@ class Pipeline:
             llm_reranking=self.run_config.llm_reranking,
             llm_reranking_sample_size=self.run_config.llm_reranking_sample_size,
             top_n_retrieval=self.run_config.top_n_retrieval,
+            retrieval_debug_top_n=self.run_config.retrieval_debug_top_n,
             vector_search_k=self.run_config.vector_search_k,
             vector_ivf_nprobe=self.run_config.vector_ivf_nprobe,
             vector_hnsw_ef_search=self.run_config.vector_hnsw_ef_search,
@@ -480,16 +521,19 @@ class Pipeline:
             colbert_passage_max_length=self.run_config.colbert_passage_max_length,
             final_reranking_backend=self.run_config.final_reranking_backend,
             final_reranking_model=self.run_config.final_reranking_model,
+            final_reranking_batch_size=self.run_config.final_reranking_batch_size,
         )
-        
-        output_path = self._get_next_available_filename(self.paths.answers_file_path)
-        
+
+        resolved_output_path = self._resolve_answers_output_path(output_path, resume=resume)
+
         _ = processor.process_all_questions(
-            output_path=output_path,
-            pipeline_details=self.run_config.pipeline_details
+            output_path=resolved_output_path,
+            pipeline_details=self.run_config.pipeline_details,
+            resume_from=resolved_output_path if resume else None,
+            retry_errors=retry_errors,
         )
-        print(f"Answers saved to {output_path}")
-        return output_path
+        print(f"Answers saved to {resolved_output_path}")
+        return resolved_output_path
 
 
 preprocess_configs = {
@@ -509,14 +553,15 @@ preprocess_configs = {
     ),
 }
 
-# 从 .env 读取模型名称，修改 QWEN_MODEL 即可切换模型，无需改代码
+# 从 .env 读取答题模型名称；评测侧 RAGAS_* 配置不会覆盖在线答题模型。
 from dotenv import load_dotenv as _load_dotenv
 _load_dotenv()
-_qwen_model = os.getenv("QWEN_MODEL", "Qwen3.5-35B-A3B-AWQ-4bit")
+_qwen_model = _provider_model_env("qwen", "Qwen3.5-35B-A3B-AWQ-4bit")
 _qwen_parallel_requests = int(os.getenv("QWEN_PARALLEL_REQUESTS", "1"))
 _qwen_parent_document_retrieval = _env_flag("QWEN_PARENT_DOCUMENT_RETRIEVAL", default=False)
 _qwen_parent_retrieval_mode = os.getenv("QWEN_PARENT_RETRIEVAL_MODE", "block").strip().lower()
 _qwen_top_n_retrieval = int(os.getenv("QWEN_TOP_N_RETRIEVAL", "4"))
+_qwen_retrieval_debug_top_n = int(os.getenv("QWEN_RETRIEVAL_DEBUG_TOP_N", "10"))
 _qwen_llm_reranking_sample_size = int(os.getenv("QWEN_LLM_RERANKING_SAMPLE_SIZE", "8"))
 _qwen_document_language = os.getenv("QWEN_DOCUMENT_LANGUAGE", "en")
 _qwen_ocr_mode = os.getenv("QWEN_OCR_MODE", "docling_rapidocr")
@@ -551,6 +596,7 @@ qwen_base_config = RunConfig(
     retriever_cache_enabled=_qwen_retriever_cache_enabled,
     use_bm25_db=False,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 本地Embedding + Parent-Child检索 + CoT推理",
     api_provider="qwen",
@@ -580,6 +626,7 @@ qwen_vector_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 本地Embedding + Parent-Child检索 + 向量召回 + LLM重排 + CoT推理",
     api_provider="qwen",
@@ -609,6 +656,7 @@ qwen_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 本地Embedding + BM25 + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
@@ -640,6 +688,7 @@ qwen_sparse_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 本地Embedding + bge-m3 sparse lexical + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
@@ -670,6 +719,7 @@ qwen_ser_vector_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + Parent-Child检索 + 向量召回 + LLM重排 + CoT推理",
     api_provider="qwen",
@@ -700,6 +750,7 @@ qwen_ser_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + BM25 + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",
@@ -731,6 +782,7 @@ qwen_ser_sparse_rerank_config = RunConfig(
     llm_reranking=True,
     llm_reranking_sample_size=_qwen_llm_reranking_sample_size,
     top_n_retrieval=_qwen_top_n_retrieval,
+    retrieval_debug_top_n=_qwen_retrieval_debug_top_n,
     parallel_requests=_qwen_parallel_requests,
     pipeline_details="PDF解析 + 表格序列化 + 本地Embedding + bge-m3 sparse lexical + Parent-Child检索 + 混合召回 + LLM重排 + CoT推理",
     api_provider="qwen",

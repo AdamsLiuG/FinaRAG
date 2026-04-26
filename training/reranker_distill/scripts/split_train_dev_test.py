@@ -86,7 +86,9 @@ def _resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "dev_ratio": float(_coalesce(args.dev_ratio, config.get("dev_ratio"), 0.1)),
         "test_ratio": float(_coalesce(args.test_ratio, config.get("test_ratio"), 0.1)),
         "split_salt": str(_coalesce(args.split_salt, config.get("split_salt"), "finarag_reranker_v1")),
-        "group_fields": list(_coalesce(args.group_fields, config.get("group_fields"), ["query_id"]) or []),
+        "group_fields": list(
+            _coalesce(args.group_fields, config.get("group_fields"), ["doc_id", "company_name", "query_id"]) or []
+        ),
     }
 
 
