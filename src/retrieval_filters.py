@@ -125,12 +125,19 @@ def build_result_metadata(document_meta: Dict, chunk: Dict | None = None) -> Dic
         "section_name": chunk.get("section_name", chunk.get("report_section", chunk.get("section_title"))),
         "report_section": chunk.get("report_section", chunk.get("section_name", chunk.get("section_title"))),
         "table_id": chunk.get("table_id"),
+        "chart_id": chunk.get("chart_id"),
+        "picture_id": chunk.get("picture_id"),
+        "chart_type": chunk.get("chart_type"),
+        "series_name": chunk.get("series_name"),
+        "x_label": chunk.get("x_label"),
+        "chart_confidence": chunk.get("chart_confidence"),
         "parent_block_id": chunk.get("parent_block_id"),
         "parent_chunk_id": chunk.get("parent_chunk_id"),
         "child_chunk_ids": list(chunk.get("child_chunk_ids") or []),
         "node_type": node_type,
         "evidence_type": chunk.get("evidence_type"),
         "has_table_context": bool(chunk.get("has_table_context")),
+        "has_chart_context": bool(chunk.get("has_chart_context")),
         "page_start": chunk.get("page_start"),
         "page_end": chunk.get("page_end"),
         "business_tags": list(chunk.get("business_tags") or document_meta.get("business_tags") or []),
@@ -258,6 +265,7 @@ def _question_kind_bonus(result: Dict, filters: RetrievalFilters | None) -> floa
     if filters.question_kind == "number":
         return {
             "serialized_table": 0.12,
+            "chart_to_table": 0.08,
             "table": 0.1,
             "content": 0.0,
         }.get(chunk_type, 0.0)

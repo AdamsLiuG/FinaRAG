@@ -106,6 +106,83 @@ class ParentChildSplitterTests(unittest.TestCase):
             self.assertEqual(table_children[0]["parent_chunk_id"], table_parents[0]["chunk_id"])
             self.assertEqual(table_parents[0]["child_chunk_ids"], [table_children[0]["chunk_id"]])
 
+    def test_chart_evidence_emits_chart_to_table_chunks_and_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            reports_dir = Path(tmp_dir) / "reports"
+            output_dir = Path(tmp_dir) / "chunked"
+            metadata_store_dir = Path(tmp_dir) / "metadata_store"
+            reports_dir.mkdir()
+
+            report = {
+                "metainfo": {
+                    "sha1_name": "600000_2024",
+                    "company_name": "浦发银行",
+                    "currency": "CNY",
+                    "report_year": 2024,
+                    "language": "zh",
+                },
+                "content": {
+                    "pages": [
+                        {
+                            "page": 35,
+                            "text": "# 经营情况\n[Chart Evidence]\n图表ID：600000_2024_p35_pic2",
+                        }
+                    ],
+                    "charts": [
+                        {
+                            "chart_id": "600000_2024_p35_pic2",
+                            "picture_id": 2,
+                            "page": 35,
+                            "bbox": [120, 180, 520, 430],
+                            "table_markdown": "| 年份 | 营业收入 |\n| --- | --- |\n| 2024 | 135.8 |",
+                            "context_text": "营业收入趋势图，单位：亿元。",
+                            "status": "ok",
+                            "records": [
+                                {
+                                    "chart_id": "600000_2024_p35_pic2",
+                                    "page": 35,
+                                    "picture_id": 2,
+                                    "series_name": "营业收入",
+                                    "x_label": "2024",
+                                    "raw_value": "135.8",
+                                    "normalized_value": 13580000000.0,
+                                    "unit": "亿元",
+                                    "confidence": 0.82,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+            (reports_dir / "600000_2024.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+
+            splitter = TextSplitter(child_chunk_size=400, child_chunk_overlap=20)
+            splitter.split_all_reports(reports_dir, output_dir, metadata_store_dir=metadata_store_dir)
+
+            output = json.loads((output_dir / "600000_2024.json").read_text(encoding="utf-8"))
+            chart_parents = [chunk for chunk in output["content"]["parent_chunks"] if chunk["chunk_type"] == "chart_to_table"]
+            chart_children = [chunk for chunk in output["content"]["chunks"] if chunk["chunk_type"] == "chart_to_table"]
+
+            self.assertEqual(len(chart_parents), 1)
+            self.assertEqual(len(chart_children), 1)
+            self.assertEqual(chart_parents[0]["evidence_type"], "chart")
+            self.assertEqual(chart_parents[0]["chart_id"], "600000_2024_p35_pic2")
+            self.assertEqual(chart_parents[0]["picture_id"], 2)
+            self.assertEqual(chart_parents[0]["unit_hint"], "亿元")
+            self.assertTrue(chart_parents[0]["has_chart_context"])
+            self.assertEqual(output["content"]["chart_records"][0]["series_name"], "营业收入")
+
+            metadata_rows = [
+                json.loads(line)
+                for line in (metadata_store_dir / "chunk_metadata.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            chart_rows = [row for row in metadata_rows if row["chunk_type"] == "chart_to_table"]
+            self.assertGreaterEqual(len(chart_rows), 2)
+            self.assertEqual(chart_rows[0]["chart_id"], "600000_2024_p35_pic2")
+            self.assertEqual(chart_rows[0]["picture_id"], 2)
+            self.assertEqual(chart_rows[0]["evidence_type"], "chart")
+
     def test_splitter_inherits_pdfcrawl_page_metadata_and_writes_chunk_metadata_store(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             reports_dir = Path(tmp_dir) / "reports"

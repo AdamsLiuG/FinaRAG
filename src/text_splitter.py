@@ -236,6 +236,13 @@ class TextSplitter():
             lines.append(f"行业：{'-'.join(dedupe_preserve_order(industry_tokens))}")
         if payload.get("section_name"):
             lines.append(f"章节：{payload['section_name']}")
+        if payload.get("evidence_type") == "chart":
+            if payload.get("chart_id"):
+                lines.append(f"图表ID：{payload['chart_id']}")
+            if payload.get("series_name"):
+                lines.append(f"图表指标：{payload['series_name']}")
+            if payload.get("x_label"):
+                lines.append(f"图表横轴：{payload['x_label']}")
         if payload.get("business_tags"):
             lines.append(f"业务主题：{'、'.join(payload['business_tags'])}")
         if payload.get("factor_tags"):
@@ -376,6 +383,14 @@ class TextSplitter():
             "section_title": section_title,
             "section_name": section_name,
             "table_id": source_chunk.get("table_id"),
+            "chart_id": source_chunk.get("chart_id"),
+            "picture_id": source_chunk.get("picture_id"),
+            "chart_type": source_chunk.get("chart_type"),
+            "series_name": source_chunk.get("series_name"),
+            "x_label": source_chunk.get("x_label"),
+            "chart_confidence": source_chunk.get("chart_confidence"),
+            "has_chart_context": bool(source_chunk.get("has_chart_context")),
+            "bbox": source_chunk.get("bbox"),
             "report_year": report_meta.get("report_year"),
             "currency": report_meta.get("currency"),
             "company_name": report_meta.get("company_name"),
@@ -447,6 +462,10 @@ class TextSplitter():
                 parsed_report = json.load(f)
             tables_by_page = self._get_serialized_tables_by_page(parsed_report.get('tables', []))
             structured_tables = self._extract_structured_tables(parsed_report.get('tables', []))
+
+        charts = list(file_content.get("content", {}).get("charts") or [])
+        charts_by_page = self._get_charts_by_page(charts)
+        chart_records = self._extract_chart_records(charts)
         
         for page in pages:
             page_metadata = (report_page_metadata or {}).get(page["page"])
@@ -479,10 +498,21 @@ class TextSplitter():
                     parent_chunks.append(parent_chunk)
                     child_chunks.extend(child_nodes)
                     parent_chunk_id += 1
+
+            if charts_by_page and page['page'] in charts_by_page:
+                for chart in charts_by_page[page['page']]:
+                    chart_chunk = self._build_chart_chunk(chart, page)
+                    chart_chunk = self._apply_page_metadata(chart_chunk, page_metadata, report_meta)
+                    parent_chunk = self._build_parent_chunk(chart_chunk, report_meta, parent_chunk_id)
+                    child_nodes, child_chunk_id = self._split_parent_chunk(parent_chunk, report_meta, child_chunk_id)
+                    parent_chunks.append(parent_chunk)
+                    child_chunks.extend(child_nodes)
+                    parent_chunk_id += 1
         
         file_content['content']['parent_chunks'] = parent_chunks
         file_content['content']['chunks'] = child_chunks
         file_content['content']['structured_tables'] = structured_tables
+        file_content['content']['chart_records'] = chart_records
         file_content['metainfo'] = report_meta
         return file_content
 
@@ -564,6 +594,83 @@ class TextSplitter():
             if unit in text:
                 return unit
         return None
+
+    def _get_charts_by_page(self, charts: List[Dict[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
+        charts_by_page: Dict[int, List[Dict[str, Any]]] = {}
+        for chart in charts:
+            if chart.get("status") != "ok":
+                continue
+            page = chart.get("page")
+            if page is None:
+                continue
+            charts_by_page.setdefault(int(page), []).append(chart)
+        return charts_by_page
+
+    def _build_chart_chunk(self, chart: Dict[str, Any], page: Dict[str, Any]) -> Dict[str, Any]:
+        text = self._render_chart_text(chart)
+        records = chart.get("records") or []
+        series_names = [str(record.get("series_name")) for record in records if record.get("series_name")]
+        x_labels = [str(record.get("x_label")) for record in records if record.get("x_label")]
+        return {
+            "page": chart.get("page"),
+            "text": text,
+            "length_tokens": self.count_tokens(text),
+            "table_id": None,
+            "chart_id": chart.get("chart_id"),
+            "picture_id": chart.get("picture_id"),
+            "chart_type": chart.get("chart_type"),
+            "series_name": "、".join(dedupe_preserve_order(series_names)) if series_names else None,
+            "x_label": "、".join(dedupe_preserve_order(x_labels)) if x_labels else None,
+            "chart_confidence": chart.get("confidence"),
+            "bbox": chart.get("bbox"),
+            "section_title": self._get_page_section_title(page),
+            "type": "chart_to_table",
+            "chunk_type": "chart_to_table",
+            "parent_block_id": f"page{chart.get('page')}_chart{chart.get('picture_id')}",
+            "report_section": self._get_page_section_title(page),
+            "evidence_type": "chart",
+            "has_table_context": False,
+            "has_chart_context": bool(chart.get("context_text")),
+            "period": normalize_period_token(text),
+            "unit_hint": chart.get("unit_hint") or self._extract_unit_hint(text),
+        }
+
+    @staticmethod
+    def _render_chart_text(chart: Dict[str, Any]) -> str:
+        lines = [
+            "[Chart Evidence]",
+            f"图表ID：{chart.get('chart_id')}",
+            f"页码：{chart.get('page')}",
+        ]
+        if chart.get("picture_id") is not None:
+            lines.append(f"图片ID：{chart.get('picture_id')}")
+        table_text = str(chart.get("table_markdown") or chart.get("raw_output") or "").strip()
+        if table_text:
+            lines.extend(["DePlot表格：", table_text])
+        context_text = str(chart.get("context_text") or "").strip()
+        if context_text:
+            lines.extend(["周边说明：", context_text])
+        return "\n".join(lines)
+
+    def _extract_chart_records(self, charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        chart_records: List[Dict[str, Any]] = []
+        for chart in charts:
+            if chart.get("status") != "ok":
+                continue
+            for record in chart.get("records") or []:
+                enriched = dict(record)
+                enriched.setdefault("chart_id", chart.get("chart_id"))
+                enriched.setdefault("page", chart.get("page"))
+                enriched.setdefault("picture_id", chart.get("picture_id"))
+                enriched.setdefault("bbox", chart.get("bbox"))
+                enriched.setdefault("context_text", chart.get("context_text"))
+                if not enriched.get("unit"):
+                    enriched["unit"] = chart.get("unit_hint")
+                if enriched.get("confidence") is None:
+                    enriched["confidence"] = chart.get("confidence")
+                enriched.setdefault("table_markdown", chart.get("table_markdown"))
+                chart_records.append(enriched)
+        return chart_records
 
     def _extract_structured_tables(self, tables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         structured_tables: List[Dict[str, Any]] = []
@@ -652,6 +759,13 @@ class TextSplitter():
                     "section_title": chunk.get("section_title"),
                     "report_section": chunk.get("report_section"),
                     "table_id": chunk.get("table_id"),
+                    "chart_id": chunk.get("chart_id"),
+                    "picture_id": chunk.get("picture_id"),
+                    "chart_type": chunk.get("chart_type"),
+                    "series_name": chunk.get("series_name"),
+                    "x_label": chunk.get("x_label"),
+                    "chart_confidence": chunk.get("chart_confidence"),
+                    "has_chart_context": chunk.get("has_chart_context"),
                     "evidence_type": chunk.get("evidence_type"),
                     "has_table_context": chunk.get("has_table_context"),
                     "exchange": chunk.get("exchange"),

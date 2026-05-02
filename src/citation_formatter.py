@@ -30,6 +30,8 @@ def dedupe_citations(citations: Iterable[Dict]) -> List[Dict]:
             citation.get("chunk_id"),
             citation.get("chunk_type"),
             citation.get("table_id"),
+            citation.get("chart_id"),
+            citation.get("picture_id"),
             tuple(citation.get("matched_row_headers") or []),
             tuple(citation.get("matched_col_headers") or []),
         )
@@ -81,11 +83,62 @@ def _build_table_grounding_citation(
     }
 
 
+def _build_chart_grounding_citation(
+    chart_grounding_result: Optional[Dict],
+    *,
+    chunk_type: str = "chart_grounding",
+) -> Optional[Dict]:
+    if not chart_grounding_result:
+        return None
+    return {
+        "page": chart_grounding_result.get("page"),
+        "chunk_id": None,
+        "chunk_type": chunk_type,
+        "node_type": "chart",
+        "parent_chunk_id": None,
+        "matched_child_chunk_ids": [],
+        "matched_tags": [],
+        "section_title": None,
+        "section_name": None,
+        "report_section": None,
+        "source": chart_grounding_result.get("source_doc_id"),
+        "company_name": chart_grounding_result.get("company_name"),
+        "security_code": chart_grounding_result.get("security_code"),
+        "stock_code": chart_grounding_result.get("security_code"),
+        "currency": chart_grounding_result.get("currency"),
+        "report_year": chart_grounding_result.get("report_year"),
+        "report_type": chart_grounding_result.get("report_type"),
+        "doc_source_type": chart_grounding_result.get("doc_source_type"),
+        "major_industry": None,
+        "topic_flags": [],
+        "table_id": None,
+        "chart_id": chart_grounding_result.get("chart_id"),
+        "picture_id": chart_grounding_result.get("picture_id"),
+        "series_name": chart_grounding_result.get("series_name"),
+        "x_label": chart_grounding_result.get("x_label"),
+        "chart_confidence": chart_grounding_result.get("chart_confidence") or chart_grounding_result.get("confidence"),
+        "row_idx": None,
+        "col_idx": None,
+        "matched_row_headers": [],
+        "matched_col_headers": [],
+        "unit": chart_grounding_result.get("unit"),
+        "footnote_refs": [],
+        "parent_block_id": None,
+        "evidence_type": "chart",
+        "has_table_context": False,
+        "has_chart_context": True,
+        "retrieval_sources": [chunk_type],
+        "evidence_snippet": _build_evidence_snippet(chart_grounding_result.get("chart_context", "")),
+        "score": round(float(chart_grounding_result.get("match_score", 0.0)), 4),
+    }
+
+
 def build_citations(
     retrieval_results: List[Dict],
     relevant_pages: List[int],
     table_grounding_result: Optional[Dict] = None,
     table_support_results: Optional[List[Dict]] = None,
+    chart_grounding_result: Optional[Dict] = None,
 ) -> List[Dict]:
     citations: List[Dict] = []
     relevant_pages_set = set(relevant_pages or [])
@@ -117,6 +170,12 @@ def build_citations(
                 "major_industry": metadata.get("major_industry"),
                 "topic_flags": metadata.get("topic_flags", []),
                 "table_id": metadata.get("table_id"),
+                "chart_id": metadata.get("chart_id"),
+                "picture_id": metadata.get("picture_id"),
+                "chart_type": metadata.get("chart_type"),
+                "series_name": metadata.get("series_name"),
+                "x_label": metadata.get("x_label"),
+                "chart_confidence": metadata.get("chart_confidence"),
                 "row_idx": metadata.get("row_idx"),
                 "col_idx": metadata.get("col_idx"),
                 "matched_row_headers": metadata.get("matched_row_headers", []),
@@ -126,6 +185,7 @@ def build_citations(
                 "parent_block_id": metadata.get("parent_block_id"),
                 "evidence_type": metadata.get("evidence_type"),
                 "has_table_context": metadata.get("has_table_context", False),
+                "has_chart_context": metadata.get("has_chart_context", False),
                 "retrieval_sources": result.get("retrieval_sources", []),
                 "evidence_snippet": _build_evidence_snippet(result.get("text", "")),
                 "score": round(float(result.get("combined_score", result.get("ranking_score", result.get("distance", 0.0)))), 4),
@@ -142,6 +202,11 @@ def build_citations(
             not relevant_pages_set or support_citation.get("page") in relevant_pages_set
         ):
             citations.append(support_citation)
+    chart_citation = _build_chart_grounding_citation(chart_grounding_result)
+    if chart_citation and (
+        not relevant_pages_set or chart_citation.get("page") in relevant_pages_set
+    ):
+        citations.append(chart_citation)
     return dedupe_citations(citations)
 
 
@@ -161,11 +226,14 @@ def compute_confidence(answer_dict: Dict, retrieval_results: List[Dict]) -> str:
     page_count = len(answer_dict.get("relevant_pages") or [])
     citations = answer_dict.get("citations") or []
     table_grounding_result = answer_dict.get("table_grounding_result")
+    chart_grounding_result = answer_dict.get("chart_grounding_result")
     validation_flags = answer_dict.get("validation_flags") or []
     citation_coverage = len(citations) / max(page_count, 1)
 
     if table_grounding_result and top_score >= 0.45 and page_count >= 1 and not validation_flags:
         return "high"
+    if chart_grounding_result and top_score >= 0.45 and page_count >= 1 and not validation_flags:
+        return "medium"
     if top_score >= 0.8 and top_score - second_score >= 0.08 and page_count >= 1 and citation_coverage >= 1:
         return "high"
     if top_score >= 0.45 and page_count >= 1:

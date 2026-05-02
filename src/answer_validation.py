@@ -19,6 +19,10 @@ _VALIDATION_FLAG_LABELS = {
     "numeric_grounding_period_mismatch": "数字 grounding 的期间不匹配",
     "numeric_grounding_currency_mismatch": "数字 grounding 的币种不一致",
     "numeric_answer_without_table_grounding": "数字答案缺少表格 grounding",
+    "numeric_answer_without_structured_grounding": "数字答案缺少结构化 grounding",
+    "chart_grounding_low_confidence": "图表 grounding 置信度较低",
+    "chart_unit_mismatch": "图表单位与问题不一致",
+    "chart_year_mismatch": "图表年份与问题不一致",
     "no_retrieval_results": "未返回检索证据",
     "processing_error": "处理流程报错",
 }
@@ -77,6 +81,7 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
     periods = {metadata.get("period") for metadata in retrieval_metadata if metadata.get("period")}
     topic_flags = _union_metadata_flags(retrieval_results)
     table_grounding_result = answer.get("table_grounding_result") or {}
+    chart_grounding_result = answer.get("chart_grounding_result") or {}
 
     if final_answer not in (None, "N/A", []):
         if not citations:
@@ -118,6 +123,8 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
     if query_plan.expected_answer_type == "numeric" and final_answer not in (None, "N/A"):
         grounded_period = table_grounding_result.get("period")
         grounded_unit = str(table_grounding_result.get("unit") or "")
+        chart_period = str(chart_grounding_result.get("period") or chart_grounding_result.get("x_label") or "")
+        chart_unit = str(chart_grounding_result.get("unit") or "")
 
         if table_grounding_result:
             if table_grounding_result.get("normalized_value") is None:
@@ -145,8 +152,45 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
                     answer["citations"] = []
                     answer["relevant_pages"] = []
                     confidence = "low"
-        elif not any((citation.get("chunk_type") in {"serialized_table", "table", "table_grounding"}) for citation in citations):
-            validation_flags.append("numeric_answer_without_table_grounding")
+        elif chart_grounding_result:
+            if chart_grounding_result.get("normalized_value") is None:
+                validation_flags.append("numeric_grounding_missing_value")
+                answer["final_answer"] = "N/A"
+                answer["references"] = []
+                answer["citations"] = []
+                answer["relevant_pages"] = []
+                confidence = "low"
+            chart_confidence = chart_grounding_result.get("confidence", chart_grounding_result.get("chart_confidence"))
+            try:
+                chart_confidence_value = float(chart_confidence)
+            except (TypeError, ValueError):
+                chart_confidence_value = 0.0
+            if chart_confidence_value < 0.7:
+                validation_flags.append("chart_grounding_low_confidence")
+                confidence = _downgrade_confidence(confidence)
+            if query_plan.filters.year is not None and chart_period and str(query_plan.filters.year) not in chart_period:
+                validation_flags.append("chart_year_mismatch")
+                answer["final_answer"] = "N/A"
+                answer["references"] = []
+                answer["citations"] = []
+                answer["relevant_pages"] = []
+                confidence = "low"
+            if query_plan.filters.period and chart_period and not _period_matches(query_plan.filters.period, chart_period):
+                validation_flags.append("chart_year_mismatch")
+                answer["final_answer"] = "N/A"
+                answer["references"] = []
+                answer["citations"] = []
+                answer["relevant_pages"] = []
+                confidence = "low"
+            question_text = query_plan.original_query or ""
+            if ("%" in question_text or "占比" in question_text or "比例" in question_text) and "%" not in chart_unit:
+                validation_flags.append("chart_unit_mismatch")
+                confidence = _downgrade_confidence(confidence)
+        elif not any(
+            citation.get("chunk_type") in {"serialized_table", "table", "table_grounding", "chart_to_table", "chart_grounding"}
+            for citation in citations
+        ):
+            validation_flags.append("numeric_answer_without_structured_grounding")
             confidence = _downgrade_confidence(confidence)
 
     if not retrieval_results:

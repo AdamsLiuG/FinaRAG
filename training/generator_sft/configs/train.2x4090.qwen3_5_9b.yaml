@@ -44,4 +44,4 @@ ddp_timeout: 180000000
 
 use_swanlab: true
 swanlab_run_name: qwen3_5_9b_Finance_qlora_r16
-swanlab_api_key: ${SWANLAB_API_KEY}
+swanlab_api_key: sEOjhsROGRwYbUGCvn3KD

@@ -15,7 +15,7 @@ freeze_multi_modal_projector: true
 dataset_dir: /media/main/lgd/llm/FinaRAG/training/generator_sft/llamafactory_data
 dataset: finarag_generator_gen120_mix_v2_topup_train
 template: default
-cutoff_len: 2048
+cutoff_len: 1536
 overwrite_cache: true
 preprocessing_num_workers: 4
 packing: false
@@ -24,14 +24,15 @@ logging_steps: 10
 save_steps: 100
 plot_loss: true
 overwrite_output_dir: true
-per_device_train_batch_size: 2
-gradient_accumulation_steps: 8
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
 learning_rate: 0.0001
 num_train_epochs: 3.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.03
 bf16: true
+gradient_checkpointing: true
 ddp_timeout: 180000000
 use_swanlab: true
 swanlab_run_name: qwen3_5_9b_gen120_mix_v2_topup_qlora_r16
-swanlab_api_key: ${SWANLAB_API_KEY}
+swanlab_api_key: sEOjhsROGRwYbUGCvn3KD

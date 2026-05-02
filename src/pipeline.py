@@ -8,6 +8,7 @@ import pandas as pd
 import yaml
 
 from src.pdf_parsing import PDFParser
+from src.chart_extraction import ChartExtractionConfig, ChartExtractionRunner, ChartResultWriter
 from src.parsed_reports_merging import PageTextPreparation
 from src.text_splitter import TextSplitter
 from src.ingestion import VectorDBIngestor
@@ -120,6 +121,18 @@ class RunConfig:
     final_reranking_backend: str | None = None
     final_reranking_model: str | None = None
     final_reranking_batch_size: int = 2
+    chart_extraction_enabled: bool = False
+    chart_extraction_backend: str = "deplot"
+    chart_extraction_model: str = "google/deplot"
+    chart_extraction_device: str = "cpu"
+    chart_extraction_batch_size: int = 1
+    chart_extraction_max_new_tokens: int = 512
+    chart_extraction_overwrite: bool = False
+    chart_image_dpi: int = 200
+    chart_crop_padding_px: int = 12
+    chart_min_picture_area_ratio: float = 0.01
+    chart_context_window_blocks: int = 3
+    chart_confidence_threshold: float = 0.70
 
 
 def run_config_from_dict(data: dict) -> RunConfig:
@@ -173,6 +186,18 @@ def run_config_from_dict(data: dict) -> RunConfig:
         "final_reranking_backend",
         "final_reranking_model",
         "final_reranking_batch_size",
+        "chart_extraction_enabled",
+        "chart_extraction_backend",
+        "chart_extraction_model",
+        "chart_extraction_device",
+        "chart_extraction_batch_size",
+        "chart_extraction_max_new_tokens",
+        "chart_extraction_overwrite",
+        "chart_image_dpi",
+        "chart_crop_padding_px",
+        "chart_min_picture_area_ratio",
+        "chart_context_window_blocks",
+        "chart_confidence_threshold",
     }
     payload = {key: value for key, value in data.items() if key in allowed_fields}
     return RunConfig(**payload)
@@ -301,6 +326,68 @@ class Pipeline:
             self.paths.parsed_reports_path,
             max_workers=max_workers
         )
+
+    def extract_charts(self):
+        """Extract chart images from parsed reports and persist DePlot chart evidence."""
+        if not self.run_config.chart_extraction_enabled:
+            print("Chart extraction is disabled by config; set chart_extraction_enabled: true to run.")
+            return []
+
+        config = ChartExtractionConfig(
+            backend=self.run_config.chart_extraction_backend,
+            model=self.run_config.chart_extraction_model,
+            device=self.run_config.chart_extraction_device,
+            batch_size=self.run_config.chart_extraction_batch_size,
+            max_new_tokens=self.run_config.chart_extraction_max_new_tokens,
+            overwrite=self.run_config.chart_extraction_overwrite,
+            image_dpi=self.run_config.chart_image_dpi,
+            crop_padding_px=self.run_config.chart_crop_padding_px,
+            min_picture_area_ratio=self.run_config.chart_min_picture_area_ratio,
+            context_window_blocks=self.run_config.chart_context_window_blocks,
+        )
+        image_dir = self.paths.debug_data_path / "chart_images"
+        overlay_dir = self.paths.debug_data_path / "chart_overlays"
+        manifest_path = self.paths.debug_data_path / "chart_extraction_manifest.jsonl"
+        runner = ChartExtractionRunner(config=config, image_dir=image_dir, overlay_dir=overlay_dir)
+        writer = ChartResultWriter()
+        manifest_rows = []
+
+        for report_path in sorted(self.paths.parsed_reports_path.glob("*.json")):
+            try:
+                with open(report_path, "r", encoding="utf-8") as file:
+                    report_data = json.load(file)
+                doc_id = str((report_data.get("metainfo") or {}).get("sha1_name") or report_path.stem)
+                pdf_path = self.paths.pdf_reports_dir / f"{doc_id}.pdf"
+                if not pdf_path.exists():
+                    pdf_path = self.paths.pdf_reports_dir / f"{report_path.stem}.pdf"
+                if not pdf_path.exists():
+                    row = {
+                        "report_path": str(report_path),
+                        "doc_id": doc_id,
+                        "status": "error",
+                        "error": f"PDF not found for {doc_id}",
+                    }
+                    manifest_rows.append(row)
+                    continue
+
+                chart_results = runner.process_report(report_path=report_path, pdf_path=pdf_path)
+                writer.write_results(
+                    report_path,
+                    chart_results,
+                    overwrite=self.run_config.chart_extraction_overwrite,
+                )
+                for chart in chart_results:
+                    manifest_rows.append({"report_path": str(report_path), "doc_id": doc_id, **chart})
+                print(f"Extracted {len(chart_results)} chart candidate(s) for {doc_id}")
+            except Exception as exc:
+                manifest_rows.append({"report_path": str(report_path), "status": "error", "error": str(exc)})
+
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(manifest_path, "w", encoding="utf-8") as file:
+            for row in manifest_rows:
+                file.write(json.dumps(row, ensure_ascii=False) + "\n")
+        print(f"Chart extraction manifest saved to {manifest_path}")
+        return manifest_rows
 
     def merge_reports(self):
         """Merge complex JSON reports into a simpler structure with a list of pages, where all text blocks are combined into a single string."""
@@ -522,6 +609,7 @@ class Pipeline:
             final_reranking_backend=self.run_config.final_reranking_backend,
             final_reranking_model=self.run_config.final_reranking_model,
             final_reranking_batch_size=self.run_config.final_reranking_batch_size,
+            chart_confidence_threshold=self.run_config.chart_confidence_threshold,
         )
 
         resolved_output_path = self._resolve_answers_output_path(output_path, resume=resume)

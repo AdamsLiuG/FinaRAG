@@ -75,6 +75,46 @@ class AnswerValidationTests(unittest.TestCase):
         self.assertEqual(validated.confidence, "low")
         self.assertIn("numeric_grounding_period_mismatch", validated.validation_flags)
 
+    def test_chart_grounding_supports_numeric_answer_but_flags_low_confidence(self):
+        query_plan = QuestionRewriter().rewrite(
+            "浦发银行2024年营业收入是多少亿元？",
+            schema="number",
+            company_name="浦发银行",
+        )
+        answer_dict = {
+            "final_answer": 135.8,
+            "confidence": "medium",
+            "relevant_pages": [35],
+            "references": [{"pdf_sha1": "600000_2024", "page": 35}],
+            "citations": [{"page": 35, "chunk_type": "chart_grounding"}],
+            "chart_grounding_result": {
+                "chart_id": "600000_2024_p35_pic2",
+                "page": 35,
+                "period": "2024",
+                "unit": "亿元",
+                "normalized_value": 13580000000.0,
+                "confidence": 0.52,
+            },
+        }
+        retrieval_results = [
+            {
+                "page": 35,
+                "distance": 0.9,
+                "metadata": {
+                    "currency": "CNY",
+                    "report_year": 2024,
+                    "period": "2024",
+                    "doc_source_type": "annual_report",
+                },
+            }
+        ]
+
+        validated = validate_answer(answer_dict, retrieval_results, query_plan)
+
+        self.assertIn("chart_grounding_low_confidence", validated.validation_flags)
+        self.assertNotIn("numeric_answer_without_structured_grounding", validated.validation_flags)
+        self.assertEqual(validated.confidence, "low")
+
 
 if __name__ == "__main__":
     unittest.main()

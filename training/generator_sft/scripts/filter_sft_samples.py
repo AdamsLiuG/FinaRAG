@@ -42,6 +42,10 @@ _SEVERE_VALIDATION_FLAGS = {
     "numeric_grounding_period_mismatch",
     "numeric_grounding_currency_mismatch",
     "numeric_answer_without_table_grounding",
+    "numeric_answer_without_structured_grounding",
+    "chart_grounding_low_confidence",
+    "chart_unit_mismatch",
+    "chart_year_mismatch",
 }
 
 

@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
+from src.chart_grounding import ChartGrounder
 from src.citation_formatter import build_citations, compute_confidence, dedupe_citations, dedupe_references
 from src.document_manifest import load_document_manifest
 from src.hyde import HYDE_QUERY_MARKER, HyDEGenerator, should_trigger_hyde
@@ -135,6 +136,7 @@ class QuestionsProcessor:
         final_reranking_backend: Optional[str] = None,
         final_reranking_model: Optional[str] = None,
         final_reranking_batch_size: int = 2,
+        chart_confidence_threshold: float = 0.70,
     ):
         self.questions = self._load_questions(questions_file_path)
         self.documents_dir = Path(documents_dir)
@@ -194,6 +196,7 @@ class QuestionsProcessor:
         self.colbert_passage_max_length = max(16, int(colbert_passage_max_length))
         self.final_reranking_backend = (final_reranking_backend or "").strip().lower() or None
         self.final_reranking_model = final_reranking_model
+        self.chart_confidence_threshold = float(chart_confidence_threshold)
         self.max_context_chars = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "8000"))
         self.max_doc_chars = int(os.getenv("RAG_MAX_DOC_CHARS", "2500"))
 
@@ -208,6 +211,11 @@ class QuestionsProcessor:
         self.companies_df: Optional[pd.DataFrame] = None
         self.report_catalog = ReportCatalog(self.subset_path, self.documents_dir) if self.subset_path else None
         self.table_grounder = TableGrounder(self.documents_dir) if self.numeric_grounding_enabled else None
+        self.chart_grounder = (
+            ChartGrounder(self.documents_dir, confidence_threshold=self.chart_confidence_threshold)
+            if self.numeric_grounding_enabled
+            else None
+        )
         self.hyde_generator = (
             HyDEGenerator(
                 provider=self.api_provider,
@@ -766,6 +774,12 @@ class QuestionsProcessor:
             "status_tags": metadata.get("status_tags", []),
             "style_tags": metadata.get("style_tags", []),
             "table_id": metadata.get("table_id"),
+            "chart_id": metadata.get("chart_id"),
+            "picture_id": metadata.get("picture_id"),
+            "chart_type": metadata.get("chart_type"),
+            "series_name": metadata.get("series_name"),
+            "x_label": metadata.get("x_label"),
+            "chart_confidence": metadata.get("chart_confidence"),
             "matched_child_chunk_ids": result.get("matched_child_chunk_ids", []),
             "matched_tags": result.get("matched_tags", []),
             "matched_queries": result.get("matched_queries", []),
@@ -2175,6 +2189,89 @@ class QuestionsProcessor:
             seen.add((doc_id, page))
         return results
 
+    def _chart_grounding_retrieval_result(
+        self,
+        grounding_result: Dict[str, Any],
+        *,
+        chunk_type: str = "chart_to_table",
+        retrieval_source: str = "chart_grounding",
+    ) -> Dict[str, Any]:
+        doc_id = str(grounding_result.get("source_doc_id") or "")
+        document = self.chart_grounder._load_document(doc_id) if self.chart_grounder is not None and doc_id else None
+        metainfo = (document or {}).get("metainfo") or {}
+        metadata = {
+            "sha1_name": doc_id,
+            "company_name": metainfo.get("company_name"),
+            "company_aliases": list(metainfo.get("company_aliases") or []),
+            "security_code": metainfo.get("security_code"),
+            "stock_code": metainfo.get("stock_code") or metainfo.get("security_code"),
+            "currency": metainfo.get("currency"),
+            "major_industry": metainfo.get("major_industry"),
+            "report_year": metainfo.get("report_year") or metainfo.get("fiscal_year"),
+            "report_type": metainfo.get("report_type"),
+            "doc_source_type": metainfo.get("doc_source_type"),
+            "period": grounding_result.get("period"),
+            "unit_hint": grounding_result.get("unit"),
+            "language": metainfo.get("language"),
+            "chunk_id": None,
+            "chunk_type": chunk_type,
+            "section_title": None,
+            "section_name": None,
+            "report_section": None,
+            "table_id": None,
+            "chart_id": grounding_result.get("chart_id"),
+            "picture_id": grounding_result.get("picture_id"),
+            "series_name": grounding_result.get("series_name"),
+            "x_label": grounding_result.get("x_label"),
+            "chart_confidence": grounding_result.get("chart_confidence") or grounding_result.get("confidence"),
+            "parent_block_id": None,
+            "parent_chunk_id": None,
+            "child_chunk_ids": [],
+            "node_type": "chart",
+            "evidence_type": "chart",
+            "has_table_context": False,
+            "has_chart_context": True,
+            "page_start": grounding_result.get("page"),
+            "page_end": grounding_result.get("page"),
+            "topic_flags": [],
+        }
+        return {
+            "distance": 1.0,
+            "combined_score": 1.0,
+            "ranking_score": 1.0,
+            "page": grounding_result.get("page"),
+            "text": grounding_result.get("chart_context") or "",
+            "metadata": metadata,
+            "chunk_id": None,
+            "chunk_type": chunk_type,
+            "section_title": None,
+            "chart_id": grounding_result.get("chart_id"),
+            "retrieval_sources": [retrieval_source],
+            "matched_child_chunk_ids": [],
+            "matched_tags": [],
+            "result_scope": "chart",
+        }
+
+    def _ensure_chart_grounding_retrieval_result(
+        self,
+        retrieval_results: List[Dict],
+        grounding_result: Optional[Dict[str, Any]],
+    ) -> List[Dict]:
+        if not grounding_result or grounding_result.get("page") is None:
+            return retrieval_results
+        doc_id = str(grounding_result.get("source_doc_id") or "")
+        page = grounding_result.get("page")
+        chart_id = grounding_result.get("chart_id")
+        for result in retrieval_results:
+            metadata = result.get("metadata") or {}
+            if (
+                str(metadata.get("sha1_name") or "") == doc_id
+                and result.get("page") == page
+                and metadata.get("chart_id") == chart_id
+            ):
+                return retrieval_results
+        return [self._chart_grounding_retrieval_result(grounding_result)] + list(retrieval_results)
+
     def _build_table_grounded_number_answer(self, grounding_result: Dict[str, Any]) -> Dict[str, Any]:
         grounded_value = self._grounded_number_value(grounding_result)
         unit_note = f"，并按问题要求换算为{grounding_result['target_unit']}" if grounding_result.get("target_unit") else ""
@@ -2202,6 +2299,32 @@ class QuestionsProcessor:
                 f"原始值：{grounding_result.get('raw_value')}；标准值：{grounding_result.get('normalized_value')}。"
             ),
             "table_grounding_result": grounding_result,
+        }
+
+    def _build_chart_grounded_number_answer(self, grounding_result: Dict[str, Any]) -> Dict[str, Any]:
+        grounded_value = self._grounded_number_value(grounding_result)
+        unit_note = f"，并按问题要求换算为{grounding_result['target_unit']}" if grounding_result.get("target_unit") else ""
+        page = grounding_result.get("page")
+        pages = [page] if page is not None else []
+        return {
+            "final_answer": grounded_value,
+            "relevant_pages": pages,
+            "references": [],
+            "citations": [],
+            "confidence": "medium",
+            "reasoning_summary": (
+                f"答案来自 chart-to-table grounding：图表 {grounding_result.get('chart_id')} "
+                f"第 {page} 页的 {grounding_result.get('series_name')} / {grounding_result.get('x_label')}"
+                f"{unit_note}。"
+            ),
+            "step_by_step_analysis": (
+                f"图表ID：{grounding_result.get('chart_id')}；"
+                f"图片ID：{grounding_result.get('picture_id')}；"
+                f"指标：{grounding_result.get('series_name')}；"
+                f"横轴：{grounding_result.get('x_label')}；"
+                f"原始值：{grounding_result.get('raw_value')}；标准值：{grounding_result.get('normalized_value')}。"
+            ),
+            "chart_grounding_result": grounding_result,
         }
 
     @staticmethod
@@ -2762,6 +2885,7 @@ class QuestionsProcessor:
             )
 
         grounding_result = None
+        chart_grounding_result = None
         if schema == "number" and self.table_grounder is not None:
             if self._is_revenue_metric_question(question) and allowed_grounding_doc_ids:
                 grounding_result = self._cached_revenue_grounding(
@@ -2783,6 +2907,21 @@ class QuestionsProcessor:
             if grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
                 retrieval_results = self._ensure_table_grounding_retrieval_result(retrieval_results, grounding_result)
                 retrieval_results = self._ensure_table_support_retrieval_results(retrieval_results, grounding_result)
+
+        if (
+            schema == "number"
+            and grounding_result is None
+            and self.chart_grounder is not None
+        ):
+            chart_grounding_result = self.chart_grounder.ground_number_query(
+                question=question,
+                retrieval_results=retrieval_results,
+                filters=rewrite_result.filters,
+                candidate_doc_ids=candidate_doc_ids,
+                allowed_doc_ids=allowed_grounding_doc_ids,
+            )
+            if chart_grounding_result is not None and self._grounded_number_value(chart_grounding_result) is not None:
+                retrieval_results = self._ensure_chart_grounding_retrieval_result(retrieval_results, chart_grounding_result)
 
         if not retrieval_results:
             self.response_data = {}
@@ -2823,6 +2962,13 @@ class QuestionsProcessor:
         if schema == "number" and grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
             answer_dict = self._build_table_grounded_number_answer(grounding_result)
             self.response_data = {}
+        elif (
+            schema == "number"
+            and chart_grounding_result is not None
+            and self._grounded_number_value(chart_grounding_result) is not None
+        ):
+            answer_dict = self._build_chart_grounded_number_answer(chart_grounding_result)
+            self.response_data = {}
         else:
             answer_context_results = retrieval_results[: self.top_n_retrieval]
             rag_context = self._format_retrieval_results(answer_context_results)
@@ -2852,6 +2998,7 @@ class QuestionsProcessor:
             validated_pages,
             table_grounding_result=answer_dict.get("table_grounding_result"),
             table_support_results=(answer_dict.get("table_grounding_result") or {}).get("supporting_matches") or [],
+            chart_grounding_result=answer_dict.get("chart_grounding_result"),
         )
         answer_dict["confidence"] = compute_confidence(answer_dict, retrieval_results)
         answer_dict["search_queries"] = rewrite_result.search_queries
@@ -3102,6 +3249,7 @@ class QuestionsProcessor:
                 "retrieval_results": answer_dict.get("retrieval_results", []),
                 "retrieval_report_groups": answer_dict.get("retrieval_report_groups", []),
                 "table_grounding_result": answer_dict.get("table_grounding_result"),
+                "chart_grounding_result": answer_dict.get("chart_grounding_result"),
                 "response_data": answer_dict.get("response_data", {}),
                 "self": ref_id
             }
@@ -3317,12 +3465,14 @@ class QuestionsProcessor:
             answer_details_ref = q.get("answer_details", {}).get("$ref", "")
             step_by_step_analysis = None
             table_grounding_result = None
+            chart_grounding_result = None
             if answer_details_ref and answer_details_ref.startswith("#/answer_details/"):
                 try:
                     index = int(answer_details_ref.split("/")[-1])
                     if 0 <= index < len(self.answer_details) and self.answer_details[index]:
                         step_by_step_analysis = self.answer_details[index].get("step_by_step_analysis")
                         table_grounding_result = self.answer_details[index].get("table_grounding_result")
+                        chart_grounding_result = self.answer_details[index].get("chart_grounding_result")
                 except (ValueError, IndexError):
                     pass
 
@@ -3364,6 +3514,8 @@ class QuestionsProcessor:
                 submission_answer["reasoning_process"] = step_by_step_analysis
             if table_grounding_result:
                 submission_answer["table_grounding_result"] = table_grounding_result
+            if chart_grounding_result:
+                submission_answer["chart_grounding_result"] = chart_grounding_result
 
             submission_answers.append(submission_answer)
 

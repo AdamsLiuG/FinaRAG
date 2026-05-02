@@ -77,6 +77,17 @@ def serialize_tables(max_workers, config_path):
     click.echo(f"表格序列化处理 (config={config_path or 'default'}, max_workers={max_workers})...")
     pipeline.serialize_tables(max_workers=max_workers)
 
+@cli.command("extract-charts")
+@click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
+def extract_charts(config_path):
+    """对解析后的研报图片图表执行 DePlot chart-to-table 抽取"""
+    root_path = Path.cwd()
+    run_config = load_run_config(config_path) if config_path else RunConfig(chart_extraction_enabled=True)
+    pipeline = Pipeline(root_path, run_config=run_config)
+
+    click.echo(f"图表抽取处理 (config={config_path or 'default'})...")
+    pipeline.extract_charts()
+
 @cli.command()
 @click.option('--config', type=click.Choice(['ser_tab', 'no_ser_tab']), default='no_ser_tab', help='选择配置预设')
 @click.option('--config-path', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='YAML 配置文件路径')
