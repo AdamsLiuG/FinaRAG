@@ -96,6 +96,36 @@ class RetrievalFilterTests(unittest.TestCase):
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0]["metadata"]["section_title"], "第二节 公司简介和主要财务指标")
 
+    def test_section_filter_matches_hierarchical_section_path(self):
+        results = [
+            {
+                "distance": 0.51,
+                "metadata": {
+                    "section_name": "1. 产品结构",
+                    "section_leaf": "1. 产品结构",
+                    "section_l1": "第三节 管理层讨论与分析",
+                    "section_l2": "一、经营情况讨论与分析",
+                    "section_l3": "（一）主营业务分析",
+                    "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析 > 1. 产品结构",
+                },
+            },
+            {
+                "distance": 0.82,
+                "metadata": {
+                    "section_name": "财务报告",
+                    "section_path": "第十节 财务报告",
+                },
+            },
+        ]
+
+        filtered = apply_retrieval_filters(
+            results,
+            RetrievalFilters(section_name="经营情况讨论与分析"),
+        )
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["metadata"]["section_name"], "1. 产品结构")
+
 
 if __name__ == "__main__":
     unittest.main()

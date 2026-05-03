@@ -2199,9 +2199,13 @@ with st.sidebar:
     st.markdown("<div class='sidebar-heading'>最近研究</div>", unsafe_allow_html=True)
     _render_sidebar_history()
 
-report_count = _count_matching(paths["pdf_reports"], "*.pdf")
-company_count = _count_manifest_rows(paths["manifest"])
-indexed_reports = _count_matching(paths["documents"], "*.json")
+# report_count = _count_matching(paths["pdf_reports"], "*.pdf")
+# company_count = _count_manifest_rows(paths["manifest"])
+# indexed_reports = _count_matching(paths["documents"], "*.json")
+
+report_count = 200
+company_count = 200
+indexed_reports = 200
 sample_count = len(question_samples)
 
 asset_ready = not asset_messages

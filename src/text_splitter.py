@@ -198,6 +198,21 @@ class TextSplitter():
             or enriched.get("section_title")
             or f"Page {page_number}"
         )
+        enriched["section_l1"] = (page_metadata or {}).get("section_l1") or enriched.get("section_l1")
+        enriched["section_l2"] = (page_metadata or {}).get("section_l2") or enriched.get("section_l2")
+        enriched["section_l3"] = (page_metadata or {}).get("section_l3") or enriched.get("section_l3")
+        enriched["section_path"] = (
+            (page_metadata or {}).get("section_path")
+            or enriched.get("section_path")
+            or enriched.get("report_section")
+            or enriched.get("section_name")
+        )
+        enriched["section_leaf"] = (
+            (page_metadata or {}).get("section_leaf")
+            or enriched.get("section_leaf")
+            or enriched.get("section_name")
+        )
+        enriched["page_role"] = (page_metadata or {}).get("page_role") or enriched.get("page_role")
         enriched["chunk_metadata_id"] = (page_metadata or {}).get("chunk_id")
         enriched["chain_position_major"] = (page_metadata or {}).get("chain_position_major") or report_meta.get("chain_position_major")
         for field in self._metadata_tag_fields:
@@ -236,6 +251,8 @@ class TextSplitter():
             lines.append(f"行业：{'-'.join(dedupe_preserve_order(industry_tokens))}")
         if payload.get("section_name"):
             lines.append(f"章节：{payload['section_name']}")
+        if payload.get("section_path"):
+            lines.append(f"章节路径：{payload['section_path']}")
         if payload.get("evidence_type") == "chart":
             if payload.get("chart_id"):
                 lines.append(f"图表ID：{payload['chart_id']}")
@@ -278,6 +295,8 @@ class TextSplitter():
             "industry_l1",
             "industry_l2",
             "section_name",
+            "section_path",
+            "section_leaf",
         ):
             value = payload.get(field)
             if value not in (None, ""):
@@ -369,6 +388,8 @@ class TextSplitter():
     ) -> Dict[str, Any]:
         section_title = source_chunk.get("section_title")
         section_name = source_chunk.get("section_name") or source_chunk.get("report_section") or section_title or f"Page {source_chunk['page']}"
+        section_path = source_chunk.get("section_path") or source_chunk.get("report_section") or section_name
+        section_leaf = source_chunk.get("section_leaf") or section_name
         payload = {
             "page": source_chunk["page"],
             "page_start": source_chunk.get("page_start") or source_chunk["page"],
@@ -382,6 +403,11 @@ class TextSplitter():
             "node_type": node_type,
             "section_title": section_title,
             "section_name": section_name,
+            "section_l1": source_chunk.get("section_l1"),
+            "section_l2": source_chunk.get("section_l2"),
+            "section_l3": source_chunk.get("section_l3"),
+            "section_path": section_path,
+            "section_leaf": section_leaf,
             "table_id": source_chunk.get("table_id"),
             "chart_id": source_chunk.get("chart_id"),
             "picture_id": source_chunk.get("picture_id"),
@@ -410,6 +436,7 @@ class TextSplitter():
             "report_section": source_chunk.get("report_section", section_name),
             "evidence_type": source_chunk.get("evidence_type", "narrative"),
             "has_table_context": bool(source_chunk.get("has_table_context")),
+            "page_role": source_chunk.get("page_role"),
             "period": source_chunk.get("period") or normalize_period_token(source_chunk.get("text", "")),
             "unit_hint": source_chunk.get("unit_hint") or self._extract_unit_hint(source_chunk.get("text", "")),
             "exchange": source_chunk.get("exchange") or report_meta.get("exchange"),
@@ -756,6 +783,11 @@ class TextSplitter():
                     "page_start": chunk.get("page_start"),
                     "page_end": chunk.get("page_end"),
                     "section_name": chunk.get("section_name"),
+                    "section_l1": chunk.get("section_l1"),
+                    "section_l2": chunk.get("section_l2"),
+                    "section_l3": chunk.get("section_l3"),
+                    "section_path": chunk.get("section_path"),
+                    "section_leaf": chunk.get("section_leaf"),
                     "section_title": chunk.get("section_title"),
                     "report_section": chunk.get("report_section"),
                     "table_id": chunk.get("table_id"),

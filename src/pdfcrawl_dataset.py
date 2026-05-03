@@ -227,6 +227,18 @@ def _build_report_page_rows(metadata_bundle: PdfcrawlMetadataBundle) -> List[Dic
     ]
 
 
+def _build_chunk_metadata_rows(metadata_bundle: PdfcrawlMetadataBundle) -> List[Dict[str, object]]:
+    return sorted(
+        metadata_bundle.chunk_metadata_rows,
+        key=lambda item: (
+            str(item.get("report_id") or ""),
+            0 if item.get("node_type") == "parent" else 1,
+            int(item.get("page") or 0),
+            str(item.get("chunk_id") or ""),
+        ),
+    )
+
+
 def _build_company_label_rows(metadata_bundle: PdfcrawlMetadataBundle) -> List[Dict[str, object]]:
     return [
         record
@@ -243,12 +255,15 @@ def _write_metadata_store(
     metadata_bundle: PdfcrawlMetadataBundle,
 ) -> None:
     metadata_store_dir = dataset_dir / "metadata_store"
+    chunk_metadata_rows = _build_chunk_metadata_rows(metadata_bundle)
     write_jsonl(metadata_store_dir / "company_master.jsonl", _build_company_master_rows(manifest_rows, metadata_bundle))
     write_jsonl(metadata_store_dir / "annual_report.jsonl", _build_annual_report_rows(manifest_rows, metadata_bundle))
     write_jsonl(metadata_store_dir / "report_page.jsonl", _build_report_page_rows(metadata_bundle))
     write_jsonl(metadata_store_dir / "company_label_snapshot.jsonl", _build_company_label_rows(metadata_bundle))
     write_jsonl(metadata_store_dir / "company_label_evidence.jsonl", [])
-    write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", [])
+    write_jsonl(metadata_store_dir / "chunk_metadata.jsonl", chunk_metadata_rows)
+    write_jsonl(metadata_store_dir / "report_chunk.jsonl", chunk_metadata_rows)
+    write_jsonl(metadata_store_dir / "pdfcrawl_chunk_metadata.jsonl", chunk_metadata_rows)
 
 
 def prepare_pdfcrawl_dataset(
@@ -330,6 +345,8 @@ def prepare_pdfcrawl_dataset(
         "language": language,
         "metadata_mode": metadata_mode,
         "metadata_files": [str(path) for path in metadata_bundle.metadata_paths],
+        "chunk_files": [str(path) for path in metadata_bundle.chunk_paths],
+        "child_chunk_files": [str(path) for path in metadata_bundle.child_chunk_paths],
         "company_label_files": [str(path) for path in metadata_bundle.company_label_paths],
         "company_profile_files": [str(path) for path in metadata_bundle.company_profile_paths],
     }

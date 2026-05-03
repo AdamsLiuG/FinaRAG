@@ -124,6 +124,11 @@ def build_result_metadata(document_meta: Dict, chunk: Dict | None = None) -> Dic
         "section_title": chunk.get("section_title"),
         "section_name": chunk.get("section_name", chunk.get("report_section", chunk.get("section_title"))),
         "report_section": chunk.get("report_section", chunk.get("section_name", chunk.get("section_title"))),
+        "section_l1": chunk.get("section_l1"),
+        "section_l2": chunk.get("section_l2"),
+        "section_l3": chunk.get("section_l3"),
+        "section_path": chunk.get("section_path", chunk.get("report_section", chunk.get("section_name"))),
+        "section_leaf": chunk.get("section_leaf", chunk.get("section_name", chunk.get("section_title"))),
         "table_id": chunk.get("table_id"),
         "chart_id": chunk.get("chart_id"),
         "picture_id": chunk.get("picture_id"),
@@ -169,6 +174,11 @@ def _matches_section_filter(expected: Optional[str], metadata: Dict) -> bool:
         metadata.get("section_name"),
         metadata.get("section_title"),
         metadata.get("report_section"),
+        metadata.get("section_leaf"),
+        metadata.get("section_path"),
+        metadata.get("section_l1"),
+        metadata.get("section_l2"),
+        metadata.get("section_l3"),
     ]
     observed_values = [value for value in section_candidates if value]
     if not observed_values:

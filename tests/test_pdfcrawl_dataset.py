@@ -182,36 +182,175 @@ def test_prepare_pdfcrawl_dataset_enriches_manifest_and_metadata_store(tmp_path)
         )
 
     (industry_dir / "metadata.jsonl").write_text(
-        json.dumps(
-            {
-                "chunk_id": "688981_2024_20250328_page_0001",
-                "stock_code": "688981",
-                "company_name": "中芯国际",
-                "report_id": "688981_2024_20250328",
-                "report_year": 2024,
-                "report_type": "annual_report",
-                "exchange": "上海证券交易所",
-                "board": "科创板",
-                "market_type": "A股",
-                "industry_code_raw": "C39",
-                "industry_name_raw": "计算机、通信和其他电子设备制造业",
-                "industry_l1": "半导体",
-                "industry_l2": "晶圆代工",
-                "business_tags": ["晶圆制造"],
-                "strategy_tags": ["国产替代"],
-                "factor_tags": ["高资本开支"],
-                "chain_position_major": "中游制造",
-                "chain_position_minor": ["晶圆代工"],
-                "listing_tags": ["A股", "科创板"],
-                "ownership_tags": ["公众公司"],
-                "status_tags": ["龙头"],
-                "style_tags": ["硬科技"],
-                "page_start": 1,
-                "page_end": 1,
-                "section_name": "第一节 重要提示",
-                "file_path": str(source_pdf_path),
-            },
-            ensure_ascii=False,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "chunk_id": "688981_2024_20250328_p0001_b01",
+                        "stock_code": "688981",
+                        "company_name": "中芯国际",
+                        "report_id": "688981_2024_20250328",
+                        "report_year": 2024,
+                        "report_type": "annual_report",
+                        "exchange": "上海证券交易所",
+                        "board": "科创板",
+                        "market_type": "A股",
+                        "industry_code_raw": "C39",
+                        "industry_name_raw": "计算机、通信和其他电子设备制造业",
+                        "industry_l1": "半导体",
+                        "industry_l2": "晶圆代工",
+                        "business_tags": ["晶圆制造"],
+                        "strategy_tags": ["国产替代"],
+                        "factor_tags": ["高资本开支"],
+                        "chain_position_major": "中游制造",
+                        "chain_position_minor": ["晶圆代工"],
+                        "listing_tags": ["A股", "科创板"],
+                        "ownership_tags": ["公众公司"],
+                        "status_tags": ["龙头"],
+                        "style_tags": ["硬科技"],
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_name": "（一）主营业务分析",
+                        "section_l1": "第三节 管理层讨论与分析",
+                        "section_l2": "一、经营情况讨论与分析",
+                        "section_l3": "（一）主营业务分析",
+                        "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析",
+                        "section_leaf": "（一）主营业务分析",
+                        "local_heading": "（一）主营业务分析",
+                        "block_index": 1,
+                        "chunk_kind": "text",
+                        "page_role": "content",
+                        "file_path": str(source_pdf_path),
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "chunk_id": "688981_2024_20250328_p0001_b02",
+                        "stock_code": "688981",
+                        "company_name": "中芯国际",
+                        "report_id": "688981_2024_20250328",
+                        "report_year": 2024,
+                        "report_type": "annual_report",
+                        "exchange": "上海证券交易所",
+                        "board": "科创板",
+                        "market_type": "A股",
+                        "industry_code_raw": "C39",
+                        "industry_name_raw": "计算机、通信和其他电子设备制造业",
+                        "industry_l1": "半导体",
+                        "industry_l2": "晶圆代工",
+                        "business_tags": ["晶圆制造"],
+                        "strategy_tags": ["国产替代"],
+                        "factor_tags": ["高资本开支"],
+                        "chain_position_major": "中游制造",
+                        "chain_position_minor": ["晶圆代工"],
+                        "listing_tags": ["A股", "科创板"],
+                        "ownership_tags": ["公众公司"],
+                        "status_tags": ["龙头"],
+                        "style_tags": ["硬科技"],
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_name": "1. 产品结构",
+                        "section_l1": "第三节 管理层讨论与分析",
+                        "section_l2": "一、经营情况讨论与分析",
+                        "section_l3": "（一）主营业务分析",
+                        "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析 > 1. 产品结构",
+                        "section_leaf": "1. 产品结构",
+                        "local_heading": "1. 产品结构",
+                        "block_index": 2,
+                        "chunk_kind": "text",
+                        "page_role": "content",
+                        "file_path": str(source_pdf_path),
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (industry_dir / "chunks.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "chunk_id": "688981_2024_20250328_p0001_b01",
+                        "stock_code": "688981",
+                        "company_name": "中芯国际",
+                        "report_id": "688981_2024_20250328",
+                        "report_year": 2024,
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_name": "（一）主营业务分析",
+                        "section_l1": "第三节 管理层讨论与分析",
+                        "section_l2": "一、经营情况讨论与分析",
+                        "section_l3": "（一）主营业务分析",
+                        "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析",
+                        "section_leaf": "（一）主营业务分析",
+                        "local_heading": "（一）主营业务分析",
+                        "block_index": 1,
+                        "chunk_kind": "text",
+                        "chunk_text": "公司坚持先进工艺研发。",
+                        "file_path": str(source_pdf_path),
+                        "embedding_text": "章节路径：第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析\n正文：公司坚持先进工艺研发。",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "chunk_id": "688981_2024_20250328_p0001_b02",
+                        "stock_code": "688981",
+                        "company_name": "中芯国际",
+                        "report_id": "688981_2024_20250328",
+                        "report_year": 2024,
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_name": "1. 产品结构",
+                        "section_l1": "第三节 管理层讨论与分析",
+                        "section_l2": "一、经营情况讨论与分析",
+                        "section_l3": "（一）主营业务分析",
+                        "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析 > 1. 产品结构",
+                        "section_leaf": "1. 产品结构",
+                        "local_heading": "1. 产品结构",
+                        "block_index": 2,
+                        "chunk_kind": "text",
+                        "chunk_text": "产品结构持续优化。",
+                        "file_path": str(source_pdf_path),
+                        "embedding_text": "章节路径：第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析 > 1. 产品结构\n正文：产品结构持续优化。",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (industry_dir / "child_chunks.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "chunk_id": "688981_2024_20250328_p0001_b01_c01",
+                        "parent_chunk_id": "688981_2024_20250328_p0001_b01",
+                        "stock_code": "688981",
+                        "company_name": "中芯国际",
+                        "report_id": "688981_2024_20250328",
+                        "report_year": 2024,
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_name": "（一）主营业务分析",
+                        "section_l1": "第三节 管理层讨论与分析",
+                        "section_l2": "一、经营情况讨论与分析",
+                        "section_l3": "（一）主营业务分析",
+                        "section_path": "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析",
+                        "section_leaf": "（一）主营业务分析",
+                        "chunk_text": "公司坚持先进工艺研发。",
+                        "file_path": str(source_pdf_path),
+                        "embedding_text": "正文：公司坚持先进工艺研发。",
+                    },
+                    ensure_ascii=False,
+                )
+            ]
         )
         + "\n",
         encoding="utf-8",
@@ -256,13 +395,25 @@ def test_prepare_pdfcrawl_dataset_enriches_manifest_and_metadata_store(tmp_path)
         for line in (metadata_store_dir / "company_master.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    chunk_metadata = (metadata_store_dir / "chunk_metadata.jsonl").read_text(encoding="utf-8")
+    chunk_metadata_rows = [
+        json.loads(line)
+        for line in (metadata_store_dir / "chunk_metadata.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
-    assert report_page_rows[0]["section_name"] == "第一节 重要提示"
+    assert len(report_page_rows) == 1
+    assert report_page_rows[0]["section_name"] == "（一）主营业务分析"
     assert report_page_rows[0]["page"] == 1
+    assert (
+        report_page_rows[0]["section_path"]
+        == "第三节 管理层讨论与分析 > 一、经营情况讨论与分析 > （一）主营业务分析"
+    )
     assert company_master_rows[0]["stock_code"] == "688981"
     assert company_master_rows[0]["main_business_raw"] == "晶圆代工"
-    assert chunk_metadata == ""
+    assert len(chunk_metadata_rows) == 3
+    assert {row["node_type"] for row in chunk_metadata_rows} == {"parent", "child"}
+    assert any(row["section_path"].endswith("1. 产品结构") for row in chunk_metadata_rows if row["node_type"] == "parent")
+    assert any(row["parent_chunk_id"] == "688981_2024_20250328_p0001_b01" for row in chunk_metadata_rows if row["node_type"] == "child")
 
 
 def test_prepare_pdfcrawl_dataset_requires_metadata_when_requested(tmp_path):

@@ -68,6 +68,8 @@ def _chunk_tag_values(chunk: dict) -> List[str]:
     values: List[str] = []
     scalar_fields = (
         "section_name",
+        "section_path",
+        "section_leaf",
         "section_title",
         "report_section",
         "exchange",
