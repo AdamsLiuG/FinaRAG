@@ -1,0 +1,37 @@
+model_name_or_path: "/media/main/lgd/llm/models/Qwen/Qwen3-Reranker-0.6B"
+train_path: training/reranker_distill/processed/pointwise_train.jsonl
+eval_path: training/reranker_distill/processed/pointwise_dev.jsonl
+output_dir: /media/main/lgd/llm/FinaRAG/training/reranker_distill/saves/qwen3_reranker_0.6b_lora
+
+# Set to 4 if you want QLoRA instead of plain LoRA.
+quantization_bits:
+trust_remote_code: true
+cutoff_len: 1024
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+modules_to_save:
+  - score
+learning_rate: 2.0e-4
+weight_decay: 0.0
+num_train_epochs: 3.0
+per_device_train_batch_size: 8
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 2
+warmup_ratio: 0.05
+lr_scheduler_type: cosine
+logging_steps: 10
+save_steps: 200
+eval_steps: 200
+save_total_limit: 3
+seed: 42
+bf16: true
+fp16: false

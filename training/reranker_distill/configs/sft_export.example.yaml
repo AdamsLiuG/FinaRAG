@@ -1,0 +1,18 @@
+train_input_path: training/reranker_distill/processed/pointwise_train.jsonl
+dev_input_path: training/reranker_distill/processed/pointwise_dev.jsonl
+test_input_path: training/reranker_distill/processed/pointwise_test.jsonl
+
+train_output_path: training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl
+dev_output_path: training/reranker_distill/processed/qwen3_reranker_sft_dev.jsonl
+test_output_path: training/reranker_distill/processed/qwen3_reranker_sft_test.jsonl
+stats_output_path: training/reranker_distill/manifests/qwen3_reranker_sft_export_stats.json
+
+# "hybrid" first trusts hard_label, then falls back to teacher_score thresholds.
+label_source: hybrid
+positive_hard_labels: [2]
+negative_hard_labels: [0]
+positive_teacher_score_threshold: 0.85
+negative_teacher_score_threshold: 0.2
+
+instruction: "Given a Chinese financial annual report question, retrieve passages that directly answer the query with precise company, year, metric, and unit evidence."
+system_prompt: 'Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".'

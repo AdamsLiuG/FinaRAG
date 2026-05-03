@@ -1,0 +1,9 @@
+input_path: training/generator_sft/raw/teacher_answers_raw.jsonl
+retrieved_cache_input_path: training/generator_sft/raw/retrieved_cache.jsonl
+anchor_input_path: training/generator_sft/processed/anchor_clean_positive.v1.jsonl
+output_path: training/generator_sft/processed/teacher_answers_filtered.jsonl
+filtered_input_path: training/generator_sft/processed/teacher_answers_filtered.jsonl
+rejected_output_path: training/generator_sft/manifests/rejected_samples.jsonl
+stats_output_path: training/generator_sft/manifests/filter_stats.json
+chat_output_path: training/generator_sft/processed/all.chat.jsonl
+chat_stats_output_path: training/generator_sft/manifests/chat_export_stats.json

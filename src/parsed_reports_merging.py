@@ -74,7 +74,8 @@ class PageTextPreparation:
         
         processed_report = {
             "chunks": None,
-            "pages": processed_pages
+            "pages": processed_pages,
+            "charts": self._get_successful_charts(),
         }
         
         return processed_report
@@ -106,14 +107,63 @@ class PageTextPreparation:
 
     def _filter_blocks(self, blocks):
         """Remove blocks of ignored types."""
-        ignored_types = {"page_footer", "picture"}
+        ignored_types = {"page_footer"}
         filtered_blocks = []
         for block in blocks:
             block_type = block.get("type")
             if block_type in ignored_types:
                 continue
+            if block_type == "picture":
+                chart_block = self._picture_chart_evidence_block(block)
+                if chart_block is None:
+                    continue
+                filtered_blocks.append(chart_block)
+                continue
             filtered_blocks.append(block)
         return filtered_blocks
+
+    def _get_successful_charts(self):
+        return [
+            chart
+            for chart in self.report_data.get("charts", [])
+            if chart.get("status") == "ok" and (chart.get("table_markdown") or chart.get("raw_output"))
+        ]
+
+    def _charts_by_picture_id(self):
+        charts_by_picture = {}
+        for chart in self._get_successful_charts():
+            picture_id = chart.get("picture_id")
+            for key in {picture_id, str(picture_id)}:
+                charts_by_picture.setdefault(key, []).append(chart)
+        return charts_by_picture
+
+    def _picture_chart_evidence_block(self, picture_block):
+        picture_id = picture_block.get("picture_id")
+        charts = self._charts_by_picture_id().get(picture_id, [])
+        if not charts:
+            return None
+        rendered = "\n\n".join(self._render_chart_evidence(chart) for chart in charts)
+        return {
+            "type": "chart_evidence",
+            "text": rendered,
+            "picture_id": picture_id,
+        }
+
+    def _render_chart_evidence(self, chart):
+        lines = [
+            "[Chart Evidence]",
+            f"图表ID：{chart.get('chart_id')}",
+            f"页码：{chart.get('page')}",
+        ]
+        if chart.get("picture_id") is not None:
+            lines.append(f"图片ID：{chart.get('picture_id')}")
+        table_text = str(chart.get("table_markdown") or chart.get("raw_output") or "").strip()
+        if table_text:
+            lines.extend(["DePlot表格：", table_text])
+        context_text = str(chart.get("context_text") or "").strip()
+        if context_text:
+            lines.extend(["周边说明：", context_text])
+        return "\n".join(lines)
     
     def _clean_text(self, text):
         """Clean text using regex substitutions and count corrections."""
@@ -182,7 +232,7 @@ class PageTextPreparation:
         """Check if block text ends with colon for relevant block types."""
         block_type = block.get("type")
         text = block.get("text", "").rstrip()
-        if block_type in {"text", "caption", "section_header", "paragraph"}:
+        if block_type in {"text", "caption", "section_header", "paragraph", "code"}:
             return text.endswith(":")
         return False
 
@@ -313,6 +363,8 @@ class PageTextPreparation:
                 "checkbox_selected",
                 "checkbox_unselected",
                 "formula",
+                "code",
+                "chart_evidence",
             ):
                 if not text.strip():
                     i += 1
@@ -332,7 +384,7 @@ class PageTextPreparation:
         for blk in group_blocks:
             blk_type = blk.get("type")
             blk_text = blk.get("text", "").strip()
-            if blk_type in {"text", "caption", "section_header", "paragraph"}:
+            if blk_type in {"text", "caption", "section_header", "paragraph", "code"}:
                 chunk.append(f"{blk_text}\n")
 
             elif blk_type == "table":
@@ -359,7 +411,7 @@ class PageTextPreparation:
         for blk in group_blocks:
             blk_type = blk.get("type")
             blk_text = blk.get("text", "").strip()
-            if blk_type in {"text", "caption", "section_header", "paragraph"}:
+            if blk_type in {"text", "caption", "section_header", "paragraph", "code"}:
                 chunk.append(f"{blk_text}\n")
 
             elif blk_type == "list_item":

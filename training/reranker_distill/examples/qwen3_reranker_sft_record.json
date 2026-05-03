@@ -1,0 +1,19 @@
+{
+  "prompt": "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".<|im_end|>\n<|im_start|>user\n<Instruct>: Given a Chinese financial annual report question, retrieve passages that directly answer the query with precise company, year, metric, and unit evidence.\n<Query>: 华胜天成2024年年报中的营业收入是多少元？\n<Document>: 公司简介和主要财务指标显示，报告期内公司实现营业收入4,270,629,476.42元。<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+  "target": "yes",
+  "label": 1,
+  "query": "华胜天成2024年年报中的营业收入是多少元？",
+  "passage": "公司简介和主要财务指标显示，报告期内公司实现营业收入4,270,629,476.42元。",
+  "instruction": "Given a Chinese financial annual report question, retrieve passages that directly answer the query with precise company, year, metric, and unit evidence.",
+  "system_prompt": "Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".",
+  "meta": {
+    "pair_id": "pair-000001",
+    "query_id": "seed-000001",
+    "candidate_id": "cand-0001",
+    "doc_id": "600410_2024_20250426",
+    "page": 9,
+    "target_source": "hard_label",
+    "teacher_score": 0.9382,
+    "hard_label": 2
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "finance_eval_v1_sample",
+  "questions": [
+    {
+      "question_id": "fin-eval-0001",
+      "question_text": "国网信通2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "doc_ids": [
+        "600131_2024_20250425"
+      ],
+      "company_name": "国网信通",
+      "stock_code": "600131",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "metric_name": "法定代表人",
+      "evidence_type": "narrative",
+      "gold_value": "王奔",
+      "gold_pages": [
+        7
+      ],
+      "should_refuse": false,
+      "annotation_status": "human_verified",
+      "notes": "来自公司简介页。"
+    },
+    {
+      "question_id": "fin-eval-0002",
+      "question_text": "优博讯2024年年报中的研发投入金额是多少？",
+      "kind": "number",
+      "capability": "single_doc_numeric",
+      "difficulty": "medium",
+      "doc_ids": [
+        "300531_2024_20250429"
+      ],
+      "company_name": "优博讯",
+      "stock_code": "300531",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "gold_value": "356,778,998.12",
+      "gold_pages": [
+        115
+      ],
+      "should_refuse": false,
+      "annotation_status": "human_verified",
+      "notes": "数字题，要求页码和单位同时正确。"
+    },
+    {
+      "question_id": "fin-eval-0003",
+      "question_text": "国网信通2024年年报中是否披露了火星业务收入？",
+      "kind": "boolean",
+      "capability": "refusal",
+      "difficulty": "medium",
+      "doc_ids": [
+        "600131_2024_20250425"
+      ],
+      "company_name": "国网信通",
+      "stock_code": "600131",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "gold_value": "N/A",
+      "gold_pages": [],
+      "should_refuse": true,
+      "annotation_status": "human_verified",
+      "notes": "样例拒答题。"
+    }
+  ],
+  "metadata": {
+    "owner": "FinaRAG",
+    "sampling_strategy": "stratified_sample",
+    "source_corpora": [
+      "annual_reports"
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+### model
+model_name_or_path: "/media/main/lgd/llm/models/Qwen/Qwen3.5-9B"
+trust_remote_code: true
+quantization_bit: 4
+
+### method
+stage: sft
+do_train: true
+do_eval: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_target: all
+additional_target: embed_tokens
+
+### dataset
+dataset_dir: "/media/main/lgd/llm/FinaRAG/training/generator_sft/llamafactory_data"
+dataset: finarag_generator_train
+eval_dataset: finarag_generator_dev
+template: default
+cutoff_len: 3072
+overwrite_cache: true
+preprocessing_num_workers: 8
+packing: false
+
+### output
+output_dir: /media/main/lgd/llm/FinaRAG/training/generator_sft/saves/qwen3.5_9b_qlora_sft
+logging_steps: 10
+save_steps: 100
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 8.0e-5
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+bf16: true
+ddp_timeout: 180000000
+
+### eval
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 100

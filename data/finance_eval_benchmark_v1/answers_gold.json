@@ -1,0 +1,3820 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "finance_eval_benchmark_v1_core60",
+  "answers": [
+    {
+      "question_id": "zh-top10-01-01",
+      "question_text": "国网信通2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "王奔",
+      "doc_ids": [
+        "600131_2024_20250425"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600131_2024_20250425",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "国网信通",
+      "stock_code": "600131",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-01-02",
+      "question_text": "华胜天成2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 4270629476.42,
+      "doc_ids": [
+        "600410_2024_20250426"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600410_2024_20250426",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "华胜天成",
+      "stock_code": "600410",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-01-03",
+      "question_text": "东软集团2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600718_2024_20250429"
+      ],
+      "gold_pages": [
+        3
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600718_2024_20250429",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "东软集团",
+      "stock_code": "600718",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-01-04",
+      "question_text": "在浪潮软件2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "赵绍祥",
+      "doc_ids": [
+        "600756_2024_20250329"
+      ],
+      "gold_pages": [
+        4
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600756_2024_20250329",
+          "page_index": 3,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "浪潮软件",
+      "stock_code": "600756",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-01-05",
+      "question_text": "在信息技术行业的科创板公司中，哪些公司在2024年年报中提到“国产替代”？",
+      "kind": "names",
+      "value": [
+        "乐鑫科技",
+        "航天宏图",
+        "金山办公",
+        "纬德信息",
+        "博睿数据",
+        "天德钰",
+        "赛微微电",
+        "芯原股份",
+        "盛邦安全",
+        "灿芯股份",
+        "达梦数据"
+      ],
+      "doc_ids": [
+        "688004_2024_20250418",
+        "688018_2024_20250322",
+        "688066_2024_20250429",
+        "688111_2024_20250320",
+        "688171_2024_20250430",
+        "688229_2024_20250426",
+        "688252_2024_20250327",
+        "688325_2024_20250410",
+        "688521_2024_20250426",
+        "688651_2024_20250429",
+        "688691_2024_20250428",
+        "688692_2024_20250415"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688018_2024_20250322",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688066_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688111_2024_20250320",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688171_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688229_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688252_2024_20250327",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688325_2024_20250410",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688521_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688651_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688691_2024_20250428",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688692_2024_20250415",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "国产替代",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "gold_value 使用公司名数组，建议按股票代码升序标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-01-06",
+      "question_text": "在2024年年报中，电科数字和泛微网络谁的营业收入更高？",
+      "kind": "name",
+      "value": "电科数字",
+      "doc_ids": [
+        "600850_2024_20250415",
+        "603039_2024_20250328"
+      ],
+      "gold_pages": [
+        5,
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600850_2024_20250415",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603039_2024_20250328",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-01",
+      "group_name": "信息技术",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-01",
+      "question_text": "联创光电2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "伍锐",
+      "doc_ids": [
+        "600363_2024_20250429"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600363_2024_20250429",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "联创光电",
+      "stock_code": "600363",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-02",
+      "question_text": "四川长虹2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 103691160979.35,
+      "doc_ids": [
+        "600839_2024_20250426"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600839_2024_20250426",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "四川长虹",
+      "stock_code": "600839",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-03",
+      "question_text": "科沃斯2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "603486_2024_20250426"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603486_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "科沃斯",
+      "stock_code": "603486",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-04",
+      "question_text": "在恒为科技2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "沈振宇",
+      "doc_ids": [
+        "603496_2024_20250415"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603496_2024_20250415",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "恒为科技",
+      "stock_code": "603496",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-05",
+      "question_text": "在电子行业的科创板公司中，哪些公司在2024年年报中提到“国产替代”？",
+      "kind": "names",
+      "value": [
+        "国盾量子",
+        "龙芯中科",
+        "映翰通",
+        "邦彦技术",
+        "有方科技",
+        "炬光科技",
+        "燕东微",
+        "敏芯股份",
+        "恒烁股份",
+        "高华科技",
+        "三旺通信",
+        "振华新材"
+      ],
+      "doc_ids": [
+        "688027_2024_20250326",
+        "688047_2024_20250429",
+        "688080_2024_20250423",
+        "688132_2024_20250410",
+        "688159_2024_20250430",
+        "688167_2024_20250426",
+        "688172_2024_20250426",
+        "688286_2024_20250426",
+        "688416_2024_20250426",
+        "688533_2024_20250430",
+        "688538_2024_20250329",
+        "688539_2024_20250419",
+        "688618_2024_20250430",
+        "688707_2024_20250426"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688027_2024_20250326",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688047_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688080_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688132_2024_20250410",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688159_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688167_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688172_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688286_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688416_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688539_2024_20250419",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688618_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688707_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "国产替代",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "gold_value 使用公司名数组，建议按股票代码升序标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-02-06",
+      "question_text": "在2024年年报中，淳中科技和国盾量子谁的营业收入更高？",
+      "kind": "name",
+      "value": "淳中科技",
+      "doc_ids": [
+        "603516_2024_20250423",
+        "688027_2024_20250326"
+      ],
+      "gold_pages": [
+        7,
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603516_2024_20250423",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688027_2024_20250326",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-02",
+      "group_name": "电子",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-01",
+      "question_text": "人福医药2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "周汉生",
+      "doc_ids": [
+        "600079_2024_20250429"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600079_2024_20250429",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "人福医药",
+      "stock_code": "600079",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-02",
+      "question_text": "太龙药业2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 1941420111.64,
+      "doc_ids": [
+        "600222_2024_20250409"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600222_2024_20250409",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "太龙药业",
+      "stock_code": "600222",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-03",
+      "question_text": "千金药业2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600479_2024_20250429"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600479_2024_20250429",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "千金药业",
+      "stock_code": "600479",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-04",
+      "question_text": "在津药药业2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "李书箱",
+      "doc_ids": [
+        "600488_2024_20250327"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600488_2024_20250327",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "津药药业",
+      "stock_code": "600488",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-05",
+      "question_text": "在医药生物行业的科创板公司中，哪些公司在2024年年报中提到“国产替代”？",
+      "kind": "names",
+      "value": [
+        "申联生物",
+        "圣诺生物",
+        "科兴制药",
+        "博瑞医药",
+        "圣湘生物"
+      ],
+      "doc_ids": [
+        "688098_2024_20250430",
+        "688117_2024_20250425",
+        "688136_2024_20250411",
+        "688166_2024_20250403",
+        "688192_2024_20250430",
+        "688289_2024_20250429",
+        "688331_2024_20250328",
+        "688373_2024_20250318",
+        "688658_2024_20250315"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688098_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688117_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688136_2024_20250411",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688166_2024_20250403",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688289_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "国产替代",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "gold_value 使用公司名数组，建议按股票代码升序标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-03-06",
+      "question_text": "在2024年年报中，康美药业和江中药业谁的营业收入更高？",
+      "kind": "name",
+      "value": "康美药业",
+      "doc_ids": [
+        "600518_2024_20250419",
+        "600750_2024_20250320"
+      ],
+      "gold_pages": [
+        5,
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600518_2024_20250419",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600750_2024_20250320",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-03",
+      "group_name": "医药生物",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-01",
+      "question_text": "ST 曙光2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "贾木云",
+      "doc_ids": [
+        "600303_2024_20250411"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "ST 曙光",
+      "stock_code": "600303",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-02",
+      "question_text": "江淮汽车2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 42115891830.76,
+      "doc_ids": [
+        "600418_2024_20250329"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600418_2024_20250329",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "江淮汽车",
+      "stock_code": "600418",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-03",
+      "question_text": "赛力斯2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "601127_2024_20250401"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601127_2024_20250401",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "赛力斯",
+      "stock_code": "601127",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-04",
+      "question_text": "在广汽集团2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "冯兴亚",
+      "doc_ids": [
+        "601238_2024_20250329"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "广汽集团",
+      "stock_code": "601238",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-05",
+      "question_text": "在汽车行业公司中，哪些公司在2024年年报中提到“绿色转型”？",
+      "kind": "names",
+      "value": [
+        "ST 曙光",
+        "江淮汽车",
+        "赛力斯",
+        "广汽集团",
+        "星宇股份",
+        "北特科技",
+        "凯众股份",
+        "天成自控",
+        "圣龙股份",
+        "晋拓股份",
+        "豪能股份",
+        "雪龙集团",
+        "冠盛股份",
+        "神通科技",
+        "无锡振华",
+        "威迈斯"
+      ],
+      "doc_ids": [
+        "600303_2024_20250411",
+        "600418_2024_20250329",
+        "601127_2024_20250401",
+        "601238_2024_20250329",
+        "601799_2024_20250320",
+        "603009_2024_20250228",
+        "603037_2024_20250429",
+        "603085_2024_20250429",
+        "603178_2024_20250429",
+        "603211_2024_20250425",
+        "603809_2024_20250322",
+        "603949_2024_20250328",
+        "605088_2024_20250329",
+        "605228_2024_20250423",
+        "605319_2024_20250425",
+        "688612_2024_20250426"
+      ],
+      "gold_pages": [
+        2,
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600418_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601127_2024_20250401",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601799_2024_20250320",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603009_2024_20250228",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603037_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603085_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603178_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603211_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603809_2024_20250322",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603949_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "605088_2024_20250329",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "605228_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "605319_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688612_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": null,
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "用于检验 metadata/tag 检索，不强依赖正文关键词。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-04-06",
+      "question_text": "在2024年年报中，星宇股份和北特科技谁的营业收入更高？",
+      "kind": "name",
+      "value": "星宇股份",
+      "doc_ids": [
+        "601799_2024_20250320",
+        "603009_2024_20250228"
+      ],
+      "gold_pages": [
+        5,
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601799_2024_20250320",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603009_2024_20250228",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-04",
+      "group_name": "汽车",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-01",
+      "question_text": "中央商场2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "祝珺",
+      "doc_ids": [
+        "600280_2024_20250425"
+      ],
+      "gold_pages": [
+        4
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600280_2024_20250425",
+          "page_index": 3,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "中央商场",
+      "stock_code": "600280",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-02",
+      "question_text": "狮头股份2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 480074754.98,
+      "doc_ids": [
+        "600539_2024_20250426"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600539_2024_20250426",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "狮头股份",
+      "stock_code": "600539",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-03",
+      "question_text": "豫园股份2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600655_2024_20250325"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600655_2024_20250325",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "豫园股份",
+      "stock_code": "600655",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-04",
+      "question_text": "在欧亚集团2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "曹和平",
+      "doc_ids": [
+        "600697_2024_20250417"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600697_2024_20250417",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "欧亚集团",
+      "stock_code": "600697",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-05",
+      "question_text": "在零售业行业公司中，哪些公司在2024年年报中提到“数字化转型”？",
+      "kind": "names",
+      "value": [
+        "中央商场",
+        "狮头股份",
+        "豫园股份",
+        "欧亚集团",
+        "重庆百货",
+        "杭州解百",
+        "益民集团",
+        "百联股份",
+        "茂业商业",
+        "上海九百",
+        "文峰股份",
+        "华鼎股份",
+        "上海医药",
+        "汇嘉时代",
+        "翠微股份",
+        "爱婴室",
+        "来伊份",
+        "莱绅通灵"
+      ],
+      "doc_ids": [
+        "600280_2024_20250425",
+        "600539_2024_20250426",
+        "600655_2024_20250325",
+        "600697_2024_20250417",
+        "600712_2024_20250328",
+        "600729_2024_20250419",
+        "600814_2024_20250328",
+        "600824_2024_20250429",
+        "600827_2024_20250415",
+        "600828_2024_20250327",
+        "600838_2024_20250328",
+        "601010_2024_20250430",
+        "601113_2024_20250410",
+        "601607_2024_20250328",
+        "603101_2024_20250404",
+        "603123_2024_20250430",
+        "603214_2024_20250403",
+        "603777_2024_20250429",
+        "603900_2024_20250423"
+      ],
+      "gold_pages": [
+        2,
+        4
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600280_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600539_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600655_2024_20250325",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600697_2024_20250417",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600729_2024_20250419",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600814_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600824_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600827_2024_20250415",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600828_2024_20250327",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600838_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601010_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601113_2024_20250410",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601607_2024_20250328",
+          "page_index": 3,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603101_2024_20250404",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603123_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603214_2024_20250403",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603777_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603900_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": null,
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "用于检验 metadata/tag 检索，不强依赖正文关键词。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-05-06",
+      "question_text": "在2024年年报中，南宁百货和重庆百货谁的营业收入更高？",
+      "kind": "name",
+      "value": "重庆百货",
+      "doc_ids": [
+        "600712_2024_20250328",
+        "600729_2024_20250419"
+      ],
+      "gold_pages": [
+        6,
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600712_2024_20250328",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600729_2024_20250419",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-05",
+      "group_name": "零售业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-01",
+      "question_text": "浦发银行2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "张为忠",
+      "doc_ids": [
+        "600000_2024_20250329"
+      ],
+      "gold_pages": [
+        14
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600000_2024_20250329",
+          "page_index": 13,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "浦发银行",
+      "stock_code": "600000",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-02",
+      "question_text": "民生银行2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 136290000000.0,
+      "doc_ids": [
+        "600016_2024_20250329"
+      ],
+      "gold_pages": [
+        16
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600016_2024_20250329",
+          "page_index": 15,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "民生银行",
+      "stock_code": "600016",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-03",
+      "question_text": "江苏银行2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600919_2024_20250419"
+      ],
+      "gold_pages": [
+        3
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600919_2024_20250419",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "江苏银行",
+      "stock_code": "600919",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-04",
+      "question_text": "在南京银行2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "谢宁",
+      "doc_ids": [
+        "601009_2024_20250422"
+      ],
+      "gold_pages": [
+        12
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601009_2024_20250422",
+          "page_index": 11,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "南京银行",
+      "stock_code": "601009",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-05",
+      "question_text": "在货币金融服务行业公司中，哪些公司在2024年年报中提到“数字化转型”？",
+      "kind": "names",
+      "value": [
+        "浦发银行",
+        "民生银行",
+        "江苏银行",
+        "南京银行",
+        "渝农商行",
+        "常熟银行",
+        "北京银行",
+        "瑞丰银行",
+        "长沙银行",
+        "邮储银行",
+        "齐鲁银行",
+        "沪农商行",
+        "成都银行",
+        "紫金银行",
+        "苏农银行"
+      ],
+      "doc_ids": [
+        "600000_2024_20250329",
+        "600016_2024_20250329",
+        "600919_2024_20250419",
+        "601009_2024_20250422",
+        "601077_2024_20250326",
+        "601128_2024_20250328",
+        "601169_2024_20250415",
+        "601528_2024_20250328",
+        "601577_2024_20250426",
+        "601658_2024_20250328",
+        "601665_2024_20250426",
+        "601825_2024_20250425",
+        "601838_2024_20250429",
+        "601860_2024_20250425",
+        "603323_2024_20250430"
+      ],
+      "gold_pages": [
+        1,
+        2,
+        3
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600000_2024_20250329",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600016_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600919_2024_20250419",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601009_2024_20250422",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601077_2024_20250326",
+          "page_index": 0,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601128_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601169_2024_20250415",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601528_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601577_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601658_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601665_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601825_2024_20250425",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601838_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601860_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603323_2024_20250430",
+          "page_index": 2,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": null,
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "用于检验 metadata/tag 检索，不强依赖正文关键词。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-06-06",
+      "question_text": "在2024年年报中，渝农商行和常熟银行谁的营业收入更高？",
+      "kind": "name",
+      "value": "常熟银行",
+      "doc_ids": [
+        "601077_2024_20250326",
+        "601128_2024_20250328"
+      ],
+      "gold_pages": [
+        11,
+        17
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601077_2024_20250326",
+          "page_index": 16,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "601128_2024_20250328",
+          "page_index": 10,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-06",
+      "group_name": "货币金融服务",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-01",
+      "question_text": "中国国贸2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "黄国祥",
+      "doc_ids": [
+        "600007_2024_20250401"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600007_2024_20250401",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "中国国贸",
+      "stock_code": "600007",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-02",
+      "question_text": "南京高科2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 1975445403.11,
+      "doc_ids": [
+        "600064_2024_20250423"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600064_2024_20250423",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "南京高科",
+      "stock_code": "600064",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-03",
+      "question_text": "大名城2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600094_2024_20250426"
+      ],
+      "gold_pages": [
+        11
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600094_2024_20250426",
+          "page_index": 10,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "大名城",
+      "stock_code": "600094",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-04",
+      "question_text": "在香江控股2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "翟美卿",
+      "doc_ids": [
+        "600162_2024_20250419"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600162_2024_20250419",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "香江控股",
+      "stock_code": "600162",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-05",
+      "question_text": "在房地产业行业公司中，哪些公司在2024年年报中提到“数字化转型”？",
+      "kind": "names",
+      "value": [
+        "中国国贸",
+        "南京高科",
+        "大名城",
+        "云南城投",
+        "万通发展",
+        "首开股份",
+        "金地集团",
+        "华丽家族",
+        "海南机场",
+        "光大嘉宝",
+        "城投控股",
+        "天地源",
+        "中华企业",
+        "珠江股份",
+        "苏州高新",
+        "京能置业",
+        "上海临港"
+      ],
+      "doc_ids": [
+        "600007_2024_20250401",
+        "600064_2024_20250423",
+        "600094_2024_20250426",
+        "600162_2024_20250419",
+        "600239_2024_20250422",
+        "600246_2024_20250430",
+        "600376_2024_20250423",
+        "600383_2024_20250325",
+        "600503_2024_20250426",
+        "600515_2024_20250415",
+        "600622_2024_20250430",
+        "600649_2024_20250329",
+        "600665_2024_20250430",
+        "600675_2024_20250417",
+        "600683_2024_20250401",
+        "600684_2024_20250402",
+        "600736_2024_20250426",
+        "600791_2024_20250430",
+        "600848_2024_20250412"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600007_2024_20250401",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600064_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600094_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600239_2024_20250422",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600246_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600376_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600383_2024_20250325",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600503_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600515_2024_20250415",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600622_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600649_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600665_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600675_2024_20250417",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600684_2024_20250402",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600736_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600791_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600848_2024_20250412",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": null,
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "用于检验 metadata/tag 检索，不强依赖正文关键词。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-07-06",
+      "question_text": "在2024年年报中，云南城投和万通发展谁的营业收入更高？",
+      "kind": "name",
+      "value": "云南城投",
+      "doc_ids": [
+        "600239_2024_20250422",
+        "600246_2024_20250430"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600239_2024_20250422",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600246_2024_20250430",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-07",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-01",
+      "question_text": "华能国际2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "王葵",
+      "doc_ids": [
+        "600011_2024_20250326"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600011_2024_20250326",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "华能国际",
+      "stock_code": "600011",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-02",
+      "question_text": "华能水电2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 24881606852.66,
+      "doc_ids": [
+        "600025_2024_20250425"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600025_2024_20250425",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "华能水电",
+      "stock_code": "600025",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-03",
+      "question_text": "华电国际2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600027_2024_20250328"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600027_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "华电国际",
+      "stock_code": "600027",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-04",
+      "question_text": "在浙江新能2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "张坚群",
+      "doc_ids": [
+        "600032_2024_20250422"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "浙江新能",
+      "stock_code": "600032",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-05",
+      "question_text": "在电力、热力生产和供应业行业公司中，哪些公司在2024年年报中提到“绿色转型”？",
+      "kind": "names",
+      "value": [
+        "华能国际",
+        "华能水电",
+        "华电国际",
+        "浙江新能",
+        "明星电力",
+        "廊坊发展",
+        "永泰能源",
+        "华电辽能",
+        "川投能源",
+        "华银电力",
+        "通宝能源",
+        "金开新能",
+        "内蒙华电",
+        "梅雁吉祥",
+        "郴电国际",
+        "广安爱众",
+        "宁波能源",
+        "芯能科技",
+        "江苏新能"
+      ],
+      "doc_ids": [
+        "600011_2024_20250326",
+        "600025_2024_20250425",
+        "600027_2024_20250328",
+        "600032_2024_20250422",
+        "600101_2024_20250328",
+        "600149_2024_20250426",
+        "600157_2024_20250429",
+        "600396_2024_20250425",
+        "600674_2024_20250412",
+        "600744_2024_20250424",
+        "600780_2024_20250425",
+        "600821_2024_20250410",
+        "600863_2024_20250425",
+        "600868_2024_20250429",
+        "600969_2024_20250426",
+        "600979_2024_20250430",
+        "600982_2024_20250422",
+        "603105_2024_20250425",
+        "603693_2024_20250423"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600011_2024_20250326",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600025_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600027_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600101_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600149_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600157_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600396_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600674_2024_20250412",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600744_2024_20250424",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600780_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600821_2024_20250410",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600863_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600868_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600969_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600979_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600982_2024_20250422",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603105_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603693_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": null,
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "用于检验 metadata/tag 检索，不强依赖正文关键词。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-08-06",
+      "question_text": "在2024年年报中，明星电力和廊坊发展谁的营业收入更高？",
+      "kind": "name",
+      "value": "明星电力",
+      "doc_ids": [
+        "600101_2024_20250328",
+        "600149_2024_20250426"
+      ],
+      "gold_pages": [
+        5,
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600101_2024_20250328",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600149_2024_20250426",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-08",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-01",
+      "question_text": "巨化股份2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "周黎旸",
+      "doc_ids": [
+        "600160_2024_20250425"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600160_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "巨化股份",
+      "stock_code": "600160",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-02",
+      "question_text": "*ST宁科2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 345317624.92,
+      "doc_ids": [
+        "600165_2024_20250315"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600165_2024_20250315",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "*ST宁科",
+      "stock_code": "600165",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-03",
+      "question_text": "福瑞达2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600223_2024_20250322"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600223_2024_20250322",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "福瑞达",
+      "stock_code": "600223",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-04",
+      "question_text": "在昊华科技2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "王军",
+      "doc_ids": [
+        "600378_2024_20250430"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600378_2024_20250430",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "昊华科技",
+      "stock_code": "600378",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-05",
+      "question_text": "在化学原料和化学制品制造业行业的科创板公司中，哪些公司在2024年年报中提到“国产替代”？",
+      "kind": "names",
+      "value": [
+        "键凯科技",
+        "赛分科技"
+      ],
+      "doc_ids": [
+        "688356_2024_20250429",
+        "688659_2024_20250429",
+        "688758_2024_20250429"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688356_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688758_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "国产替代",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "gold_value 使用公司名数组，建议按股票代码升序标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-09-06",
+      "question_text": "在2024年年报中，江山股份和华鲁恒升谁的营业收入更高？",
+      "kind": "name",
+      "value": "华鲁恒升",
+      "doc_ids": [
+        "600389_2024_20250422",
+        "600426_2024_20250329"
+      ],
+      "gold_pages": [
+        5,
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600389_2024_20250422",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "600426_2024_20250329",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-09",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-01",
+      "question_text": "菲达环保2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "吴刚",
+      "doc_ids": [
+        "600526_2024_20250422"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600526_2024_20250422",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "菲达环保",
+      "stock_code": "600526",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "优先从公司简介和主要财务指标或基本情况相关表格标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-02",
+      "question_text": "新华医疗2024年年报中的营业收入是多少元？",
+      "kind": "number",
+      "value": 10020618625.09,
+      "doc_ids": [
+        "600587_2024_20250430"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600587_2024_20250430",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "新华医疗",
+      "stock_code": "600587",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "营业收入",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "easy",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "统一标注为元；若原表单位不是元，需要换算后填写 gold_value。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-03",
+      "question_text": "上工申贝2024年年度利润分配预案中是否提到现金分红？",
+      "kind": "boolean",
+      "value": true,
+      "doc_ids": [
+        "600843_2024_20250429"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600843_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "上工申贝",
+      "stock_code": "600843",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "现金分红",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "text",
+      "capability": "single_doc_boolean",
+      "difficulty": "medium",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "仅根据年报明确表述标注 true/false，不做推断。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-04",
+      "question_text": "在维力医疗2024年年报《公司简介和主要财务指标》章节中，法定代表人是谁？",
+      "kind": "name",
+      "value": "韩广源",
+      "doc_ids": [
+        "603309_2024_20250425"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603309_2024_20250425",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": "维力医疗",
+      "stock_code": "603309",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "法定代表人",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "table",
+      "capability": "section_filter",
+      "difficulty": "medium",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "验证 section_name 过滤与正文证据是否一致。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-05",
+      "question_text": "在专用设备制造业行业的科创板公司中，哪些公司在2024年年报中提到“国产替代”？",
+      "kind": "names",
+      "value": [
+        "天准科技",
+        "天臣医疗",
+        "心脉医疗",
+        "华海清科",
+        "海尔生物",
+        "微导纳米",
+        "康拓医疗",
+        "高测股份",
+        "安杰思",
+        "逸飞激光",
+        "海泰新光"
+      ],
+      "doc_ids": [
+        "688003_2024_20250412",
+        "688013_2024_20250428",
+        "688016_2024_20250329",
+        "688120_2024_20250429",
+        "688139_2024_20250329",
+        "688147_2024_20250426",
+        "688314_2024_20250328",
+        "688556_2024_20250429",
+        "688581_2024_20250423",
+        "688646_2024_20250430",
+        "688677_2024_20250425"
+      ],
+      "gold_pages": [
+        2
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688003_2024_20250412",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688013_2024_20250428",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688016_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688120_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688139_2024_20250329",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688147_2024_20250426",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688314_2024_20250328",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688556_2024_20250429",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688581_2024_20250423",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688646_2024_20250430",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "688677_2024_20250425",
+          "page_index": 1,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "国产替代",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "metadata",
+      "capability": "metadata_tag_retrieval",
+      "difficulty": "hard",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "gold_value 使用公司名数组，建议按股票代码升序标注。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    },
+    {
+      "question_id": "zh-top10-10-06",
+      "question_text": "在2024年年报中，航天工程和星光农机谁的营业收入更高？",
+      "kind": "name",
+      "value": "航天工程",
+      "doc_ids": [
+        "603698_2024_20250401",
+        "603789_2024_20250430"
+      ],
+      "gold_pages": [
+        5,
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603698_2024_20250401",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        },
+        {
+          "pdf_sha1": "603789_2024_20250430",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": null,
+          "evidence_type": null
+        }
+      ],
+      "company_name": null,
+      "stock_code": null,
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": null,
+      "metric_name": "营业收入",
+      "currency": null,
+      "unit": null,
+      "evidence_type": "hybrid",
+      "capability": "cross_doc_compare",
+      "difficulty": "hard",
+      "group_id": "industry-10",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_filled",
+      "notes": "答案统一填写公司名，不填写数值。",
+      "metadata": {
+        "source_dataset": "top10_industries_2024_20each",
+        "source_record_type": "answer",
+        "quality_tier": "provisional_gold",
+        "review_required": true
+      }
+    }
+  ],
+  "metadata": {
+    "owner": "FinaRAG",
+    "quality_tier": "provisional_gold",
+    "review_required": true,
+    "split_name": null
+  }
+}

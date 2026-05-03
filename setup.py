@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="erc2",
+    name="finarag",
     packages=find_packages(),
 )

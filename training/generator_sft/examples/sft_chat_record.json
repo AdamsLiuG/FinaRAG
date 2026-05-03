@@ -1,0 +1,25 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a RAG answering system. Return valid JSON only."
+    },
+    {
+      "role": "user",
+      "content": "Here is the context:\n\"\"\"\nText retrieved from page 9 | section: 公司简介和主要财务指标\n\"\"\"\n\n---\n\nHere is the question:\n\"华胜天成2024年年报中的营业收入是多少元？\""
+    },
+    {
+      "role": "assistant",
+      "content": "{\"step_by_step_analysis\":\"1. 题目询问华胜天成2024年年报中的营业收入。2. 检索上下文直接给出了公司简介和主要财务指标页面。3. 该页面中的营业收入与问题指标完全一致。4. 因此直接抽取该数值作为答案。\",\"reasoning_summary\":\"根据公司简介和主要财务指标页面的直接披露，营业收入可直接抽取，无需计算。\",\"relevant_pages\":[9],\"final_answer\":4270629476.42}"
+    }
+  ],
+  "meta": {
+    "sample_id": "sft-000001",
+    "schema": "number",
+    "company_name": "华胜天成",
+    "doc_ids": [
+      "600410_2024_20250426"
+    ],
+    "source": "teacher_filtered"
+  }
+}

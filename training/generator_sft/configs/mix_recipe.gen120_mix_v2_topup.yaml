@@ -1,0 +1,200 @@
+mix_tag: gen120_mix_v2_topup
+random_seed: finarag_gen120_mix_v2_topup_20260426
+allow_shortfall: true
+dedupe_fields:
+- sample_id
+- query_id
+- variant_type
+bucket_outputs:
+  new_text: training/generator_sft/processed/new_text.chat.gen120_mix_v2_topup.jsonl
+  old_regularizer: training/generator_sft/processed/old_regularizer.chat.gen120_mix_v2_topup.jsonl
+all_output_path: training/generator_sft/processed/all.chat.gen120_mix_v2_topup.jsonl
+stats_output_path: training/generator_sft/manifests/merge_stats.gen120_mix_v2_topup.json
+groups:
+- name: benchmark_positive_summary
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 280
+  match:
+    template_family: gen120_summary
+    should_refuse: false
+- name: benchmark_positive_risk
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 280
+  match:
+    template_family: gen120_risk
+    should_refuse: false
+- name: benchmark_positive_strategy
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 240
+  match:
+    template_family: gen120_strategy
+    should_refuse: false
+- name: benchmark_positive_table_text
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 320
+  match:
+    template_family: gen120_table_text
+    should_refuse: false
+- name: benchmark_positive_classification
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 220
+  match:
+    template_family: gen120_classification
+    should_refuse: false
+- name: benchmark_positive_cross_doc
+  bucket: new_text
+  mix_group: new_positive
+  input_path: training/generator_sft/processed/all.chat.gen120_text_v2.with_topup.jsonl
+  count: 290
+  match:
+    template_family: gen120_cross_doc
+    should_refuse: false
+- name: hard_context_summary
+  bucket: new_text
+  mix_group: new_hard_context
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.with_topup.jsonl
+  count: 60
+  match:
+    template_family: gen120_summary
+- name: hard_context_risk
+  bucket: new_text
+  mix_group: new_hard_context
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.with_topup.jsonl
+  count: 60
+  match:
+    template_family: gen120_risk
+- name: hard_context_strategy
+  bucket: new_text
+  mix_group: new_hard_context
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.with_topup.jsonl
+  count: 60
+  match:
+    template_family: gen120_strategy
+- name: hard_context_table_text
+  bucket: new_text
+  mix_group: new_hard_context
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.with_topup.jsonl
+  count: 140
+  match:
+    template_family: gen120_table_text
+- name: hard_context_classification
+  bucket: new_text
+  mix_group: new_hard_context
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.gen120_text_v2.with_topup.jsonl
+  count: 50
+  match:
+    template_family: gen120_classification
+- name: wrong_context_summary
+  bucket: new_text
+  mix_group: new_wrong_context_refusal
+  input_path: training/generator_sft/processed/wrong_context_refusal.chat.gen120_text_v2.with_topup.jsonl
+  count: 20
+  match:
+    template_family: gen120_summary
+- name: wrong_context_risk
+  bucket: new_text
+  mix_group: new_wrong_context_refusal
+  input_path: training/generator_sft/processed/wrong_context_refusal.chat.gen120_text_v2.with_topup.jsonl
+  count: 25
+  match:
+    template_family: gen120_risk
+- name: wrong_context_strategy
+  bucket: new_text
+  mix_group: new_wrong_context_refusal
+  input_path: training/generator_sft/processed/wrong_context_refusal.chat.gen120_text_v2.with_topup.jsonl
+  count: 20
+  match:
+    template_family: gen120_strategy
+- name: wrong_context_table_text
+  bucket: new_text
+  mix_group: new_wrong_context_refusal
+  input_path: training/generator_sft/processed/wrong_context_refusal.chat.gen120_text_v2.with_topup.jsonl
+  count: 35
+  match:
+    template_family: gen120_table_text
+- name: wrong_context_classification
+  bucket: new_text
+  mix_group: new_wrong_context_refusal
+  input_path: training/generator_sft/processed/wrong_context_refusal.chat.gen120_text_v2.with_topup.jsonl
+  count: 20
+  match:
+    template_family: gen120_classification
+- name: regularizer_number_positive
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/all.chat.v2.jsonl
+  count: 140
+  match:
+    template_family: number_metric
+    should_refuse: false
+    source: template_from_annual_report_v2
+- name: regularizer_name_positive
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/all.chat.v2.jsonl
+  count: 90
+  match:
+    template_family: name_field
+    should_refuse: false
+    source: template_from_annual_report_v2
+- name: regularizer_boolean_positive
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/all.chat.v2.jsonl
+  count: 90
+  match:
+    template_family: boolean_target
+    should_refuse: false
+    source: template_from_annual_report_v2
+- name: regularizer_number_hard_context
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.v1.jsonl
+  count: 30
+  match:
+    template_family: number_metric
+- name: regularizer_name_hard_context
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.v1.jsonl
+  count: 30
+  match:
+    template_family: name_field
+- name: regularizer_boolean_hard_context
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/hard_context_rechecked.chat.v1.jsonl
+  count: 20
+  match:
+    template_family: boolean_target
+- name: regularizer_number_truncated_refusal
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/truncated_refusal.chat.v1.jsonl
+  count: 25
+  match:
+    template_family: number_metric
+- name: regularizer_name_truncated_refusal
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/truncated_refusal.chat.v1.jsonl
+  count: 30
+  match:
+    template_family: name_field
+- name: regularizer_boolean_truncated_refusal
+  bucket: old_regularizer
+  mix_group: old_regularizer
+  input_path: training/generator_sft/processed/truncated_refusal.chat.v1.jsonl
+  count: 25
+  match:
+    template_family: boolean_target

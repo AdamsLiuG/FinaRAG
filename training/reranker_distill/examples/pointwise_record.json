@@ -1,0 +1,15 @@
+{
+  "query": "华胜天成2024年年报中的营业收入是多少元？",
+  "passage": "公司简介和主要财务指标显示，报告期内公司实现营业收入4,270,629,476.42元。",
+  "teacher_score": 0.9382,
+  "hard_label": 2,
+  "meta": {
+    "pair_id": "pair-000001",
+    "query_id": "seed-000001",
+    "candidate_id": "cand-0001",
+    "doc_id": "600410_2024_20250426",
+    "page": 9,
+    "schema": "number",
+    "is_hard_negative": false
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "answers": [
+    {
+      "question_id": "fin-eval-0001",
+      "question_text": "国网信通2024年年报中的法定代表人是谁？",
+      "kind": "name",
+      "value": "王奔",
+      "references": [
+        {
+          "pdf_sha1": "600131_2024_20250425",
+          "page_index": 6
+        }
+      ],
+      "citations": [
+        {
+          "page": 7,
+          "source": "600131_2024_20250425",
+          "chunk_type": "content",
+          "company_name": "国网信通",
+          "stock_code": "600131",
+          "security_code": "600131",
+          "report_year": 2024,
+          "doc_source_type": "annual_report",
+          "currency": "CNY",
+          "evidence_snippet": "法定代表人：王奔",
+          "score": 0.92
+        },
+        {
+          "page": 38,
+          "source": "600131_2024_20250425",
+          "chunk_type": "content",
+          "company_name": "国网信通",
+          "stock_code": "600131",
+          "security_code": "600131",
+          "report_year": 2024,
+          "doc_source_type": "annual_report",
+          "currency": "CNY",
+          "evidence_snippet": "管理层信息附页。",
+          "score": 0.66
+        }
+      ],
+      "confidence": "high"
+    },
+    {
+      "question_id": "fin-eval-0002",
+      "question_text": "优博讯2024年年报中的研发投入金额是多少？",
+      "kind": "number",
+      "value": "356,778,998.12",
+      "references": [
+        {
+          "pdf_sha1": "300531_2024_20250429",
+          "page_index": 114
+        }
+      ],
+      "citations": [
+        {
+          "page": 115,
+          "source": "300531_2024_20250429",
+          "chunk_type": "table",
+          "company_name": "优博讯",
+          "stock_code": "300531",
+          "security_code": "300531",
+          "report_year": 2024,
+          "doc_source_type": "annual_report",
+          "currency": "CNY",
+          "unit": "人民币元",
+          "evidence_snippet": "研发投入合计 356,778,998.12 元",
+          "score": 0.96
+        }
+      ],
+      "confidence": "high"
+    },
+    {
+      "question_id": "fin-eval-0003",
+      "question_text": "国网信通2024年年报中是否披露了火星业务收入？",
+      "kind": "boolean",
+      "value": "N/A",
+      "references": [],
+      "citations": [],
+      "confidence": "low",
+      "validation_flags": [
+        "no_retrieval_results"
+      ]
+    }
+  ]
+}

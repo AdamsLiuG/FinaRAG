@@ -1,0 +1,14 @@
+dataset_root_path: data/top10_industries_2024_20each
+retrieval_config_path: config/qwen_zh_finance_colbert_cascade_qwen.yaml
+input_path: training/generator_sft/raw/seed_queries.jsonl
+output_path: training/generator_sft/raw/teacher_answers_raw.jsonl
+debug_output_path: training/generator_sft/raw/teacher_answers_debug.jsonl
+stats_output_path: training/generator_sft/manifests/build_stats.json
+teacher_answer_provider: qwen_vllm
+teacher_answer_model: ${QWEN_VLLM_MODEL}
+teacher_verify_provider: qwen_vllm
+teacher_verify_model: ${QWEN_VLLM_MODEL}
+answer_temperature: 0.0
+max_queries: 5000
+parallel_requests: 1
+resume: true

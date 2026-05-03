@@ -1,0 +1,1 @@
+"""Generator SFT training assets."""

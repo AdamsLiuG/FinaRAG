@@ -1,0 +1,29 @@
+input_path: training/generator_sft/processed/teacher_answers_filtered.v2.jsonl
+retrieved_cache_input_path: training/generator_sft/raw/retrieved_cache.jsonl
+candidate_pool_input_path: training/generator_sft/raw/candidate_pool.generator.jsonl
+candidate_pool_output_path: training/generator_sft/raw/candidate_pool.generator.jsonl
+output_path: training/generator_sft/processed/wrong_context_refusal.v1.jsonl
+chat_output_path: training/generator_sft/processed/wrong_context_refusal.chat.v1.jsonl
+rejected_output_path: training/generator_sft/manifests/wrong_context_refusal.rejected.v1.jsonl
+stats_output_path: training/generator_sft/manifests/wrong_context_refusal.stats.v1.json
+retrieval_config_path: config/qwen_zh_finance_colbert_cascade_qwen.yaml
+dataset_root_path: data/top10_industries_2024_20each
+teacher_answer_provider: sub2api
+teacher_answer_model: ${SUB2API_MODEL}
+answer_temperature: 0.0
+candidate_pool_size: 32
+per_query_retrieval_top_k: 24
+parallel_requests: 1
+source_priority:
+  - same_company_wrong_section
+  - same_year_wrong_company
+  - same_metric_wrong_page
+  - support_replaced_high_similarity_non_support
+min_context_results: 2
+max_context_results: 3
+cross_doc_candidate_doc_cap: 8
+max_support_results: 3
+max_context_chars: 12000
+max_doc_chars: 1800
+max_queries: 0
+resume: true

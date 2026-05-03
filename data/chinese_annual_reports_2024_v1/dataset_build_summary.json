@@ -1,0 +1,20 @@
+{
+  "pdfcrawl_root": "/media/main/lgd/llm/PDFCrawl/output",
+  "manifests": [
+    "/media/main/lgd/llm/PDFCrawl/output/top10_industries_2024_20each/manifest.csv"
+  ],
+  "documents": 183,
+  "link_mode": "symlink",
+  "currency": "CNY",
+  "language": "zh",
+  "metadata_mode": "required",
+  "metadata_files": [
+    "/media/main/lgd/llm/PDFCrawl/output/top10_industries_2024_20each/metadata.jsonl"
+  ],
+  "company_label_files": [
+    "/media/main/lgd/llm/PDFCrawl/output/top10_industries_2024_20each/company_labels.jsonl"
+  ],
+  "company_profile_files": [
+    "/media/main/lgd/llm/PDFCrawl/output/top10_industries_2024_20each/company_profiles.jsonl"
+  ]
+}

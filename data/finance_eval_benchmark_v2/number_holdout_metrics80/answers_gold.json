@@ -1,0 +1,4925 @@
+{
+  "schema_version": "finance_eval_v1",
+  "dataset_name": "number_holdout_metrics80",
+  "answers": [
+    {
+      "question_id": "holdout-number-01-01-net_profit",
+      "question_text": "天准科技2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 124690602.51,
+      "doc_ids": [
+        "688003_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688003_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "天准科技",
+      "stock_code": "688003",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-01",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司 股东的净利润"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "124,690,602.51",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-01-02-rd_investment",
+      "question_text": "天准科技2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 334528828.92,
+      "doc_ids": [
+        "688003_2024_20250412"
+      ],
+      "gold_pages": [
+        20
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688003_2024_20250412",
+          "page_index": 19,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "天准科技",
+      "stock_code": "688003",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-01",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 21,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "334,528,828.92",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-01-03-total_assets",
+      "question_text": "天准科技2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 3615844123.46,
+      "doc_ids": [
+        "688003_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688003_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "天准科技",
+      "stock_code": "688003",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-01",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "3,615,844,123.46",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-01-04-operating_cash_flow",
+      "question_text": "天准科技2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -8219890.46,
+      "doc_ids": [
+        "688003_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688003_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "天准科技",
+      "stock_code": "688003",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-01",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "润 经营活动产生的 现金流量净额"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "-8,219,890.46",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-02-01-net_profit",
+      "question_text": "*ST宁科2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -538906893.74,
+      "doc_ids": [
+        "600165_2024_20250315"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600165_2024_20250315",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "*ST宁科",
+      "stock_code": "600165",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-02",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 9,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "业收入 归属于上 市公司股 东的净利 润"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "345,317,624.92"
+        ],
+        "source_raw_value": "-538,906,893.74",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-02-02-rd_investment",
+      "question_text": "*ST宁科2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 12480438.13,
+      "doc_ids": [
+        "600165_2024_20250315"
+      ],
+      "gold_pages": [
+        22
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600165_2024_20250315",
+          "page_index": 21,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "*ST宁科",
+      "stock_code": "600165",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-02",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 25,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "12,480,438.13",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-02-03-total_assets",
+      "question_text": "*ST宁科2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 71793481.04,
+      "doc_ids": [
+        "600165_2024_20250315"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600165_2024_20250315",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "*ST宁科",
+      "stock_code": "600165",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-02",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 9,
+        "source_row_idx": 8,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "345,317,624.92"
+        ],
+        "source_raw_value": "71,793,481.04",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-02-04-operating_cash_flow",
+      "question_text": "*ST宁科2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -85192355.45,
+      "doc_ids": [
+        "600165_2024_20250315"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600165_2024_20250315",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "*ST宁科",
+      "stock_code": "600165",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-02",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 9,
+        "source_row_idx": 6,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动 产生的现 金流量净 额"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "345,317,624.92"
+        ],
+        "source_raw_value": "-85,192,355.45",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-03-01-net_profit",
+      "question_text": "科兴制药2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 31480893.13,
+      "doc_ids": [
+        "688136_2024_20250411"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688136_2024_20250411",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "科兴制药",
+      "stock_code": "688136",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-03",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 6,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "31,480,893.13",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-03-02-rd_investment",
+      "question_text": "科兴制药2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 198929796.23,
+      "doc_ids": [
+        "688136_2024_20250411"
+      ],
+      "gold_pages": [
+        21
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688136_2024_20250411",
+          "page_index": 20,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "科兴制药",
+      "stock_code": "688136",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-03",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 19,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "198,929,796.23",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-03-03-total_assets",
+      "question_text": "科兴制药2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 3162234528.16,
+      "doc_ids": [
+        "688136_2024_20250411"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688136_2024_20250411",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "科兴制药",
+      "stock_code": "688136",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-03",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 6,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "3,162,234,528.16",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-03-04-operating_cash_flow",
+      "question_text": "科兴制药2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 106669736.41,
+      "doc_ids": [
+        "688136_2024_20250411"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688136_2024_20250411",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "科兴制药",
+      "stock_code": "688136",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-03",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 6,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "106,669,736.41",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-04-01-net_profit",
+      "question_text": "珠江股份2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 15574414.71,
+      "doc_ids": [
+        "600684_2024_20250402"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600684_2024_20250402",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "珠江股份",
+      "stock_code": "600684",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-04",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "15,574,414.71",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-04-02-rd_investment",
+      "question_text": "珠江股份2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 9780958.49,
+      "doc_ids": [
+        "600684_2024_20250402"
+      ],
+      "gold_pages": [
+        21
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600684_2024_20250402",
+          "page_index": 20,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "珠江股份",
+      "stock_code": "600684",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-04",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 22,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "9,780,958.49",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-04-03-total_assets",
+      "question_text": "珠江股份2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 1764195655.16,
+      "doc_ids": [
+        "600684_2024_20250402"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600684_2024_20250402",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "珠江股份",
+      "stock_code": "600684",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-04",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "1,764,195,655.16",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-04-04-operating_cash_flow",
+      "question_text": "珠江股份2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 219091944.26,
+      "doc_ids": [
+        "600684_2024_20250402"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600684_2024_20250402",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "珠江股份",
+      "stock_code": "600684",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-04",
+      "group_name": "房地产业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "219,091,944.26",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-05-01-net_profit",
+      "question_text": "威迈斯2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 400183900.0,
+      "doc_ids": [
+        "688612_2024_20250426"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688612_2024_20250426",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "威迈斯",
+      "stock_code": "688612",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-05",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 10,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "40,018.39",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-05-02-rd_investment",
+      "question_text": "威迈斯2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 385289400.0,
+      "doc_ids": [
+        "688612_2024_20250426"
+      ],
+      "gold_pages": [
+        27
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688612_2024_20250426",
+          "page_index": 26,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "威迈斯",
+      "stock_code": "688612",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-05",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 27,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "38,528.94",
+        "source_unit": "万元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-05-03-total_assets",
+      "question_text": "威迈斯2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 7690718300.0,
+      "doc_ids": [
+        "688612_2024_20250426"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688612_2024_20250426",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "威迈斯",
+      "stock_code": "688612",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-05",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 10,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "769,071.83",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-05-04-operating_cash_flow",
+      "question_text": "威迈斯2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 1027335600.0,
+      "doc_ids": [
+        "688612_2024_20250426"
+      ],
+      "gold_pages": [
+        9
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688612_2024_20250426",
+          "page_index": 8,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "威迈斯",
+      "stock_code": "688612",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-05",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 10,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "102,733.56",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-06-01-net_profit",
+      "question_text": "江苏新能2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 416884071.52,
+      "doc_ids": [
+        "603693_2024_20250423"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603693_2024_20250423",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江苏新能",
+      "stock_code": "603693",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-06",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 9,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司 股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "416,884,071.52",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-06-02-rd_investment",
+      "question_text": "江苏新能2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 2156327.07,
+      "doc_ids": [
+        "603693_2024_20250423"
+      ],
+      "gold_pages": [
+        23
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603693_2024_20250423",
+          "page_index": 22,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江苏新能",
+      "stock_code": "603693",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-06",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 24,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "2,156,327.07",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-06-03-total_assets",
+      "question_text": "江苏新能2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 17623746044.27,
+      "doc_ids": [
+        "603693_2024_20250423"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603693_2024_20250423",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江苏新能",
+      "stock_code": "603693",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-06",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 9,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "17,623,746,044.27",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-06-04-operating_cash_flow",
+      "question_text": "江苏新能2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 989509274.7,
+      "doc_ids": [
+        "603693_2024_20250423"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603693_2024_20250423",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江苏新能",
+      "stock_code": "603693",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-06",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 9,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的 现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "989,509,274.70",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-07-01-net_profit",
+      "question_text": "振华新材2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -527706300.0,
+      "doc_ids": [
+        "688707_2024_20250426"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688707_2024_20250426",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "振华新材",
+      "stock_code": "688707",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-07",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 9,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "-52,770.63",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-07-02-rd_investment",
+      "question_text": "振华新材2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 90139894.27,
+      "doc_ids": [
+        "688707_2024_20250426"
+      ],
+      "gold_pages": [
+        15
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688707_2024_20250426",
+          "page_index": 14,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "振华新材",
+      "stock_code": "688707",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-07",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 15,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "90,139,894.27",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-07-03-total_assets",
+      "question_text": "振华新材2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 7810251000.0,
+      "doc_ids": [
+        "688707_2024_20250426"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688707_2024_20250426",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "振华新材",
+      "stock_code": "688707",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-07",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 9,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "781,025.10",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-07-04-operating_cash_flow",
+      "question_text": "振华新材2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -1392607700.0,
+      "doc_ids": [
+        "688707_2024_20250426"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688707_2024_20250426",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "振华新材",
+      "stock_code": "688707",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-07",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 9,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "-139,260.77",
+        "source_unit": "万元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-08-01-net_profit",
+      "question_text": "永安行2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -68304071.02,
+      "doc_ids": [
+        "603776_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603776_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "永安行",
+      "stock_code": "603776",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-08",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 10,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东 的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "-68,304,071.02",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-08-02-rd_investment",
+      "question_text": "永安行2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 35306135.73,
+      "doc_ids": [
+        "603776_2024_20250412"
+      ],
+      "gold_pages": [
+        24
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603776_2024_20250412",
+          "page_index": 23,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "永安行",
+      "stock_code": "603776",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-08",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 26,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "35,306,135.73",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-08-03-total_assets",
+      "question_text": "永安行2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 4410979235.61,
+      "doc_ids": [
+        "603776_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603776_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "永安行",
+      "stock_code": "603776",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-08",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 10,
+        "source_row_idx": 10,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "4,410,979,235.61",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-08-04-operating_cash_flow",
+      "question_text": "永安行2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 137223863.12,
+      "doc_ids": [
+        "603776_2024_20250412"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603776_2024_20250412",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "永安行",
+      "stock_code": "603776",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-08",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 10,
+        "source_row_idx": 6,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金 流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "137,223,863.12",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-09-01-net_profit",
+      "question_text": "安杰思2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 293393685.99,
+      "doc_ids": [
+        "688581_2024_20250423"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688581_2024_20250423",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "安杰思",
+      "stock_code": "688581",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-09",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "293,393,685.99",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-09-02-rd_investment",
+      "question_text": "安杰思2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 59209169.42,
+      "doc_ids": [
+        "688581_2024_20250423"
+      ],
+      "gold_pages": [
+        24
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688581_2024_20250423",
+          "page_index": 23,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "安杰思",
+      "stock_code": "688581",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-09",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 23,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "59,209,169.42",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-09-03-total_assets",
+      "question_text": "安杰思2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 2549778243.93,
+      "doc_ids": [
+        "688581_2024_20250423"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688581_2024_20250423",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "安杰思",
+      "stock_code": "688581",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-09",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "2,549,778,243.93",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-09-04-operating_cash_flow",
+      "question_text": "安杰思2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 315795149.98,
+      "doc_ids": [
+        "688581_2024_20250423"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688581_2024_20250423",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "安杰思",
+      "stock_code": "688581",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-09",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "315,795,149.98",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-10-01-net_profit",
+      "question_text": "江化微2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 98632847.97,
+      "doc_ids": [
+        "603078_2024_20250322"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603078_2024_20250322",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江化微",
+      "stock_code": "603078",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-10",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司 股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "98,632,847.97",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-10-02-rd_investment",
+      "question_text": "江化微2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 58710286.51,
+      "doc_ids": [
+        "603078_2024_20250322"
+      ],
+      "gold_pages": [
+        20
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603078_2024_20250322",
+          "page_index": 19,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江化微",
+      "stock_code": "603078",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-10",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 28,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "58,710,286.51",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-10-03-total_assets",
+      "question_text": "江化微2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 2625377837.87,
+      "doc_ids": [
+        "603078_2024_20250322"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603078_2024_20250322",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江化微",
+      "stock_code": "603078",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-10",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 9,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "2,625,377,837.87",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-10-04-operating_cash_flow",
+      "question_text": "江化微2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 106258807.95,
+      "doc_ids": [
+        "603078_2024_20250322"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603078_2024_20250322",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "江化微",
+      "stock_code": "603078",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-10",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 5,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的 现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年",
+          "2024 年末"
+        ],
+        "source_raw_value": "106,258,807.95",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-11-01-net_profit",
+      "question_text": "步长制药2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -553797938.8,
+      "doc_ids": [
+        "603858_2024_20250426"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603858_2024_20250426",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "步长制药",
+      "stock_code": "603858",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-11",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "-553,797,938.80",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-11-02-rd_investment",
+      "question_text": "步长制药2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 716987443.85,
+      "doc_ids": [
+        "603858_2024_20250426"
+      ],
+      "gold_pages": [
+        22
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603858_2024_20250426",
+          "page_index": 21,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "步长制药",
+      "stock_code": "603858",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-11",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 27,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "716,987,443.85",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-11-03-total_assets",
+      "question_text": "步长制药2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 19328509108.36,
+      "doc_ids": [
+        "603858_2024_20250426"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603858_2024_20250426",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "步长制药",
+      "stock_code": "603858",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-11",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 8,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "19,328,509,108.36",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-11-04-operating_cash_flow",
+      "question_text": "步长制药2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 939950568.92,
+      "doc_ids": [
+        "603858_2024_20250426"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603858_2024_20250426",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "步长制药",
+      "stock_code": "603858",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-11",
+      "group_name": "医药制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 5,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "939,950,568.92",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-12-01-net_profit",
+      "question_text": "ST 曙光2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -340819214.1,
+      "doc_ids": [
+        "600303_2024_20250411"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "ST 曙光",
+      "stock_code": "600303",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-12",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "-340,819,214.10",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-12-02-rd_investment",
+      "question_text": "ST 曙光2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 74958625.02,
+      "doc_ids": [
+        "600303_2024_20250411"
+      ],
+      "gold_pages": [
+        15
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 14,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "ST 曙光",
+      "stock_code": "600303",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-12",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 20,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "74,958,625.02",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-12-03-total_assets",
+      "question_text": "ST 曙光2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 3537212655.25,
+      "doc_ids": [
+        "600303_2024_20250411"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "ST 曙光",
+      "stock_code": "600303",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-12",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 9,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "3,537,212,655.25",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-12-04-operating_cash_flow",
+      "question_text": "ST 曙光2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -8509463.83,
+      "doc_ids": [
+        "600303_2024_20250411"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600303_2024_20250411",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "ST 曙光",
+      "stock_code": "600303",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-12",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 6,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "-8,509,463.83",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-13-01-net_profit",
+      "question_text": "浙江新能2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 566503398.38,
+      "doc_ids": [
+        "600032_2024_20250422"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浙江新能",
+      "stock_code": "600032",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-13",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "566,503,398.38",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-13-02-rd_investment",
+      "question_text": "浙江新能2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 19607757.06,
+      "doc_ids": [
+        "600032_2024_20250422"
+      ],
+      "gold_pages": [
+        18
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 17,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浙江新能",
+      "stock_code": "600032",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-13",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 21,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "19,607,757.06",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-13-03-total_assets",
+      "question_text": "浙江新能2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 58903064047.15,
+      "doc_ids": [
+        "600032_2024_20250422"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浙江新能",
+      "stock_code": "600032",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-13",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "58,903,064,047.15",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-13-04-operating_cash_flow",
+      "question_text": "浙江新能2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 2823767264.86,
+      "doc_ids": [
+        "600032_2024_20250422"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600032_2024_20250422",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浙江新能",
+      "stock_code": "600032",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-13",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "2,823,767,264.86",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-14-01-net_profit",
+      "question_text": "高华科技2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 55649408.55,
+      "doc_ids": [
+        "688539_2024_20250419"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688539_2024_20250419",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高华科技",
+      "stock_code": "688539",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-14",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东 的净利润"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "55,649,408.55",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-14-02-rd_investment",
+      "question_text": "高华科技2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 65281859.39,
+      "doc_ids": [
+        "688539_2024_20250419"
+      ],
+      "gold_pages": [
+        40
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688539_2024_20250419",
+          "page_index": 39,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高华科技",
+      "stock_code": "688539",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-14",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 29,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "65,281,859.39",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-14-03-total_assets",
+      "question_text": "高华科技2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 1963322285.86,
+      "doc_ids": [
+        "688539_2024_20250419"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688539_2024_20250419",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高华科技",
+      "stock_code": "688539",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-14",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "1,963,322,285.86",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-14-04-operating_cash_flow",
+      "question_text": "高华科技2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -19926082.5,
+      "doc_ids": [
+        "688539_2024_20250419"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688539_2024_20250419",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高华科技",
+      "stock_code": "688539",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-14",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金 流量净额"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "-19,926,082.50",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-15-01-net_profit",
+      "question_text": "浪潮软件2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 13627299.75,
+      "doc_ids": [
+        "600756_2024_20250329"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600756_2024_20250329",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浪潮软件",
+      "stock_code": "600756",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-15",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "13,627,299.75",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-15-02-rd_investment",
+      "question_text": "浪潮软件2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 292432078.79,
+      "doc_ids": [
+        "600756_2024_20250329"
+      ],
+      "gold_pages": [
+        19
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600756_2024_20250329",
+          "page_index": 18,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浪潮软件",
+      "stock_code": "600756",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-15",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 22,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "292,432,078.79",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-15-03-total_assets",
+      "question_text": "浪潮软件2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 4332459794.22,
+      "doc_ids": [
+        "600756_2024_20250329"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600756_2024_20250329",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浪潮软件",
+      "stock_code": "600756",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-15",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "4,332,459,794.22",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-15-04-operating_cash_flow",
+      "question_text": "浪潮软件2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -288406970.15,
+      "doc_ids": [
+        "600756_2024_20250329"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600756_2024_20250329",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "浪潮软件",
+      "stock_code": "600756",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-15",
+      "group_name": "软件和信息技术服务业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "-288,406,970.15",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-16-01-net_profit",
+      "question_text": "高测股份2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": -44227926.57,
+      "doc_ids": [
+        "688556_2024_20250429"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688556_2024_20250429",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高测股份",
+      "stock_code": "688556",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-16",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "-44,227,926.57",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-16-02-rd_investment",
+      "question_text": "高测股份2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 248501851.64,
+      "doc_ids": [
+        "688556_2024_20250429"
+      ],
+      "gold_pages": [
+        30
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688556_2024_20250429",
+          "page_index": 29,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高测股份",
+      "stock_code": "688556",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-16",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 22,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [
+          "本年度"
+        ],
+        "source_raw_value": "248,501,851.64",
+        "source_unit": "元",
+        "match_score": 33.0
+      }
+    },
+    {
+      "question_id": "holdout-number-16-03-total_assets",
+      "question_text": "高测股份2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 7751986184.06,
+      "doc_ids": [
+        "688556_2024_20250429"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688556_2024_20250429",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高测股份",
+      "stock_code": "688556",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-16",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 8,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "7,751,986,184.06",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-16-04-operating_cash_flow",
+      "question_text": "高测股份2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": -1261239500.13,
+      "doc_ids": [
+        "688556_2024_20250429"
+      ],
+      "gold_pages": [
+        8
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "688556_2024_20250429",
+          "page_index": 7,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "高测股份",
+      "stock_code": "688556",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-16",
+      "group_name": "专用设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 5,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "-1,261,239,500.13",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-17-01-net_profit",
+      "question_text": "金瑞矿业2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 35013478.28,
+      "doc_ids": [
+        "600714_2024_20250411"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600714_2024_20250411",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "金瑞矿业",
+      "stock_code": "600714",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-17",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "35,013,478.28",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-17-02-rd_investment",
+      "question_text": "金瑞矿业2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 1230000.67,
+      "doc_ids": [
+        "600714_2024_20250411"
+      ],
+      "gold_pages": [
+        14
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600714_2024_20250411",
+          "page_index": 13,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "金瑞矿业",
+      "stock_code": "600714",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-17",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 19,
+        "source_row_idx": 1,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "1,230,000.67",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-17-03-total_assets",
+      "question_text": "金瑞矿业2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 807730692.9,
+      "doc_ids": [
+        "600714_2024_20250411"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600714_2024_20250411",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "金瑞矿业",
+      "stock_code": "600714",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-17",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "807,730,692.90",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-17-04-operating_cash_flow",
+      "question_text": "金瑞矿业2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 45583940.66,
+      "doc_ids": [
+        "600714_2024_20250411"
+      ],
+      "gold_pages": [
+        5
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600714_2024_20250411",
+          "page_index": 4,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "金瑞矿业",
+      "stock_code": "600714",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-17",
+      "group_name": "化学原料和化学制品制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "45,583,940.66",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-18-01-net_profit",
+      "question_text": "广汽集团2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 823581893.0,
+      "doc_ids": [
+        "601238_2024_20250329"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "广汽集团",
+      "stock_code": "601238",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-18",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 10,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "823,581,893",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-18-02-rd_investment",
+      "question_text": "广汽集团2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 7508000000.0,
+      "doc_ids": [
+        "601238_2024_20250329"
+      ],
+      "gold_pages": [
+        28
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 27,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "广汽集团",
+      "stock_code": "601238",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-18",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 22,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "75.08",
+        "source_unit": "亿元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-18-03-total_assets",
+      "question_text": "广汽集团2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 232458340666.0,
+      "doc_ids": [
+        "601238_2024_20250329"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "广汽集团",
+      "stock_code": "601238",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-18",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 10,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "232,458,340,666",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-18-04-operating_cash_flow",
+      "question_text": "广汽集团2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 10918597387.0,
+      "doc_ids": [
+        "601238_2024_20250329"
+      ],
+      "gold_pages": [
+        10
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "601238_2024_20250329",
+          "page_index": 9,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "广汽集团",
+      "stock_code": "601238",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-18",
+      "group_name": "汽车制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 10,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年"
+        ],
+        "source_raw_value": "10,918,597,387",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-19-01-net_profit",
+      "question_text": "芯能科技2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 193587895.88,
+      "doc_ids": [
+        "603105_2024_20250425"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603105_2024_20250425",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "芯能科技",
+      "stock_code": "603105",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-19",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 3,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股东的净利润"
+        ],
+        "source_col_headers": [
+          "2024年",
+          "2024年末"
+        ],
+        "source_raw_value": "193,587,895.88",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-19-02-rd_investment",
+      "question_text": "芯能科技2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 32695018.28,
+      "doc_ids": [
+        "603105_2024_20250425"
+      ],
+      "gold_pages": [
+        22
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603105_2024_20250425",
+          "page_index": 21,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "芯能科技",
+      "stock_code": "603105",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-19",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 20,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "32,695,018.28",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-19-03-total_assets",
+      "question_text": "芯能科技2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 4297315567.63,
+      "doc_ids": [
+        "603105_2024_20250425"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603105_2024_20250425",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "芯能科技",
+      "stock_code": "603105",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-19",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 9,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024年",
+          "2024年末"
+        ],
+        "source_raw_value": "4,297,315,567.63",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-19-04-operating_cash_flow",
+      "question_text": "芯能科技2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 388834589.63,
+      "doc_ids": [
+        "603105_2024_20250425"
+      ],
+      "gold_pages": [
+        6
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "603105_2024_20250425",
+          "page_index": 5,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "芯能科技",
+      "stock_code": "603105",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-19",
+      "group_name": "电力、热力生产和供应业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 5,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现金流量净额"
+        ],
+        "source_col_headers": [
+          "2024年",
+          "2024年末"
+        ],
+        "source_raw_value": "388,834,589.63",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-20-01-net_profit",
+      "question_text": "四川长虹2024年年报中的归属于上市公司股东的净利润是多少元？",
+      "kind": "number",
+      "value": 703522639.0,
+      "doc_ids": [
+        "600839_2024_20250426"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600839_2024_20250426",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "四川长虹",
+      "stock_code": "600839",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "归属于上市公司股东的净利润",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-20",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 归属于上市公司股东的净利润、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "net_profit",
+        "source_table_id": 8,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "归属于上市公司股 东的净利润"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "703,522,639.00",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-20-02-rd_investment",
+      "question_text": "四川长虹2024年年报中的研发投入合计是多少元？",
+      "kind": "number",
+      "value": 2601485727.25,
+      "doc_ids": [
+        "600839_2024_20250426"
+      ],
+      "gold_pages": [
+        27
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600839_2024_20250426",
+          "page_index": 26,
+          "chunk_id": null,
+          "section_name": "研发投入情况表",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "四川长虹",
+      "stock_code": "600839",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "研发投入合计",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-20",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 研发投入合计、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "rd_investment",
+        "source_table_id": 24,
+        "source_row_idx": 2,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "研发投入合计"
+        ],
+        "source_col_headers": [],
+        "source_raw_value": "2,601,485,727.25",
+        "source_unit": "元",
+        "match_score": 31.0
+      }
+    },
+    {
+      "question_id": "holdout-number-20-03-total_assets",
+      "question_text": "四川长虹2024年年报中的资产总额是多少元？",
+      "kind": "number",
+      "value": 99378402048.64,
+      "doc_ids": [
+        "600839_2024_20250426"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600839_2024_20250426",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "四川长虹",
+      "stock_code": "600839",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "资产总额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-20",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 资产总额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "total_assets",
+        "source_table_id": 8,
+        "source_row_idx": 7,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "总资产"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "99,378,402,048.64",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    },
+    {
+      "question_id": "holdout-number-20-04-operating_cash_flow",
+      "question_text": "四川长虹2024年年报中的经营活动产生的现金流量净额是多少元？",
+      "kind": "number",
+      "value": 2684646008.61,
+      "doc_ids": [
+        "600839_2024_20250426"
+      ],
+      "gold_pages": [
+        7
+      ],
+      "gold_chunk_ids": [],
+      "references": [
+        {
+          "pdf_sha1": "600839_2024_20250426",
+          "page_index": 6,
+          "chunk_id": null,
+          "section_name": "主要会计数据",
+          "evidence_type": "table"
+        }
+      ],
+      "company_name": "四川长虹",
+      "stock_code": "600839",
+      "report_year": 2024,
+      "report_type": "annual_report",
+      "period": "本期",
+      "metric_name": "经营活动产生的现金流量净额",
+      "currency": "CNY",
+      "unit": "元",
+      "evidence_type": "table",
+      "capability": "single_doc_fact",
+      "difficulty": "medium",
+      "group_id": "holdout-industry-20",
+      "group_name": "计算机、通信和其他电子设备制造业",
+      "should_refuse": false,
+      "annotation_status": "auto_extracted",
+      "notes": "自动从结构化表格抽取；复核 经营活动产生的现金流量净额、2024 期间、单位和页码。",
+      "metadata": {
+        "source_dataset": "number_holdout_metrics80",
+        "source_record_type": "answer",
+        "quality_tier": "auto_extracted_gold",
+        "review_required": true,
+        "scenario_family": "number_metric_company_holdout",
+        "generation_method": "structured_table_extraction",
+        "holdout_policy": "exclude companies appearing in training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl query text",
+        "metric_key": "operating_cash_flow",
+        "source_table_id": 8,
+        "source_row_idx": 4,
+        "source_col_idx": 1,
+        "source_row_headers": [
+          "经营活动产生的现 金流量净额"
+        ],
+        "source_col_headers": [
+          "2024 年"
+        ],
+        "source_raw_value": "2,684,646,008.61",
+        "source_unit": "元",
+        "match_score": 37.0
+      }
+    }
+  ],
+  "metadata": {
+    "owner": "FinaRAG",
+    "quality_tier": "auto_extracted_gold",
+    "review_required": true,
+    "holdout_policy": "company names/security codes excluded from qwen3_reranker_sft_train query text",
+    "train_file": "training/reranker_distill/processed/qwen3_reranker_sft_train.jsonl",
+    "raw_teacher_query_holdout_feasibility": {
+      "raw_query_files": [
+        "training/reranker_distill/raw/candidate_pool.jsonl",
+        "training/reranker_distill/raw/teacher_answers_with_auto_evidence.jsonl"
+      ],
+      "raw_holdout_company_count": 1,
+      "note": "Using all raw teacher/candidate queries leaves too few companies for a 20-company holdout in this corpus."
+    },
+    "metric_keys": [
+      "net_profit",
+      "rd_investment",
+      "total_assets",
+      "operating_cash_flow"
+    ],
+    "selected_companies": [
+      {
+        "company_name": "天准科技",
+        "doc_id": "688003_2024_20250412",
+        "security_code": "688003",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "*ST宁科",
+        "doc_id": "600165_2024_20250315",
+        "security_code": "600165",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "科兴制药",
+        "doc_id": "688136_2024_20250411",
+        "security_code": "688136",
+        "industry": "医药制造业"
+      },
+      {
+        "company_name": "珠江股份",
+        "doc_id": "600684_2024_20250402",
+        "security_code": "600684",
+        "industry": "房地产业"
+      },
+      {
+        "company_name": "威迈斯",
+        "doc_id": "688612_2024_20250426",
+        "security_code": "688612",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "江苏新能",
+        "doc_id": "603693_2024_20250423",
+        "security_code": "603693",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "振华新材",
+        "doc_id": "688707_2024_20250426",
+        "security_code": "688707",
+        "industry": "计算机、通信和其他电子设备制造业"
+      },
+      {
+        "company_name": "永安行",
+        "doc_id": "603776_2024_20250412",
+        "security_code": "603776",
+        "industry": "软件和信息技术服务业"
+      },
+      {
+        "company_name": "安杰思",
+        "doc_id": "688581_2024_20250423",
+        "security_code": "688581",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "江化微",
+        "doc_id": "603078_2024_20250322",
+        "security_code": "603078",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "步长制药",
+        "doc_id": "603858_2024_20250426",
+        "security_code": "603858",
+        "industry": "医药制造业"
+      },
+      {
+        "company_name": "ST 曙光",
+        "doc_id": "600303_2024_20250411",
+        "security_code": "600303",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "浙江新能",
+        "doc_id": "600032_2024_20250422",
+        "security_code": "600032",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "高华科技",
+        "doc_id": "688539_2024_20250419",
+        "security_code": "688539",
+        "industry": "计算机、通信和其他电子设备制造业"
+      },
+      {
+        "company_name": "浪潮软件",
+        "doc_id": "600756_2024_20250329",
+        "security_code": "600756",
+        "industry": "软件和信息技术服务业"
+      },
+      {
+        "company_name": "高测股份",
+        "doc_id": "688556_2024_20250429",
+        "security_code": "688556",
+        "industry": "专用设备制造业"
+      },
+      {
+        "company_name": "金瑞矿业",
+        "doc_id": "600714_2024_20250411",
+        "security_code": "600714",
+        "industry": "化学原料和化学制品制造业"
+      },
+      {
+        "company_name": "广汽集团",
+        "doc_id": "601238_2024_20250329",
+        "security_code": "601238",
+        "industry": "汽车制造业"
+      },
+      {
+        "company_name": "芯能科技",
+        "doc_id": "603105_2024_20250425",
+        "security_code": "603105",
+        "industry": "电力、热力生产和供应业"
+      },
+      {
+        "company_name": "四川长虹",
+        "doc_id": "600839_2024_20250426",
+        "security_code": "600839",
+        "industry": "计算机、通信和其他电子设备制造业"
+      }
+    ],
+    "candidate_company_count": 25,
+    "rejected_company_count": 14
+  }
+}
