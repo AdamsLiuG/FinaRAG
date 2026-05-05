@@ -499,6 +499,28 @@ Streamlit Demo 提供深色金融风格 UI，核心功能包括：
 - **配置热切换**：运行时修改检索后端、重排策略、模型参数
 - **系统监控**：嵌入模型状态、检索后端连接状态
 
+### 界面预览
+
+以下示例展示了 FinaRAG 的研究工作台、问题配置、答案生成、检索证据追踪与风险提示视图，便于快速理解完整的金融问答工作流。
+
+<p align="center">
+  <img src="./展示样例/示例1.png" width="48%" alt="FinaRAG Demo 首页与研究工作台"/>
+  <img src="./展示样例/示例3.png" width="48%" alt="FinaRAG Demo 问答结果与证据追踪"/>
+</p>
+
+<p align="center">
+  <em>左：研究工作台总览与问题配置；右：答案生成、关键结论、检索证据与引用足迹展示。</em>
+</p>
+
+<details>
+  <summary>查看更多界面示例</summary>
+  <br/>
+  <p align="center">
+    <img src="./展示样例/示例2.png" width="48%" alt="FinaRAG Demo 工作区概览"/>
+    <img src="./展示样例/示例4.png" width="48%" alt="FinaRAG Demo 问题输入与控制面板"/>
+  </p>
+</details>
+
 ---
 
 ## 🧪 测试
