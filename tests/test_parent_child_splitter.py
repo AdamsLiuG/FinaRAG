@@ -106,6 +106,133 @@ class ParentChildSplitterTests(unittest.TestCase):
             self.assertEqual(table_children[0]["parent_chunk_id"], table_parents[0]["chunk_id"])
             self.assertEqual(table_parents[0]["child_chunk_ids"], [table_children[0]["chunk_id"]])
 
+    def test_splitter_adds_logical_table_links_without_merging_physical_tables(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            reports_dir = Path(tmp_dir) / "reports"
+            serialized_tables_dir = Path(tmp_dir) / "tables"
+            output_dir = Path(tmp_dir) / "chunked"
+            reports_dir.mkdir()
+            serialized_tables_dir.mkdir()
+
+            report = {
+                "metainfo": {
+                    "company_name": "Alpha Corp",
+                    "currency": "CNY",
+                    "report_type": "annual",
+                    "language": "zh",
+                },
+                "content": {
+                    "pages": [
+                        {"page": 10, "text": "# 主要会计数据和财务指标\n见下表。"},
+                        {"page": 11, "text": "# 主要会计数据和财务指标\n续表如下。"},
+                    ]
+                },
+            }
+            serialized_tables = {
+                "tables": [
+                    {
+                        "page": 10,
+                        "table_id": "tbl-head",
+                        "bbox": [40, 120, 560, 780],
+                        "#-rows": 2,
+                        "#-cols": 2,
+                        "markdown": "主要会计数据 单位：人民币百万元",
+                        "html": "<table></table>",
+                        "serialized": {"information_blocks": [{"information_block": "营业成本 | 3000"}]},
+                        "json": {
+                            "data": {
+                                "num_rows": 2,
+                                "num_cols": 2,
+                                "table_cells": [
+                                    {
+                                        "text": "2024年",
+                                        "start_row_offset_idx": 0,
+                                        "end_row_offset_idx": 1,
+                                        "start_col_offset_idx": 1,
+                                        "end_col_offset_idx": 2,
+                                        "column_header": True,
+                                        "row_header": False,
+                                    },
+                                    {
+                                        "text": "营业成本",
+                                        "start_row_offset_idx": 1,
+                                        "end_row_offset_idx": 2,
+                                        "start_col_offset_idx": 0,
+                                        "end_col_offset_idx": 1,
+                                        "column_header": False,
+                                        "row_header": True,
+                                    },
+                                    {
+                                        "text": "3000",
+                                        "start_row_offset_idx": 1,
+                                        "end_row_offset_idx": 2,
+                                        "start_col_offset_idx": 1,
+                                        "end_col_offset_idx": 2,
+                                        "column_header": False,
+                                        "row_header": False,
+                                    },
+                                ],
+                            }
+                        },
+                    },
+                    {
+                        "page": 11,
+                        "table_id": "tbl-tail",
+                        "bbox": [40, 40, 560, 360],
+                        "#-rows": 2,
+                        "#-cols": 2,
+                        "markdown": "主要会计数据（续表）",
+                        "html": "<table></table>",
+                        "serialized": {"information_blocks": [{"information_block": "营业收入 | 4000"}]},
+                        "json": {
+                            "data": {
+                                "num_rows": 2,
+                                "num_cols": 2,
+                                "table_cells": [
+                                    {
+                                        "text": "营业收入",
+                                        "start_row_offset_idx": 1,
+                                        "end_row_offset_idx": 2,
+                                        "start_col_offset_idx": 0,
+                                        "end_col_offset_idx": 1,
+                                        "column_header": False,
+                                        "row_header": True,
+                                    },
+                                    {
+                                        "text": "4000",
+                                        "start_row_offset_idx": 1,
+                                        "end_row_offset_idx": 2,
+                                        "start_col_offset_idx": 1,
+                                        "end_col_offset_idx": 2,
+                                        "column_header": False,
+                                        "row_header": False,
+                                    },
+                                ],
+                            }
+                        },
+                    },
+                ]
+            }
+
+            (reports_dir / "alpha.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+            (serialized_tables_dir / "alpha.json").write_text(json.dumps(serialized_tables, ensure_ascii=False), encoding="utf-8")
+
+            splitter = TextSplitter(child_chunk_size=400, child_chunk_overlap=20)
+            splitter.split_all_reports(reports_dir, output_dir, serialized_tables_dir)
+
+            output = json.loads((output_dir / "alpha.json").read_text(encoding="utf-8"))
+            structured_tables = output["content"]["structured_tables"]
+
+            self.assertEqual(len(structured_tables), 2)
+            self.assertEqual(structured_tables[0]["logical_table_id"], structured_tables[1]["logical_table_id"])
+            self.assertEqual(structured_tables[0]["logical_role"], "head")
+            self.assertEqual(structured_tables[1]["logical_role"], "tail")
+            self.assertEqual(structured_tables[1]["continuation_of"], "tbl-head")
+            self.assertEqual(structured_tables[0]["page_span"], [10, 11])
+            self.assertIn("logical_tables", output["content"])
+            self.assertEqual(len(output["content"]["logical_tables"]), 1)
+            self.assertEqual(structured_tables[1]["cell_records"][0]["table_id"], "tbl-tail")
+
     def test_chart_evidence_emits_chart_to_table_chunks_and_metadata(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             reports_dir = Path(tmp_dir) / "reports"

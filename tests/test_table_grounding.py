@@ -295,6 +295,116 @@ class TableGroundingTests(unittest.TestCase):
             self.assertTrue(result.get("supporting_matches"))
             self.assertEqual({match["page"] for match in result["supporting_matches"]}, {88})
 
+    def test_ground_number_query_materializes_confirmed_logical_table_for_missing_unit_and_headers(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            documents_dir = Path(tmp_dir)
+            payload = {
+                "metainfo": {
+                    "sha1_name": "doc-alpha",
+                    "company_name": "宁德时代",
+                    "language": "zh",
+                },
+                "content": {
+                    "pages": [{"page": 10, "text": "主要会计数据和财务指标。"}, {"page": 11, "text": "续表。"}],
+                    "chunks": [],
+                    "logical_tables": [
+                        {
+                            "logical_table_id": "lt-doc-alpha-10-11",
+                            "head_table_id": "tbl-head",
+                            "member_table_ids": ["tbl-head", "tbl-tail"],
+                            "member_pages": [10, 11],
+                            "page_span": [10, 11],
+                            "merge_confidence": 0.86,
+                            "merge_state": "confirmed",
+                            "materializable": True,
+                        }
+                    ],
+                    "structured_tables": [
+                        {
+                            "table_id": "tbl-head",
+                            "page": 10,
+                            "markdown": "主要会计数据 单位：人民币百万元",
+                            "unit_hint": "人民币百万元",
+                            "period": "2024年报",
+                            "section_title": "主要会计数据和财务指标",
+                            "section_name": "主要会计数据和财务指标",
+                            "report_section": "主要会计数据和财务指标",
+                            "logical_table_id": "lt-doc-alpha-10-11",
+                            "continuation_of": None,
+                            "logical_role": "head",
+                            "page_span": [10, 11],
+                            "merge_confidence": 0.86,
+                            "merge_state": "confirmed",
+                            "col_headers_by_col": {"1": ["2024年报"]},
+                            "row_headers_by_row": {"1": ["营业成本"]},
+                            "cell_records": [
+                                {
+                                    "table_id": "tbl-head",
+                                    "page": 10,
+                                    "row_idx": 1,
+                                    "col_idx": 1,
+                                    "raw_value": "3000",
+                                    "matched_row_headers": ["营业成本"],
+                                    "matched_col_headers": ["2024年报"],
+                                    "unit_hint": "人民币百万元",
+                                    "period": "2024年报",
+                                    "footnote_refs": [],
+                                }
+                            ],
+                        },
+                        {
+                            "table_id": "tbl-tail",
+                            "page": 11,
+                            "markdown": "主要会计数据（续表）",
+                            "unit_hint": None,
+                            "period": None,
+                            "section_title": "主要会计数据和财务指标",
+                            "section_name": "主要会计数据和财务指标",
+                            "report_section": "主要会计数据和财务指标",
+                            "logical_table_id": "lt-doc-alpha-10-11",
+                            "continuation_of": "tbl-head",
+                            "logical_role": "tail",
+                            "page_span": [10, 11],
+                            "merge_confidence": 0.86,
+                            "merge_state": "confirmed",
+                            "col_headers_by_col": {},
+                            "row_headers_by_row": {"1": ["营业收入"]},
+                            "cell_records": [
+                                {
+                                    "table_id": "tbl-tail",
+                                    "page": 11,
+                                    "row_idx": 1,
+                                    "col_idx": 1,
+                                    "raw_value": "4000",
+                                    "matched_row_headers": ["营业收入"],
+                                    "matched_col_headers": [],
+                                    "unit_hint": None,
+                                    "period": None,
+                                    "footnote_refs": [],
+                                }
+                            ],
+                        },
+                    ],
+                },
+            }
+            (documents_dir / "doc-alpha.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            result = TableGrounder(documents_dir).ground_number_query(
+                question="宁德时代2024年报营业收入是多少元？",
+                retrieval_results=[{"page": 11, "metadata": {"sha1_name": "doc-alpha"}}],
+                filters=RetrievalFilters(company_name="宁德时代", year=2024, period="2024年报", question_kind="number"),
+                candidate_doc_ids=["doc-alpha"],
+            )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result["table_id"], "tbl-tail")
+            self.assertEqual(result["page"], 11)
+            self.assertEqual(result["logical_table_id"], "lt-doc-alpha-10-11")
+            self.assertTrue(result["logical_table_materialized"])
+            self.assertEqual(result["matched_col_headers"], ["2024年报"])
+            self.assertEqual(result["unit"], "人民币百万元")
+            self.assertEqual(result["normalized_value"], 4000000000.0)
+
     def test_ground_number_query_rejects_revenue_growth_percent_column(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             documents_dir = Path(tmp_dir)

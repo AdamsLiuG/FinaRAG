@@ -2116,6 +2116,11 @@ class QuestionsProcessor:
             "section_name": None,
             "report_section": None,
             "table_id": grounding_result.get("table_id"),
+            "logical_table_id": grounding_result.get("logical_table_id"),
+            "logical_role": None,
+            "page_span": list(grounding_result.get("page_span") or []),
+            "merge_confidence": None,
+            "merge_state": "confirmed" if grounding_result.get("logical_table_id") else None,
             "row_idx": grounding_result.get("row_idx"),
             "col_idx": grounding_result.get("col_idx"),
             "matched_row_headers": grounding_result.get("matched_row_headers") or [],
@@ -2174,7 +2179,7 @@ class QuestionsProcessor:
             (str((result.get("metadata") or {}).get("sha1_name") or ""), result.get("page"))
             for result in results
         }
-        for support_result in grounding_result.get("supporting_matches") or []:
+        for support_result in self._table_support_results(grounding_result):
             doc_id = str(support_result.get("source_doc_id") or "")
             page = support_result.get("page")
             if not doc_id or page is None or (doc_id, page) in seen:
@@ -2188,6 +2193,14 @@ class QuestionsProcessor:
             )
             seen.add((doc_id, page))
         return results
+
+    @staticmethod
+    def _table_support_results(grounding_result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not grounding_result:
+            return []
+        return list(grounding_result.get("supporting_matches") or []) + list(
+            grounding_result.get("logical_context_matches") or []
+        )
 
     def _chart_grounding_retrieval_result(
         self,
@@ -2275,14 +2288,21 @@ class QuestionsProcessor:
     def _build_table_grounded_number_answer(self, grounding_result: Dict[str, Any]) -> Dict[str, Any]:
         grounded_value = self._grounded_number_value(grounding_result)
         unit_note = f"，并按问题要求换算为{grounding_result['target_unit']}" if grounding_result.get("target_unit") else ""
+        logical_note = ""
+        if grounding_result.get("logical_table_id") and grounding_result.get("logical_table_materialized"):
+            logical_note = f"，并结合跨页逻辑表 {grounding_result.get('logical_table_id')} 的继承表头/单位"
         page = grounding_result.get("page")
         pages = [page] if page is not None else []
+        for logical_page in grounding_result.get("member_pages") or []:
+            if logical_page is not None and logical_page not in pages:
+                pages.append(logical_page)
         for support_result in grounding_result.get("supporting_matches") or []:
             support_page = support_result.get("page")
             if support_page is not None and support_page not in pages:
                 pages.append(support_page)
             if len(pages) >= 3:
                 break
+        pages = sorted(pages)
         return {
             "final_answer": grounded_value,
             "relevant_pages": pages,
@@ -2291,7 +2311,7 @@ class QuestionsProcessor:
             "confidence": "high",
             "reasoning_summary": (
                 f"答案来自表格 grounding：表 {grounding_result.get('table_id')} 第 {page} 页的单元格"
-                f"{unit_note}。"
+                f"{logical_note}{unit_note}。"
             ),
             "step_by_step_analysis": (
                 f"匹配行头：{grounding_result.get('matched_row_headers') or []}；"
@@ -2523,7 +2543,7 @@ class QuestionsProcessor:
                         chunk_type="table_support",
                         retrieval_source="table_support",
                     )
-                    for support_result in grounding_result.get("supporting_matches") or []
+                    for support_result in self._table_support_results(grounding_result)
                 ],
             ],
             "query_plan": query_plan,
@@ -2545,7 +2565,7 @@ class QuestionsProcessor:
                     retrieval_results,
                     pages,
                     table_grounding_result=grounding_result,
-                    table_support_results=grounding_result.get("supporting_matches") or [],
+                    table_support_results=self._table_support_results(grounding_result),
                 )
             )
         return dedupe_citations(citations)
@@ -2997,7 +3017,7 @@ class QuestionsProcessor:
             retrieval_results,
             validated_pages,
             table_grounding_result=answer_dict.get("table_grounding_result"),
-            table_support_results=(answer_dict.get("table_grounding_result") or {}).get("supporting_matches") or [],
+            table_support_results=self._table_support_results(answer_dict.get("table_grounding_result")),
             chart_grounding_result=answer_dict.get("chart_grounding_result"),
         )
         answer_dict["confidence"] = compute_confidence(answer_dict, retrieval_results)

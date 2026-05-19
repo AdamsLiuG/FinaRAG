@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.logical_table_merger import LogicalTableMerger
 from src.retrieval_filters import RetrievalFilters
 from src.text_normalization import normalize_text, parse_numeric_value, tokenize_for_bm25
 
@@ -248,6 +249,7 @@ class TableGrounder:
     def __init__(self, documents_dir: Path):
         self.documents_dir = Path(documents_dir)
         self._documents_cache: Dict[str, Dict] = {}
+        self.logical_table_merger = LogicalTableMerger()
 
     def _load_document(self, doc_id: str) -> Optional[Dict]:
         if doc_id in self._documents_cache:
@@ -296,16 +298,41 @@ class TableGrounder:
         return "\n".join(pieces)[:limit]
 
     def _table_context(self, document: Dict, table: Dict, page: Optional[int]) -> str:
+        pages = table.get("member_pages") or [page]
         parts = [
             str(table.get("markdown") or ""),
             str(table.get("caption") or ""),
             str(table.get("section_title") or ""),
             str(table.get("section_name") or ""),
             str(table.get("report_section") or ""),
-            self._page_text(document, page),
-            self._nearby_chunk_text(document, page),
         ]
+        seen_pages = set()
+        for member_page in pages:
+            page_number = self._page_number(member_page)
+            if page_number is None or page_number in seen_pages:
+                continue
+            seen_pages.add(page_number)
+            parts.append(self._page_text(document, page_number))
+            parts.append(self._nearby_chunk_text(document, page_number))
         return "\n".join(part for part in parts if part).translate(_OCR_NORMALIZATION_MAP)
+
+    def _materialized_tables(self, document: Dict) -> List[Dict[str, Any]]:
+        structured_tables = document.get("content", {}).get("structured_tables") or []
+        logical_tables = document.get("content", {}).get("logical_tables") or []
+        materialized: List[Dict[str, Any]] = []
+        for logical_table in logical_tables:
+            if str(logical_table.get("merge_state") or "") != "confirmed":
+                continue
+            if not bool(logical_table.get("materializable", False)):
+                continue
+            materialized_table = self.logical_table_merger.materialize_logical_table(
+                structured_tables,
+                logical_tables,
+                logical_table.get("logical_table_id"),
+            )
+            if materialized_table is not None:
+                materialized.append(materialized_table)
+        return materialized
 
     @staticmethod
     def _same_value(left: Optional[float], right: Optional[float]) -> bool:
@@ -371,9 +398,18 @@ class TableGrounder:
             "report_type": metainfo.get("report_type"),
             "doc_source_type": metainfo.get("doc_source_type"),
             "table_id": cell.get("table_id"),
+            "source_table_id": cell.get("source_table_id") or cell.get("table_id"),
+            "logical_table_id": cell.get("logical_table_id"),
+            "logical_table_materialized": bool(cell.get("logical_table_materialized")),
+            "materialized_from_tables": list(cell.get("materialized_from_tables") or []),
+            "member_pages": list(cell.get("member_pages") or []),
+            "page_span": list(cell.get("page_span") or []),
             "page": cell.get("page"),
+            "source_page": cell.get("source_page") or cell.get("page"),
             "row_idx": cell.get("row_idx"),
+            "source_row_idx": cell.get("source_row_idx") or cell.get("row_idx"),
             "col_idx": cell.get("col_idx"),
+            "source_col_idx": cell.get("source_col_idx") or cell.get("col_idx"),
             "matched_row_headers": cell.get("matched_row_headers") or [],
             "matched_col_headers": cell.get("matched_col_headers") or [],
             "unit": unit_hint,
@@ -426,7 +462,8 @@ class TableGrounder:
                 if observed_code and str(observed_code) != str(filters.security_code):
                     continue
             structured_tables = document.get("content", {}).get("structured_tables") or []
-            for table in structured_tables:
+            grounding_tables = list(structured_tables) + self._materialized_tables(document)
+            for table in grounding_tables:
                 table_page = self._page_number(table.get("page"))
                 table_context = self._table_context(document, table, table_page)
                 for cell in table.get("cell_records") or []:
@@ -511,6 +548,28 @@ class TableGrounder:
                 "base_value": normalized_value,
                 "converted_value": best_match["answer_value"],
             }
+        if best_match.get("logical_table_materialized") and best_match.get("member_pages"):
+            logical_context_matches: List[Dict[str, Any]] = []
+            member_pages = list(best_match.get("member_pages") or [])
+            member_table_ids = list(best_match.get("materialized_from_tables") or [])
+            for index, member_page in enumerate(member_pages):
+                if member_page == best_match.get("page"):
+                    continue
+                context_match = dict(best_match)
+                context_match["page"] = member_page
+                if index < len(member_table_ids):
+                    context_match["table_id"] = member_table_ids[index]
+                    context_match["source_table_id"] = member_table_ids[index]
+                context_match["row_idx"] = None
+                context_match["col_idx"] = None
+                context_match["source_row_idx"] = None
+                context_match["source_col_idx"] = None
+                context_match["raw_value"] = None
+                context_match["normalized_value"] = None
+                context_match["answer_value"] = None
+                context_match["logical_context_support"] = True
+                logical_context_matches.append(context_match)
+            best_match["logical_context_matches"] = logical_context_matches
         if _is_revenue_question(question) and normalized_value is not None:
             support_candidates: List[Dict[str, Any]] = []
             best_key = (

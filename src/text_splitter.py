@@ -17,6 +17,7 @@ from src.pdfcrawl_metadata import (
     load_report_page_lookup,
     write_jsonl,
 )
+from src.logical_table_merger import LogicalTableMerger
 from src.text_normalization import contains_cjk, dedupe_preserve_order, normalize_period_token, parse_numeric_value
 
 
@@ -33,6 +34,7 @@ class TextSplitter():
     def __init__(self, child_chunk_size: int = 320, child_chunk_overlap: int = 50):
         self.child_chunk_size = child_chunk_size
         self.child_chunk_overlap = child_chunk_overlap
+        self.logical_table_merger = LogicalTableMerger()
         self._metadata_tag_fields = (
             "business_tags",
             "strategy_tags",
@@ -417,6 +419,12 @@ class TextSplitter():
             "chart_confidence": source_chunk.get("chart_confidence"),
             "has_chart_context": bool(source_chunk.get("has_chart_context")),
             "bbox": source_chunk.get("bbox"),
+            "logical_table_id": source_chunk.get("logical_table_id"),
+            "continuation_of": source_chunk.get("continuation_of"),
+            "logical_role": source_chunk.get("logical_role"),
+            "page_span": list(source_chunk.get("page_span") or []),
+            "merge_confidence": source_chunk.get("merge_confidence"),
+            "merge_state": source_chunk.get("merge_state"),
             "report_year": report_meta.get("report_year"),
             "currency": report_meta.get("currency"),
             "company_name": report_meta.get("company_name"),
@@ -484,11 +492,20 @@ class TextSplitter():
         
         tables_by_page = {}
         structured_tables: List[Dict[str, Any]] = []
+        logical_tables: List[Dict[str, Any]] = []
         if serialized_tables_report_path is not None:
             with open(serialized_tables_report_path, 'r', encoding='utf-8') as f:
                 parsed_report = json.load(f)
             tables_by_page = self._get_serialized_tables_by_page(parsed_report.get('tables', []))
             structured_tables = self._extract_structured_tables(parsed_report.get('tables', []))
+            structured_tables = self._enrich_structured_table_metadata(
+                structured_tables,
+                pages,
+                report_page_metadata=report_page_metadata,
+                report_meta=report_meta,
+            )
+            structured_tables, logical_tables = self.logical_table_merger.link_tables(structured_tables)
+            self._apply_logical_table_links_to_serialized_chunks(tables_by_page, structured_tables)
 
         charts = list(file_content.get("content", {}).get("charts") or [])
         charts_by_page = self._get_charts_by_page(charts)
@@ -539,6 +556,7 @@ class TextSplitter():
         file_content['content']['parent_chunks'] = parent_chunks
         file_content['content']['chunks'] = child_chunks
         file_content['content']['structured_tables'] = structured_tables
+        file_content['content']['logical_tables'] = logical_tables
         file_content['content']['chart_records'] = chart_records
         file_content['metainfo'] = report_meta
         return file_content
@@ -757,12 +775,90 @@ class TextSplitter():
                 {
                     "table_id": table.get("table_id"),
                     "page": table.get("page"),
+                    "bbox": list(table.get("bbox") or []),
+                    "nrows": table_data.get("num_rows") or table.get("#-rows"),
+                    "ncols": table_data.get("num_cols") or table.get("#-cols"),
                     "markdown": table.get("markdown", ""),
                     "html": table.get("html", ""),
+                    "caption": table.get("caption"),
+                    "unit_hint": self._extract_unit_hint(table.get("markdown", "")),
+                    "period": normalize_period_token(table.get("markdown", "")),
+                    "row_headers_by_row": {str(key): list(values) for key, values in row_headers_by_row.items()},
+                    "col_headers_by_col": {str(key): list(values) for key, values in col_headers_by_col.items()},
                     "cell_records": cell_records,
                 }
             )
         return structured_tables
+
+    def _enrich_structured_table_metadata(
+        self,
+        structured_tables: List[Dict[str, Any]],
+        pages: List[Dict[str, Any]],
+        *,
+        report_page_metadata: Optional[Dict[int, Dict[str, Any]]],
+        report_meta: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        page_lookup = {int(page["page"]): page for page in pages if page.get("page") is not None}
+        enriched_tables: List[Dict[str, Any]] = []
+        for table in structured_tables:
+            enriched = dict(table)
+            page_number = int(enriched.get("page"))
+            page = page_lookup.get(page_number, {"page": page_number, "text": ""})
+            page_metadata = (report_page_metadata or {}).get(page_number)
+            enriched["section_title"] = enriched.get("section_title") or self._get_page_section_title(page)
+            enriched["section_name"] = (
+                (page_metadata or {}).get("section_name")
+                or enriched.get("section_name")
+                or enriched.get("report_section")
+                or enriched.get("section_title")
+            )
+            enriched["report_section"] = (
+                enriched.get("report_section")
+                or (page_metadata or {}).get("section_path")
+                or enriched.get("section_name")
+            )
+            enriched["section_path"] = (
+                (page_metadata or {}).get("section_path")
+                or enriched.get("section_path")
+                or enriched.get("report_section")
+            )
+            enriched["section_leaf"] = (
+                (page_metadata or {}).get("section_leaf")
+                or enriched.get("section_leaf")
+                or enriched.get("section_name")
+            )
+            enriched["unit_hint"] = enriched.get("unit_hint") or self._extract_unit_hint(enriched.get("markdown", ""))
+            enriched["period"] = enriched.get("period") or normalize_period_token(enriched.get("markdown", ""))
+            for cell in enriched.get("cell_records") or []:
+                cell.setdefault("unit_hint", enriched.get("unit_hint"))
+                cell.setdefault("period", enriched.get("period"))
+            enriched_tables.append(enriched)
+        return enriched_tables
+
+    @staticmethod
+    def _apply_logical_table_links_to_serialized_chunks(
+        tables_by_page: Dict[int, List[Dict[str, Any]]],
+        structured_tables: List[Dict[str, Any]],
+    ) -> None:
+        logical_lookup = {
+            str(table.get("table_id")): table
+            for table in structured_tables
+            if table.get("table_id") is not None
+        }
+        for page_tables in tables_by_page.values():
+            for table in page_tables:
+                logical_table = logical_lookup.get(str(table.get("table_id")))
+                if not logical_table:
+                    continue
+                for field in (
+                    "logical_table_id",
+                    "continuation_of",
+                    "logical_role",
+                    "page_span",
+                    "merge_confidence",
+                    "merge_state",
+                ):
+                    table[field] = logical_table.get(field)
 
     def _build_chunk_metadata_rows(self, report_id: str, report: Dict[str, Any]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
@@ -791,6 +887,12 @@ class TextSplitter():
                     "section_title": chunk.get("section_title"),
                     "report_section": chunk.get("report_section"),
                     "table_id": chunk.get("table_id"),
+                    "logical_table_id": chunk.get("logical_table_id"),
+                    "continuation_of": chunk.get("continuation_of"),
+                    "logical_role": chunk.get("logical_role"),
+                    "page_span": chunk.get("page_span"),
+                    "merge_confidence": chunk.get("merge_confidence"),
+                    "merge_state": chunk.get("merge_state"),
                     "chart_id": chunk.get("chart_id"),
                     "picture_id": chunk.get("picture_id"),
                     "chart_type": chunk.get("chart_type"),
