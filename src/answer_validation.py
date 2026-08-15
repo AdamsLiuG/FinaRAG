@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from src.query_plan import QueryPlan
+from src.text_normalization import normalize_text
 
 
 _CONFIDENCE_ORDER = ["low", "medium", "high"]
@@ -23,6 +24,9 @@ _VALIDATION_FLAG_LABELS = {
     "chart_grounding_low_confidence": "图表 grounding 置信度较低",
     "chart_unit_mismatch": "图表单位与问题不一致",
     "chart_year_mismatch": "图表年份与问题不一致",
+    "implicit_intent_evidence_mismatch": "隐含意图缺少对应证据",
+    "metric_evidence_mismatch": "指标证据与问题不匹配",
+    "topk_result_count_mismatch": "top-k 返回数量不足",
     "no_retrieval_results": "未返回检索证据",
     "processing_error": "处理流程报错",
 }
@@ -48,6 +52,70 @@ def _union_metadata_flags(retrieval_results: List[Dict[str, Any]]) -> set[str]:
         metadata = result.get("metadata") or {}
         topic_flags.update(metadata.get("topic_flags") or [])
     return topic_flags
+
+
+def _retrieval_evidence_blob(retrieval_results: List[Dict[str, Any]]) -> str:
+    parts: List[str] = []
+    metadata_fields = (
+        "section_title",
+        "section_name",
+        "report_section",
+        "chunk_type",
+        "evidence_type",
+        "table_id",
+    )
+    list_metadata_fields = (
+        "topic_flags",
+        "business_tags",
+        "strategy_tags",
+        "factor_tags",
+        "matched_tags",
+        "retrieval_sources",
+        "matched_row_headers",
+        "matched_col_headers",
+    )
+    for result in retrieval_results:
+        if result.get("text"):
+            parts.append(str(result.get("text")))
+        metadata = result.get("metadata") or {}
+        for field in metadata_fields:
+            if metadata.get(field):
+                parts.append(str(metadata.get(field)))
+        for field in list_metadata_fields:
+            values = metadata.get(field)
+            if isinstance(values, list):
+                parts.extend(str(value) for value in values if value not in (None, ""))
+            elif values:
+                parts.append(str(values))
+        for field in ("matched_tags", "retrieval_sources"):
+            values = result.get(field)
+            if isinstance(values, list):
+                parts.extend(str(value) for value in values if value not in (None, ""))
+            elif values:
+                parts.append(str(values))
+    return normalize_text(" ".join(parts))
+
+
+def _evidence_contains_any_target(retrieval_results: List[Dict[str, Any]], targets: List[str]) -> bool:
+    normalized_blob = _retrieval_evidence_blob(retrieval_results)
+    if not normalized_blob:
+        return False
+    for target in targets:
+        normalized_target = normalize_text(str(target or ""))
+        if len(normalized_target) >= 2 and normalized_target in normalized_blob:
+            return True
+    return False
+
+
+def _topk_answer_count(final_answer: Any) -> int | None:
+    if isinstance(final_answer, list):
+        return len(final_answer)
+    if isinstance(final_answer, dict):
+        for key in ("items", "companies", "results", "top_k"):
+            value = final_answer.get(key)
+            if isinstance(value, list):
+                return len(value)
+    return None
 
 
 def _period_matches(requested_period: str | None, observed_period: str | None) -> bool:
@@ -119,6 +187,27 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
     if query_plan.topic_flags and topic_flags and not (set(query_plan.topic_flags) & topic_flags):
         validation_flags.append("topic_filter_weak_match")
         confidence = _downgrade_confidence(confidence)
+
+    if final_answer not in (None, "N/A", []) and retrieval_results:
+        evidence_targets = list(query_plan.evidence_targets or [])
+        if query_plan.task_type == "implicit_intent_qa" and evidence_targets:
+            if not _evidence_contains_any_target(retrieval_results, evidence_targets):
+                validation_flags.append("implicit_intent_evidence_mismatch")
+                confidence = _downgrade_confidence(confidence)
+
+        metric_targets = [query_plan.metric] if query_plan.metric else []
+        metric_targets.extend(evidence_targets)
+        if query_plan.task_type in {"single_metric_lookup", "metric_aggregation", "comparison"} and metric_targets:
+            has_structured_grounding = bool(table_grounding_result or chart_grounding_result)
+            if not has_structured_grounding and not _evidence_contains_any_target(retrieval_results, metric_targets):
+                validation_flags.append("metric_evidence_mismatch")
+                confidence = _downgrade_confidence(confidence)
+
+        if query_plan.operation == "top_k" and query_plan.limit:
+            answer_count = _topk_answer_count(final_answer)
+            if answer_count is not None and answer_count < query_plan.limit:
+                validation_flags.append("topk_result_count_mismatch")
+                confidence = _downgrade_confidence(confidence)
 
     if query_plan.expected_answer_type == "numeric" and final_answer not in (None, "N/A"):
         grounded_period = table_grounding_result.get("period")

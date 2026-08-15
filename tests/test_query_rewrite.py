@@ -74,6 +74,49 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertEqual(auto_plan.filters.industry_l1, "汽车")
         self.assertEqual(power_plan.filters.industry_l1, "电力、热力生产和供应业")
 
+    def test_rewrite_builds_metric_aggregation_intent_plan(self):
+        rewriter = QuestionRewriter()
+
+        plan = rewriter.rewrite(
+            "2024年新能源行业营收最高的前10家公司有哪些？",
+            schema="names",
+        )
+
+        self.assertEqual(plan.task_type, "metric_aggregation")
+        self.assertEqual(plan.route, "metric_fact_store")
+        self.assertEqual(plan.operation, "top_k")
+        self.assertEqual(plan.metric, "营业收入")
+        self.assertEqual(plan.filters.year, 2024)
+        self.assertEqual(plan.filters.industry_l1, "新能源")
+        self.assertEqual(plan.limit, 10)
+        self.assertEqual(plan.sort_order, "desc")
+        self.assertEqual(plan.expected_answer_type, "entity_list_with_values")
+        self.assertIn("主营业务收入", plan.evidence_targets)
+        self.assertEqual(plan.fallback_route, "table_grounding_then_rag")
+        self.assertGreaterEqual(plan.intent_confidence, 0.85)
+        self.assertEqual(plan.route_hints["task_type"], "metric_aggregation")
+        self.assertEqual(plan.route_hints["operation"], "top_k")
+        self.assertEqual(plan.route_hints["metric"], "营业收入")
+
+    def test_rewrite_turns_implicit_liquidity_question_into_evidence_queries(self):
+        rewriter = QuestionRewriter()
+
+        plan = rewriter.rewrite(
+            "宁德时代2024年现金压力大不大？",
+            schema="boolean",
+            company_name="宁德时代",
+        )
+
+        self.assertEqual(plan.task_type, "implicit_intent_qa")
+        self.assertEqual(plan.route, "metric_fact_store_plus_rag")
+        self.assertEqual(plan.operation, "assess")
+        self.assertEqual(plan.intent, "liquidity_pressure")
+        self.assertIn("经营活动现金流量净额", plan.evidence_targets)
+        self.assertIn("货币资金", plan.evidence_targets)
+        self.assertIn("短期借款", " ".join(plan.search_queries))
+        self.assertIn("偿债能力", " ".join(plan.search_queries))
+        self.assertEqual(plan.route_hints["implicit_intent"], "liquidity_pressure")
+
 
 if __name__ == "__main__":
     unittest.main()

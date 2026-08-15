@@ -113,7 +113,40 @@ class AnswerValidationTests(unittest.TestCase):
 
         self.assertIn("chart_grounding_low_confidence", validated.validation_flags)
         self.assertNotIn("numeric_answer_without_structured_grounding", validated.validation_flags)
+        self.assertNotIn("metric_evidence_mismatch", validated.validation_flags)
         self.assertEqual(validated.confidence, "low")
+
+    def test_implicit_intent_requires_target_evidence(self):
+        query_plan = QuestionRewriter().rewrite(
+            "宁德时代2024年现金压力大不大？",
+            schema="boolean",
+            company_name="宁德时代",
+        )
+        answer_dict = {
+            "final_answer": False,
+            "confidence": "high",
+            "relevant_pages": [18],
+            "references": [{"pdf_sha1": "300750_2024", "page_index": 18}],
+            "citations": [{"page": 18, "chunk_type": "text"}],
+        }
+        retrieval_results = [
+            {
+                "page": 18,
+                "distance": 0.8,
+                "text": "公司营业收入和净利润保持增长，管理层讨论了市场需求变化。",
+                "metadata": {
+                    "company_name": "宁德时代",
+                    "report_year": 2024,
+                    "topic_flags": [],
+                    "chunk_type": "text",
+                },
+            }
+        ]
+
+        validated = validate_answer(answer_dict, retrieval_results, query_plan)
+
+        self.assertIn("implicit_intent_evidence_mismatch", validated.validation_flags)
+        self.assertEqual(validated.confidence, "medium")
 
 
 if __name__ == "__main__":
