@@ -117,6 +117,29 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertIn("偿债能力", " ".join(plan.search_queries))
         self.assertEqual(plan.route_hints["implicit_intent"], "liquidity_pressure")
 
+    def test_no_caliber_pollution_expansion(self):
+        # D1 回归：营业收入问题的扩展查询不得含裸"收入"替换（口径放宽污染，可能命中其他业务收入证据），
+        # 扩展词域只来自原子库口径内 aliases——含"收入"的查询必须是"营业收入"或"主营业务收入"的组成部分。
+        rewriter = QuestionRewriter()
+        plan = rewriter.rewrite("SH600000在2024年年报里的营业收入是多少？", schema="number")
+        for query in plan.search_queries:
+            if "收入" in query:
+                self.assertTrue(
+                    "营业收入" in query or "主营业务收入" in query,
+                    f"口径污染扩展: {query}",
+                )
+        self.assertIn("主营业务收入", " ".join(plan.search_queries))
+
+    def test_metric_atom_intent_from_store(self):
+        # 原子库驱动意图解析：最长匹配保证扣非优先于归母；研发费用与研发投入口径分离（D2 回归）。
+        rewriter = QuestionRewriter()
+        plan = rewriter.rewrite("某公司2024年扣非归母净利润是多少？", schema="number")
+        self.assertEqual(plan.metric, "扣非归母净利润")
+        rd_expense = rewriter.rewrite("某公司2024年研发费用是多少？", schema="number")
+        self.assertEqual(rd_expense.metric, "研发费用")
+        rd_input = rewriter.rewrite("某公司2024年研发投入是多少？", schema="number")
+        self.assertEqual(rd_input.metric, "研发投入")
+
 
 if __name__ == "__main__":
     unittest.main()

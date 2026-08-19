@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Dict, List, Optional
 
+from src.metric_atoms import get_default_store
 from src.query_plan import QueryPlan, kind_to_expected_answer_type
 from src.retrieval_filters import RetrievalFilters
 from src.text_normalization import (
@@ -32,52 +33,8 @@ _CHINESE_NUMERAL_DIGITS = {
     "九": 9,
 }
 
-_METRIC_PATTERNS: Dict[str, Dict[str, List[str]]] = {
-    "扣非归母净利润": {
-        "aliases": ["扣非归母净利润", "扣非净利润", "归母扣非净利润"],
-        "evidence_targets": ["扣非归母净利润", "扣除非经常性损益后的净利润", "合并利润表"],
-    },
-    "归母净利润": {
-        "aliases": ["归母净利润", "母公司股东净利润", "归属于母公司股东的净利润", "归母"],
-        "evidence_targets": ["归母净利润", "归属于母公司股东的净利润", "合并利润表"],
-    },
-    "经营活动现金流量净额": {
-        "aliases": ["经营活动现金流量净额", "经营现金流净额", "经营性现金流净额", "经营现金流"],
-        "evidence_targets": ["经营活动现金流量净额", "现金流量表", "经营现金流"],
-    },
-    "营业收入": {
-        "aliases": ["营业收入", "营收", "主营业务收入"],
-        "evidence_targets": ["营业收入", "主营业务收入", "合并利润表"],
-    },
-    "货币资金": {
-        "aliases": ["货币资金", "现金及现金等价物"],
-        "evidence_targets": ["货币资金", "现金及现金等价物", "资产负债表"],
-    },
-    "短期借款": {
-        "aliases": ["短期借款", "短债"],
-        "evidence_targets": ["短期借款", "一年内到期的非流动负债", "流动负债"],
-    },
-    "总资产": {
-        "aliases": ["总资产", "资产总计"],
-        "evidence_targets": ["总资产", "资产总计", "资产负债表"],
-    },
-    "总负债": {
-        "aliases": ["总负债", "负债合计"],
-        "evidence_targets": ["总负债", "负债合计", "资产负债表"],
-    },
-    "研发投入": {
-        "aliases": ["研发投入", "研发费用"],
-        "evidence_targets": ["研发投入", "研发费用", "研发人员"],
-    },
-    "毛利率": {
-        "aliases": ["毛利率", "综合毛利率"],
-        "evidence_targets": ["毛利率", "综合毛利率", "主营业务收入"],
-    },
-    "资产负债率": {
-        "aliases": ["资产负债率", "负债率"],
-        "evidence_targets": ["资产负债率", "总资产", "总负债"],
-    },
-}
+# 指标知识已资产化至 config/metric_atoms.yaml（MetricAtomStore 驱动，见 _extract_metric），
+# 此处不再保留 _METRIC_PATTERNS：口径知识（aliases/evidence_targets/caliber_notes）单一来源。
 
 _IMPLICIT_INTENT_PATTERNS: Dict[str, Dict[str, Any]] = {
     "shareholder_return": {
@@ -102,18 +59,14 @@ _IMPLICIT_INTENT_PATTERNS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# 中文指标条目已由指标原子库接管（aliases 口径内扩展）；此处只保留非指标术语。
 _TERM_EXPANSIONS = {
     "operating margin": ["operating profit margin"],
     "gross margin": ["gross profit margin"],
     "share buyback": ["share repurchase", "repurchase program"],
     "mergers or acquisitions": ["m&a", "acquisition", "merger"],
-    "营业收入": ["营收", "收入"],
-    "归母净利润": ["母公司股东净利润", "归属于母公司股东的净利润", "归母"],
-    "扣非归母净利润": ["扣非净利润", "归母扣非净利润"],
-    "毛利率": ["综合毛利率"],
     "净利率": ["销售净利率"],
     "期间费用率": ["费用率"],
-    "经营活动现金流净额": ["经营现金流净额", "经营性现金流净额"],
     "分红": ["派息", "股利", "现金分红"],
     "回购": ["股份回购", "股票回购"],
     "并购": ["收购", "兼并", "并表交易"],
@@ -532,11 +485,12 @@ class QuestionRewriter:
         )
 
     def _extract_metric(self, normalized_question: str) -> tuple[Optional[str], List[str]]:
-        for metric, config in _METRIC_PATTERNS.items():
-            aliases = config.get("aliases") or []
-            if any(normalize_text(alias) in normalized_question for alias in aliases):
-                return metric, list(config.get("evidence_targets") or [metric])
-        return None, []
+        # LLM-Wiki 指标原子库驱动：最长匹配保证"扣非归母净利润"优先于"归母净利润"命中，
+        # 不再依赖 dict 插入顺序；口径内 aliases 杜绝跨口径误触（研发投入 vs 研发费用）。
+        atom = get_default_store().find_metric(normalized_question)
+        if atom is None:
+            return None, []
+        return atom.standard_name, list(atom.evidence_targets or [atom.standard_name])
 
     def _extract_implicit_intent(self, normalized_question: str) -> tuple[Optional[str], List[str]]:
         for intent, config in _IMPLICIT_INTENT_PATTERNS.items():
@@ -785,6 +739,19 @@ class QuestionRewriter:
 
     def _expand_financial_terms(self, question: str) -> List[str]:
         expansions: List[str] = []
+        # 原子驱动的口径内扩展：命中指标原子时，以 aliases 替换生成扩展查询；
+        # aliases 均为同口径表述，杜绝"营业收入→收入"式口径放宽污染（扩展词域唯一来源是原子库）。
+        atom_match = get_default_store().find_metric_with_term(normalize_text(question))
+        if atom_match is not None:
+            atom, _ = atom_match
+            source_term = next((term for term in atom.match_terms if term in question), None)
+            if source_term is not None:
+                for alias in atom.aliases:
+                    if alias == source_term:
+                        continue
+                    replaced = question.replace(source_term, alias)
+                    if replaced != question:
+                        expansions.append(replaced)
         lowered = question.lower()
         for term, synonyms in _TERM_EXPANSIONS.items():
             if term.lower() not in lowered and term not in question:
