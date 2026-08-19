@@ -1,0 +1,31 @@
+# topic_flags 命名空间契约（FinaWiki 标签层）
+# 单一来源：查询侧词表 key、打标侧收集范围、数据集元数据字段名三者共用此命名空间。
+# flags 取自 data/*/subset.csv 表头并集（17 项）；query_side 标记查询侧是否已有问法词表。
+version: "1.0"
+
+flags:
+  - {name: mentions_recent_mergers_and_acquisitions, query_side: true,  description: 并购与收购}
+  - {name: has_leadership_changes,                   query_side: true,  description: 管理层变动}
+  - {name: has_dividend_policy_changes,              query_side: true,  description: 分红政策变动}
+  - {name: has_share_buyback_plans,                  query_side: true,  description: 股份回购计划}
+  - {name: has_guidance_updates,                     query_side: true,  description: 业绩指引更新}
+  - {name: has_regulatory_or_litigation_issues,      query_side: true,  description: 监管与诉讼}
+  - {name: has_layoffs,                              query_side: false, description: 裁员}
+  - {name: has_executive_compensation,               query_side: false, description: 高管薪酬}
+  - {name: has_rnd_investment_numbers,               query_side: false, description: 研发投入数据}
+  - {name: has_new_product_launches,                 query_side: false, description: 新产品发布}
+  - {name: has_capital_expenditures,                 query_side: false, description: 资本开支}
+  - {name: has_financial_performance_indicators,     query_side: false, description: 财务绩效指标}
+  - {name: has_capital_structure_changes,            query_side: false, description: 资本结构变动}
+  - {name: mentions_new_risk_factors,                query_side: false, description: 新增风险因素}
+  - {name: has_strategic_restructuring,              query_side: false, description: 战略重组}
+  - {name: has_supply_chain_disruptions,             query_side: false, description: 供应链中断}
+  - {name: has_esg_initiatives,                      query_side: false, description: ESG 举措}
+
+# 内部技术字段：前缀与 topic flag 碰巧一致，但不得当作 topic flag 收集。
+# 缺省的前缀匹配会把 has_pdfcrawl_metadata 误打进每个 chunk 的 topic_flags（命名空间污染）。
+reserved_non_flags:
+  - has_pdfcrawl_metadata
+  - has_table_context
+  - has_chart_context
+  - has_literal_evidence

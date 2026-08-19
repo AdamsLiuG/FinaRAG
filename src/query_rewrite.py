@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from src.analysis_playbooks import build_playbook_payload, get_default_playbook_store
 from src.metric_atoms import get_default_store
 from src.query_plan import QueryPlan, kind_to_expected_answer_type
+from src.topic_flag_contract import assert_topic_patterns_valid
 from src.retrieval_filters import RetrievalFilters
 from src.text_normalization import (
     dedupe_preserve_order,
@@ -113,6 +114,10 @@ _TOPIC_PATTERNS = {
         "调查",
     ],
 }
+
+# 契约校验置于 import 期：词表 key 与数据集 flag 命名空间不一致时立即失败，
+# 而不是运行期生成永远匹配不到 chunk 的 required_topic_flags（静默失败）。
+assert_topic_patterns_valid(_TOPIC_PATTERNS)
 
 _EXCHANGE_PATTERNS = {
     "上海证券交易所": ["上海证券交易所", "上交所", "sse"],

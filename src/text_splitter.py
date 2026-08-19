@@ -19,6 +19,7 @@ from src.pdfcrawl_metadata import (
 )
 from src.logical_table_merger import LogicalTableMerger
 from src.text_normalization import contains_cjk, dedupe_preserve_order, normalize_period_token, parse_numeric_value
+from src.topic_flag_contract import filter_report_topic_flags
 
 
 _COMPANY_LABEL_EVIDENCE_ALIASES = {
@@ -146,11 +147,9 @@ class TextSplitter():
         return tables_by_page
 
     def _report_topic_flags(self, report_meta: Dict[str, any]) -> List[str]:
-        return sorted(
-            key
-            for key, value in report_meta.items()
-            if key.startswith(("has_", "mentions_")) and str(value).strip().lower() == "true"
-        )
+        # 按契约白名单收集：前缀匹配会把内部技术字段（如 has_pdfcrawl_metadata）
+        # 误打成 topic flag，污染每个 chunk 的知识字段。
+        return filter_report_topic_flags(report_meta)
 
     def _coerce_list(self, value: Any) -> List[Any]:
         if value is None:
