@@ -37,6 +37,7 @@ class QueryPlan:
     limit: Optional[int] = None
     sort_order: Optional[str] = None
     intent: Optional[str] = None
+    playbook: Optional[Dict[str, Any]] = None
     evidence_targets: List[str] = field(default_factory=list)
     fallback_route: Optional[str] = None
     intent_confidence: float = 0.5

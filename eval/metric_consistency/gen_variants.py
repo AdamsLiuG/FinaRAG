@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.analysis_playbooks import get_default_playbook_store  # noqa: E402
 from src.metric_atoms import MetricAtom, get_default_store  # noqa: E402
 
 
@@ -67,6 +68,27 @@ def build_variants(company: str, year: int) -> list[dict]:
     return variants
 
 
+def build_intent_variants(company: str, year: int, max_forms: int = 3) -> list[dict]:
+    """隐含意图变体：同一剧本的不同问法应命中同一剧本并覆盖全部必需指标。"""
+    store = get_default_playbook_store()
+    variants = []
+    for playbook in store.all_playbooks():
+        for form in playbook.question_forms[:max_forms]:
+            variants.append(
+                {
+                    "playbook_id": playbook.playbook_id,
+                    "intent": playbook.intent,
+                    "question": f"{company}{year}年{form}？",
+                    "schema": "boolean",
+                    "company": company,
+                    "year": year,
+                    "expect_intent": playbook.intent,
+                    "required_metrics": list(playbook.required_metrics),
+                }
+            )
+    return variants
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="生成口径一致性变体查询集")
     parser.add_argument("--company", default="示例公司", help="公司名（按数据集实际填写）")
@@ -75,6 +97,7 @@ def main() -> None:
     args = parser.parse_args()
 
     variants = build_variants(args.company, args.year)
+    variants.extend(build_intent_variants(args.company, args.year))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as fh:

@@ -40,10 +40,13 @@ def check_level1(variants: List[Dict]) -> Dict:
     store = get_default_store()
     metric_total = 0
     definition_total = 0
+    intent_total = 0
     intent_hits = 0
     atom_mounted = 0
     pollution_violations: List[str] = []
     definition_routes = 0
+    playbook_intent_hits = 0
+    playbook_metric_mounted = 0
 
     for variant in variants:
         plan = rewriter.rewrite(variant["question"], schema=variant.get("schema", "number"))
@@ -52,6 +55,20 @@ def check_level1(variants: List[Dict]) -> Dict:
             definition_total += 1
             if plan.route == expect_route:
                 definition_routes += 1
+            continue
+
+        expect_intent = variant.get("expect_intent")
+        if expect_intent:
+            # 剧本变体：同一意图的不同问法应命中同一剧本，且必需指标引用完整挂载
+            intent_total += 1
+            if plan.intent == expect_intent:
+                playbook_intent_hits += 1
+            payload = plan.playbook or {}
+            expected_metrics = set(variant.get("required_metrics") or [])
+            if expected_metrics and expected_metrics == set(payload.get("required_metrics") or []):
+                playbook_metric_mounted += 1
+            elif not expected_metrics and payload.get("playbook_id"):
+                playbook_metric_mounted += 1
             continue
 
         metric_total += 1
@@ -72,14 +89,21 @@ def check_level1(variants: List[Dict]) -> Dict:
     atom_by_id = {atom.atom_id: atom for atom in store.all_atoms()}
     return {
         "level": 1,
-        "total_variants": metric_total + definition_total,
+        "total_variants": metric_total + definition_total + intent_total,
         "metric_variants": metric_total,
         "definition_variants": definition_total,
+        "intent_variants": intent_total,
         "intent_hit_rate": round(intent_hits / metric_total, 4) if metric_total else None,
         "atom_mounted_rate": round(atom_mounted / metric_total, 4) if metric_total else None,
         "caliber_pollution_violations": pollution_violations,
         "definition_route_rate": (
             round(definition_routes / definition_total, 4) if definition_total else None
+        ),
+        "playbook_intent_hit_rate": (
+            round(playbook_intent_hits / intent_total, 4) if intent_total else None
+        ),
+        "playbook_metric_mount_rate": (
+            round(playbook_metric_mounted / intent_total, 4) if intent_total else None
         ),
         "atom_count": len(atom_by_id),
         "notes": "Level1 检查不依赖 API 与数据集；Level2（口径一致率/答案一致率）需端到端环境。",

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from tqdm import tqdm
 
+from src.analysis_playbooks import build_playbook_hint
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.chart_grounding import ChartGrounder
@@ -1767,22 +1768,26 @@ class QuestionsProcessor:
 
     @staticmethod
     def _build_metric_caliber_hint(query_plan: QueryPlan) -> Optional[str]:
-        # FinaWiki 口径注入：命中指标原子时把口径定义与易混淆提示注入 system prompt；未命中零成本
+        # FinaWiki 知识注入：指标口径（单指标查询）+ 分析判断依据（隐含意图问答）；均按需注入，未命中零成本
+        hints: List[str] = []
         payload = getattr(query_plan, "metric_atom", None) or {}
         standard_name = payload.get("standard_name")
-        if not standard_name:
-            return None
-        parts = [f"【指标口径提示】{standard_name}：{payload.get('definition')}"]
-        caliber_notes = payload.get("caliber_notes")
-        if caliber_notes:
-            parts.append(str(caliber_notes).rstrip("。") + "。")
-        confusable_names = payload.get("confusable_names") or []
-        if confusable_names:
-            parts.append(
-                f"易混淆口径：{'、'.join(confusable_names)}。若上下文证据为上述其他口径而非 {standard_name}，"
-                "请在 answer 中标注实际口径或返回 N/A，禁止混用口径作答。"
-            )
-        return "".join(parts)
+        if standard_name:
+            parts = [f"【指标口径提示】{standard_name}：{payload.get('definition')}"]
+            caliber_notes = payload.get("caliber_notes")
+            if caliber_notes:
+                parts.append(str(caliber_notes).rstrip("。") + "。")
+            confusable_names = payload.get("confusable_names") or []
+            if confusable_names:
+                parts.append(
+                    f"易混淆口径：{'、'.join(confusable_names)}。若上下文证据为上述其他口径而非 {standard_name}，"
+                    "请在 answer 中标注实际口径或返回 N/A，禁止混用口径作答。"
+                )
+            hints.append("".join(parts))
+        playbook_hint = build_playbook_hint(getattr(query_plan, "playbook", None) or {})
+        if playbook_hint:
+            hints.append(playbook_hint)
+        return "\n".join(hints) if hints else None
 
     def _answer_metric_definition_question(
         self,

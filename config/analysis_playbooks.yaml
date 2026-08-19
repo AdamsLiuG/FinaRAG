@@ -1,0 +1,46 @@
+# 分析剧本库（FinaWiki 取证规划层，服务隐含意图问答）
+# 命名约定：playbook_id 前缀 PLB；required_metrics 只填合法 MET- ID，加载时校验引用可解析
+#   ——分析方法不得脱离指标事实基础；evidence_keywords 存放无对应指标原子的叙述性证据词。
+# 双粒度展开：检索用各原子 standard_name（精确简短），校验用各原子完整 evidence_targets（宽松覆盖别名）。
+version: "1.0"
+
+playbooks:
+  - playbook_id: PLB-001
+    intent: shareholder_return
+    question_forms: [股东回报, 对股东怎么样, 回报股东, 分红怎么样, 回购怎么样]
+    required_metrics: []
+    evidence_keywords: [现金分红, 利润分配预案, 股份回购, 每10股派发]
+    judgment: 现金分红总额与分红率是否稳定或提升；是否有回购计划及执行进度；分配预案是否经董事会通过
+    pitfalls: 分红预案未实施时不得表述为已分红；高分红率需结合经营现金流判断可持续性
+
+  - playbook_id: PLB-002
+    intent: liquidity_pressure
+    question_forms: [现金压力, 流动性压力, 偿债压力, 短期偿债, 资金压力]
+    required_metrics: [MET-003, MET-005, MET-006, MET-011]
+    evidence_keywords: [偿债能力]
+    judgment: 货币资金/短期借款低于 1 提示压力；经营活动现金流量净额连续为负加重压力；资产负债率显著高于同业加重压力
+    pitfalls: 货币资金含受限资金时会高估偿债能力；须区分短期借款与一年内到期的非流动负债
+
+  - playbook_id: PLB-003
+    intent: operating_performance
+    question_forms: [经营状况, 经营情况, 经营表现, 业绩表现]
+    required_metrics: [MET-004, MET-002, MET-010, MET-003]
+    evidence_keywords: []
+    judgment: 营业收入与归母净利润的增减方向是否一致；毛利率是否稳定；经营活动现金流量净额与归母净利润是否背离（背离提示盈余质量风险）
+    pitfalls: 仅看收入增长不足以判断经营质量，须同时核对利润与现金流
+
+  - playbook_id: PLB-004
+    intent: growth_quality
+    question_forms: [成长性, 增长质量, 增长怎么样, 发展质量]
+    required_metrics: [MET-004, MET-002, MET-009]
+    evidence_keywords: [营业收入增长率, 净利润增长率, 新增订单]
+    judgment: 收入与利润增速是否匹配（利润增速显著低于收入提示费用或价格压力）；研发投入强度是否支撑长期增长
+    pitfalls: 单一年度增速受基数影响大；须区分内生增长与并表贡献
+
+  - playbook_id: PLB-005
+    intent: risk_exposure
+    question_forms: [风险大不大, 主要风险, 风险暴露, 合规风险]
+    required_metrics: [MET-011]
+    evidence_keywords: [风险因素, 诉讼, 监管, 减值]
+    judgment: 风险提示章节披露的重大风险项；是否存在重大诉讼或监管处罚；是否有大额资产减值；资产负债率水平
+    pitfalls: 风险提示章节多为格式化表述，须结合重要事项与诉讼披露判断实质风险

@@ -107,6 +107,30 @@ def _evidence_contains_any_target(retrieval_results: List[Dict[str, Any]], targe
     return False
 
 
+def _playbook_metric_coverage(query_plan, retrieval_results: List[Dict[str, Any]]) -> Optional[float]:
+    """剧本必需指标的证据覆盖率（无剧本或无必需指标时返回 None）。
+
+    校验粒度用各原子完整 evidence_targets（宽松覆盖别名与报表名），与检索粒度区分。
+    """
+    payload = getattr(query_plan, "playbook", None) or {}
+    intent = payload.get("intent")
+    if not intent:
+        return None
+    try:
+        from src.analysis_playbooks import get_default_playbook_store
+
+        store = get_default_playbook_store()
+    except Exception:
+        return None
+    playbook = store.get_by_intent(str(intent))
+    if playbook is None or not playbook.required_metrics:
+        return None
+    hits, total = store.metric_coverage(playbook, _retrieval_evidence_blob(retrieval_results))
+    if not total:
+        return None
+    return hits / total
+
+
 def _topk_answer_count(final_answer: Any) -> int | None:
     if isinstance(final_answer, list):
         return len(final_answer)
@@ -194,6 +218,12 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
             if not _evidence_contains_any_target(retrieval_results, evidence_targets):
                 validation_flags.append("implicit_intent_evidence_mismatch")
                 confidence = _downgrade_confidence(confidence)
+            else:
+                # 剧本必需指标覆盖度：部分命中时不算完全不匹配，但据不完整证据给结论同样需降级
+                coverage = _playbook_metric_coverage(query_plan, retrieval_results)
+                if coverage is not None and coverage < 0.5:
+                    validation_flags.append("implicit_intent_evidence_incomplete")
+                    confidence = _downgrade_confidence(confidence)
 
         metric_targets = [query_plan.metric] if query_plan.metric else []
         metric_targets.extend(evidence_targets)

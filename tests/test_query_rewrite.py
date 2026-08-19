@@ -160,6 +160,25 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertTrue(payload.get("definition"))
         self.assertIn("归母净利润", payload.get("confusable_names") or [])
 
+    def test_playbook_payload_mounted_for_implicit_intent(self):
+        # 剧本挂载：隐含意图问答携带必需指标引用与判断依据，供生成阶段注入
+        rewriter = QuestionRewriter()
+        plan = rewriter.rewrite(
+            "宁德时代2024年现金压力大不大？",
+            schema="boolean",
+            company_name="宁德时代",
+        )
+        payload = plan.playbook or {}
+        self.assertEqual(payload.get("playbook_id"), "PLB-002")
+        self.assertEqual(payload.get("intent"), "liquidity_pressure")
+        self.assertIn("MET-005", payload.get("required_metrics") or [])
+        self.assertIn("货币资金", payload.get("metric_names") or [])
+        self.assertTrue(payload.get("judgment"))
+        self.assertEqual(plan.route_hints["playbook_id"], "PLB-002")
+        # 单指标查询不挂剧本
+        lookup = rewriter.rewrite("某公司2024年货币资金是多少？", schema="number")
+        self.assertIsNone(lookup.playbook)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,12 +1,15 @@
 {
   "level": 1,
-  "total_variants": 38,
+  "total_variants": 53,
   "metric_variants": 26,
   "definition_variants": 12,
+  "intent_variants": 15,
   "intent_hit_rate": 1.0,
   "atom_mounted_rate": 1.0,
   "caliber_pollution_violations": [],
   "definition_route_rate": 1.0,
+  "playbook_intent_hit_rate": 1.0,
+  "playbook_metric_mount_rate": 1.0,
   "atom_count": 12,
   "notes": "Level1 检查不依赖 API 与数据集；Level2（口径一致率/答案一致率）需端到端环境。"
 }

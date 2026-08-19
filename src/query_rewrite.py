@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Dict, List, Optional
 
+from src.analysis_playbooks import build_playbook_payload, get_default_playbook_store
 from src.metric_atoms import get_default_store
 from src.query_plan import QueryPlan, kind_to_expected_answer_type
 from src.retrieval_filters import RetrievalFilters
@@ -36,28 +37,8 @@ _CHINESE_NUMERAL_DIGITS = {
 # 指标知识已资产化至 config/metric_atoms.yaml（MetricAtomStore 驱动，见 _extract_metric），
 # 此处不再保留 _METRIC_PATTERNS：口径知识（aliases/evidence_targets/caliber_notes）单一来源。
 
-_IMPLICIT_INTENT_PATTERNS: Dict[str, Dict[str, Any]] = {
-    "shareholder_return": {
-        "patterns": ["股东回报", "对股东怎么样", "回报股东", "分红怎么样", "回购怎么样"],
-        "evidence_targets": ["现金分红", "利润分配预案", "股份回购", "每10股派发"],
-    },
-    "liquidity_pressure": {
-        "patterns": ["现金压力", "流动性压力", "偿债压力", "短期偿债", "资金压力"],
-        "evidence_targets": ["经营活动现金流量净额", "货币资金", "短期借款", "资产负债率", "偿债能力"],
-    },
-    "operating_performance": {
-        "patterns": ["经营状况", "经营情况", "经营表现", "业绩表现"],
-        "evidence_targets": ["营业收入", "归母净利润", "毛利率", "经营活动现金流量净额"],
-    },
-    "growth_quality": {
-        "patterns": ["成长性", "增长质量", "增长怎么样", "发展质量"],
-        "evidence_targets": ["营业收入增长率", "净利润增长率", "研发投入", "新增订单"],
-    },
-    "risk_exposure": {
-        "patterns": ["风险大不大", "主要风险", "风险暴露", "合规风险"],
-        "evidence_targets": ["风险因素", "诉讼", "监管", "资产负债率", "减值"],
-    },
-}
+# 隐含意图知识已资产化至 config/analysis_playbooks.yaml（PlaybookStore 驱动，见 _extract_implicit_intent），
+# 此处不再保留 _IMPLICIT_INTENT_PATTERNS：分析方法（必需指标/判断依据/误区）单一来源。
 
 # 中文指标条目已由指标原子库接管（aliases 口径内扩展）；此处只保留非指标术语。
 _TERM_EXPANSIONS = {
@@ -344,6 +325,12 @@ class QuestionRewriter:
                         if (conf := store.get(ref)) is not None
                     ],
                 }
+        playbook_payload: Optional[Dict[str, Any]] = None
+        if intent_result.intent:
+            playbook_store = get_default_playbook_store()
+            playbook = playbook_store.get_by_intent(intent_result.intent)
+            if playbook is not None:
+                playbook_payload = build_playbook_payload(playbook, playbook_store)
         route_hints = {
             "currency": filters.currency,
             "year": filters.year,
@@ -364,6 +351,7 @@ class QuestionRewriter:
             "limit": intent_result.limit,
             "sort_order": intent_result.sort_order,
             "implicit_intent": intent_result.intent,
+            "playbook_id": (playbook_payload or {}).get("playbook_id"),
             "evidence_targets": evidence_targets,
             "fallback_route": intent_result.fallback_route,
             "intent_confidence": intent_result.intent_confidence,
@@ -388,6 +376,7 @@ class QuestionRewriter:
             limit=intent_result.limit,
             sort_order=intent_result.sort_order,
             intent=intent_result.intent,
+            playbook=playbook_payload,
             evidence_targets=evidence_targets,
             fallback_route=intent_result.fallback_route,
             intent_confidence=intent_result.intent_confidence,
@@ -524,11 +513,13 @@ class QuestionRewriter:
         return atom.standard_name, list(atom.evidence_targets or [atom.standard_name])
 
     def _extract_implicit_intent(self, normalized_question: str) -> tuple[Optional[str], List[str]]:
-        for intent, config in _IMPLICIT_INTENT_PATTERNS.items():
-            patterns = config.get("patterns") or []
-            if any(normalize_text(pattern) in normalized_question for pattern in patterns):
-                return intent, list(config.get("evidence_targets") or [])
-        return None, []
+        # FinaWiki 分析剧本驱动：证据词由 required_metrics 展开（知识引用替代字符串复制），
+        # 检索粒度取各原子 standard_name + 叙述性关键词，保持查询精确简短。
+        store = get_default_playbook_store()
+        playbook = store.find_playbook(normalized_question)
+        if playbook is None:
+            return None, []
+        return playbook.intent, store.search_targets(playbook)
 
     def _extract_operation(
         self,
