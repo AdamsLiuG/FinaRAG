@@ -1,10 +1,10 @@
-"""指标原子蒸馏挖掘：LLM 生成草稿 + 规则校验 + 人工校准入口（P3a）。
+"""指标原子扩容：LLM 生成草稿 + 规则校验 + 人工校准入口。
 
-生产链路复刻（XX公司 LLM-Wiki 链路的个人项目版）：
-    多源素材（语料/会计准则）→ LLM 提炼原子草稿 → 规则质检（本模块 validate_atom_drafts）
+生产链路：多源素材（语料/会计准则）→ LLM 提炼原子草稿 → 规则质检（本模块 validate_atom_drafts）
     → 人工校准 → 合入 config/metric_atoms.yaml 正式入库。
 
 校验器独立于 LLM 调用，可单测；LLM 调用需 API key（scripts/mine_metric_atoms.py CLI）。
+质检与提炼应使用不同模型（生产者不自批）。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from src.metric_atoms import MetricAtomStore
 
-# 口径放宽词黑名单：aliases 中出现即拒绝（同 Phase 1 的 D1 修复原则）
+# 口径放宽词黑名单：aliases 中出现即拒绝（同指标层的口径内扩展原则）
 _ALIAS_REJECT_TERMS = ("收入", "利润", "费用", "现金流")
 
 MINE_SYSTEM_PROMPT = """你是金融指标知识工程专家。请从给定的语料/领域知识中提炼金融指标口径原子，

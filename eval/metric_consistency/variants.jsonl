@@ -1,38 +1,38 @@
-{"atom_id": "K1-MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的扣非归母净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-001", "standard_name": "扣非归母净利润", "question": "扣非归母净利润是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的扣非净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的归母扣非净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归母净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-002", "standard_name": "归母净利润", "question": "归母净利润是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归属于母公司股东的净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归母是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营活动现金流量净额是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-003", "standard_name": "经营活动现金流量净额", "question": "经营活动现金流量净额是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营活动现金流净额是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营现金流是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的营业收入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-004", "standard_name": "营业收入", "question": "营业收入是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的营收是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的主营业务收入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-005", "standard_name": "货币资金", "question": "宁德时代2024年年报的货币资金是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-005", "standard_name": "货币资金", "question": "货币资金是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-005", "standard_name": "货币资金", "question": "宁德时代2024年年报的现金及现金等价物是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-006", "standard_name": "短期借款", "question": "宁德时代2024年年报的短期借款是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-006", "standard_name": "短期借款", "question": "短期借款是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-006", "standard_name": "短期借款", "question": "宁德时代2024年年报的短债是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-007", "standard_name": "总资产", "question": "宁德时代2024年年报的总资产是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-007", "standard_name": "总资产", "question": "总资产是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-007", "standard_name": "总资产", "question": "宁德时代2024年年报的资产总计是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-008", "standard_name": "总负债", "question": "宁德时代2024年年报的总负债是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-008", "standard_name": "总负债", "question": "总负债是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-008", "standard_name": "总负债", "question": "宁德时代2024年年报的负债合计是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-009", "standard_name": "研发投入", "question": "宁德时代2024年年报的研发投入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-009", "standard_name": "研发投入", "question": "研发投入是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-012", "standard_name": "研发费用", "question": "宁德时代2024年年报的研发费用是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-012", "standard_name": "研发费用", "question": "研发费用是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-010", "standard_name": "毛利率", "question": "宁德时代2024年年报的毛利率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-010", "standard_name": "毛利率", "question": "毛利率是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-010", "standard_name": "毛利率", "question": "宁德时代2024年年报的综合毛利率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-011", "standard_name": "资产负债率", "question": "宁德时代2024年年报的资产负债率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
-{"atom_id": "K1-MET-011", "standard_name": "资产负债率", "question": "资产负债率是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
-{"atom_id": "K1-MET-011", "standard_name": "资产负债率", "question": "宁德时代2024年年报的负债率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的扣非归母净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-001", "standard_name": "扣非归母净利润", "question": "扣非归母净利润是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的扣非净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-001", "standard_name": "扣非归母净利润", "question": "宁德时代2024年年报的归母扣非净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归母净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-002", "standard_name": "归母净利润", "question": "归母净利润是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归属于母公司股东的净利润是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-002", "standard_name": "归母净利润", "question": "宁德时代2024年年报的归母是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营活动现金流量净额是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-003", "standard_name": "经营活动现金流量净额", "question": "经营活动现金流量净额是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营活动现金流净额是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-003", "standard_name": "经营活动现金流量净额", "question": "宁德时代2024年年报的经营现金流是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的营业收入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-004", "standard_name": "营业收入", "question": "营业收入是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的营收是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-004", "standard_name": "营业收入", "question": "宁德时代2024年年报的主营业务收入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-005", "standard_name": "货币资金", "question": "宁德时代2024年年报的货币资金是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-005", "standard_name": "货币资金", "question": "货币资金是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-005", "standard_name": "货币资金", "question": "宁德时代2024年年报的现金及现金等价物是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-006", "standard_name": "短期借款", "question": "宁德时代2024年年报的短期借款是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-006", "standard_name": "短期借款", "question": "短期借款是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-006", "standard_name": "短期借款", "question": "宁德时代2024年年报的短债是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-007", "standard_name": "总资产", "question": "宁德时代2024年年报的总资产是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-007", "standard_name": "总资产", "question": "总资产是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-007", "standard_name": "总资产", "question": "宁德时代2024年年报的资产总计是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-008", "standard_name": "总负债", "question": "宁德时代2024年年报的总负债是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-008", "standard_name": "总负债", "question": "总负债是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-008", "standard_name": "总负债", "question": "宁德时代2024年年报的负债合计是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-009", "standard_name": "研发投入", "question": "宁德时代2024年年报的研发投入是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-009", "standard_name": "研发投入", "question": "研发投入是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-012", "standard_name": "研发费用", "question": "宁德时代2024年年报的研发费用是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-012", "standard_name": "研发费用", "question": "研发费用是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-010", "standard_name": "毛利率", "question": "宁德时代2024年年报的毛利率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-010", "standard_name": "毛利率", "question": "毛利率是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-010", "standard_name": "毛利率", "question": "宁德时代2024年年报的综合毛利率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-011", "standard_name": "资产负债率", "question": "宁德时代2024年年报的资产负债率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}
+{"atom_id": "MET-011", "standard_name": "资产负债率", "question": "资产负债率是什么口径？和易混淆指标有什么区别？", "schema": "text", "company": "宁德时代", "year": 2024, "expect_route": "metric_atom_store"}
+{"atom_id": "MET-011", "standard_name": "资产负债率", "question": "宁德时代2024年年报的负债率是多少？", "schema": "number", "company": "宁德时代", "year": 2024}

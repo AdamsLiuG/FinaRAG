@@ -1,4 +1,4 @@
-"""金融指标口径原子库（LLM-Wiki K1 层）。
+"""金融指标口径原子库（FinaWiki 指标层）。
 
 知识资产（config/metric_atoms.yaml）驱动，替代散落在 query_rewrite.py 的硬编码指标模式。
 设计要点：
@@ -118,7 +118,7 @@ def build_caliber_hint(atom: MetricAtom, store: MetricAtomStore) -> str:
     """生成阶段口径注入文本（追加至 system prompt 尾部）。
 
     按需注入原则：仅 QueryPlan 命中指标原子时由调用方生成，未命中时零 token 成本。
-    消歧分支：confusable 原子存在时，提示模型按证据实际口径区分作答（P3d）。
+    消歧分支：confusable 原子存在时，提示模型按证据实际口径区分作答。
     """
     parts = [f"【指标口径提示】{atom.standard_name}：{atom.definition}"]
     if atom.caliber_notes:

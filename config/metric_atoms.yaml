@@ -1,32 +1,32 @@
-# 金融指标口径原子库（LLM-Wiki K1 层）
-# 命名约定：atom_id 前缀 K1-MET；aliases 仅收同口径表述，禁止口径放宽（如"营业收入"不得挂"收入"）；
+# 金融指标口径原子库（FinaWiki 指标层，服务查询理解与答案校验）
+# 命名约定：atom_id 前缀 MET；aliases 仅收同口径表述，禁止口径放宽（如"营业收入"不得挂"收入"）；
 # caliber_notes/confusable_with/pitfalls 服务两处：检索扩展过滤与生成阶段口径注入。
 version: "1.0"
 
 atoms:
-  - atom_id: K1-MET-001
+  - atom_id: MET-001
     standard_name: 扣非归母净利润
     aliases: [扣非归母净利润, 扣非净利润, 归母扣非净利润]
     definition: 归母净利润扣除非经常性损益后的部分，反映主营业务持续盈利能力
     caliber_notes: 与归母净利润区分——未扣除非经常性损益（政府补助、处置资产收益等）
     unit: 元
     statement_location: 合并利润表/主要财务指标
-    confusable_with: [K1-MET-002]
+    confusable_with: [MET-002]
     pitfalls: 部分报告简称"扣非净利润"时默认指归母口径，需结合上下文确认
     evidence_targets: [扣非归母净利润, 扣除非经常性损益后的净利润, 合并利润表]
 
-  - atom_id: K1-MET-002
+  - atom_id: MET-002
     standard_name: 归母净利润
     aliases: [归母净利润, 母公司股东净利润, 归属于母公司股东的净利润, 归母]
     definition: 净利润扣除少数股东损益后归属母公司股东的部分
     caliber_notes: 与净利润区分（后者含少数股东损益）；与扣非归母净利润区分（后者再扣非经常性损益）
     unit: 元
     statement_location: 合并利润表
-    confusable_with: [K1-MET-001]
+    confusable_with: [MET-001]
     pitfalls: 部分研报"净利润"默认指归母口径，需核对报告口径声明
     evidence_targets: [归母净利润, 归属于母公司股东的净利润, 合并利润表]
 
-  - atom_id: K1-MET-003
+  - atom_id: MET-003
     standard_name: 经营活动现金流量净额
     aliases: [经营活动现金流量净额, 经营活动现金流净额, 经营现金流净额, 经营性现金流净额, 经营现金流]
     definition: 经营活动现金流入减去现金流出的净额，收付实现制口径
@@ -37,7 +37,7 @@ atoms:
     pitfalls: 现金流量表补充资料提供净利润调节为经营现金流的桥接表，是验证口径的首选证据
     evidence_targets: [经营活动现金流量净额, 现金流量表, 经营现金流]
 
-  - atom_id: K1-MET-004
+  - atom_id: MET-004
     standard_name: 营业收入
     aliases: [营业收入, 营收, 主营业务收入]
     definition: 主营业务收入与其他业务收入之和
@@ -48,7 +48,7 @@ atoms:
     pitfalls: 旧准则下"主营业务收入"不含其他业务收入，与现口径存在历史口径差异
     evidence_targets: [营业收入, 主营业务收入, 合并利润表]
 
-  - atom_id: K1-MET-005
+  - atom_id: MET-005
     standard_name: 货币资金
     aliases: [货币资金, 现金及现金等价物]
     definition: 库存现金、银行存款与其他货币资金之和
@@ -59,7 +59,7 @@ atoms:
     pitfalls: 货币资金高不等于流动性无忧，需关注受限资金与短期债务到期结构
     evidence_targets: [货币资金, 现金及现金等价物, 资产负债表]
 
-  - atom_id: K1-MET-006
+  - atom_id: MET-006
     standard_name: 短期借款
     aliases: [短期借款, 短债]
     definition: 一年内到期需偿还的借款本金
@@ -70,51 +70,51 @@ atoms:
     pitfalls: 短期借款激增需结合货币资金与经营现金流评估滚动续借风险
     evidence_targets: [短期借款, 一年内到期的非流动负债, 流动负债]
 
-  - atom_id: K1-MET-007
+  - atom_id: MET-007
     standard_name: 总资产
     aliases: [总资产, 资产总计]
     definition: 企业拥有或控制的全部资产合计
     caliber_notes: 合并口径含少数股东权益对应的资产；与归母口径股东权益区分
     unit: 元
     statement_location: 合并资产负债表
-    confusable_with: [K1-MET-008]
+    confusable_with: [MET-008]
     pitfalls: 资产总计科目名在部分报告中写作"资产总计"而非"总资产"
     evidence_targets: [总资产, 资产总计, 资产负债表]
 
-  - atom_id: K1-MET-008
+  - atom_id: MET-008
     standard_name: 总负债
     aliases: [总负债, 负债合计]
     definition: 企业全部负债合计
     caliber_notes: 与资产负债率联动——资产负债率=总负债/总资产
     unit: 元
     statement_location: 合并资产负债表
-    confusable_with: [K1-MET-007]
+    confusable_with: [MET-007]
     pitfalls: 负债合计含递延所得税负债等非付息项目，付息负债口径需单独计算
     evidence_targets: [总负债, 负债合计, 资产负债表]
 
-  - atom_id: K1-MET-009
+  - atom_id: MET-009
     standard_name: 研发投入
     aliases: [研发投入]
     definition: 研发费用（费用化部分）与资本化研发支出之和
     caliber_notes: 与研发费用严格区分——研发投入含资本化部分，数值通常大于研发费用
     unit: 元
     statement_location: 主要财务指标/经营情况讨论
-    confusable_with: [K1-MET-012]
+    confusable_with: [MET-012]
     pitfalls: 研发投入占比是科创属性评价的核心口径，混用研发费用会低估投入
     evidence_targets: [研发投入, 研发人员]
 
-  - atom_id: K1-MET-012
+  - atom_id: MET-012
     standard_name: 研发费用
     aliases: [研发费用]
     definition: 费用化计入当期损益的研发支出
     caliber_notes: 与研发投入区分——研发投入=研发费用+资本化研发支出
     unit: 元
     statement_location: 合并利润表
-    confusable_with: [K1-MET-009]
+    confusable_with: [MET-009]
     pitfalls: 利润表科目为"研发费用"，年报"研发投入"口径更宽
     evidence_targets: [研发费用, 合并利润表]
 
-  - atom_id: K1-MET-010
+  - atom_id: MET-010
     standard_name: 毛利率
     aliases: [毛利率, 综合毛利率]
     definition: (营业收入-营业成本)/营业收入×100%
@@ -125,7 +125,7 @@ atoms:
     pitfalls: 毛利率异常波动优先排查会计政策变更与业务结构变化
     evidence_targets: [毛利率, 综合毛利率, 主营业务收入]
 
-  - atom_id: K1-MET-011
+  - atom_id: MET-011
     standard_name: 资产负债率
     aliases: [资产负债率, 负债率]
     definition: 总负债/总资产×100%

@@ -171,7 +171,7 @@ def _table_scope_score(question: str, table_context: str) -> float:
 
 
 def _metric_statement_prior_score(question: str, table_context: str) -> float:
-    """LLM-Wiki 知识先验：问题命中指标原子时，按其 statement_location 给匹配报表的表格加分。
+    """FinaWiki 取证先验：问题命中指标原子时，按其 statement_location 给匹配报表的表格加分。
 
     如归母净利润问题优先命中合并利润表/主要财务指标，而非分部信息表——
     从硬编码权重（_table_scope_score 仅覆盖营收）走向知识驱动的报表定位。

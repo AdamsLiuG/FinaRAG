@@ -433,7 +433,7 @@ class QuestionRewriter:
             )
 
         if metric and self._is_metric_definition_question(normalized_question):
-            # LLM-Wiki 分层路由：指标定义类问题直达原子库，不走检索（结构化优先、语义兑底）
+            # FinaWiki 分层路由：指标定义类问题直达原子库，不走检索（结构化优先、语义兜底）
             return IntentParseResult(
                 task_type="definition_qa",
                 route="metric_atom_store",
@@ -516,7 +516,7 @@ class QuestionRewriter:
         )
 
     def _extract_metric(self, normalized_question: str) -> tuple[Optional[str], List[str]]:
-        # LLM-Wiki 指标原子库驱动：最长匹配保证"扣非归母净利润"优先于"归母净利润"命中，
+        # FinaWiki 指标原子库驱动：最长匹配保证"扣非归母净利润"优先于"归母净利润"命中，
         # 不再依赖 dict 插入顺序；口径内 aliases 杜绝跨口径误触（研发投入 vs 研发费用）。
         atom = get_default_store().find_metric(normalized_question)
         if atom is None:

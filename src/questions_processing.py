@@ -1767,7 +1767,7 @@ class QuestionsProcessor:
 
     @staticmethod
     def _build_metric_caliber_hint(query_plan: QueryPlan) -> Optional[str]:
-        # LLM-Wiki 口径注入：命中指标原子时把口径定义与易混淆提示注入 system prompt；未命中零成本
+        # FinaWiki 口径注入：命中指标原子时把口径定义与易混淆提示注入 system prompt；未命中零成本
         payload = getattr(query_plan, "metric_atom", None) or {}
         standard_name = payload.get("standard_name")
         if not standard_name:
@@ -1791,7 +1791,7 @@ class QuestionsProcessor:
         schema: str,
         route_decision: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        # LLM-Wiki 分层路由：指标定义类问题由原子库直接回答（结构化优先、语义兑底），不走检索；
+        # FinaWiki 分层路由：指标定义类问题由原子库直接回答（结构化优先、语义兜底），不走检索；
         # 未命中原子或 schema 不适配（非 text）时回落通用 RAG 路径（fail-closed）。
         query_plan: QueryPlan = route_decision["query_plan"]
         if query_plan.route != "metric_atom_store" or (schema or "").lower() != "text":
