@@ -1765,6 +1765,84 @@ class QuestionsProcessor:
             reasoning=reasoning,
         )
 
+    @staticmethod
+    def _build_metric_caliber_hint(query_plan: QueryPlan) -> Optional[str]:
+        # LLM-Wiki 口径注入：命中指标原子时把口径定义与易混淆提示注入 system prompt；未命中零成本
+        payload = getattr(query_plan, "metric_atom", None) or {}
+        standard_name = payload.get("standard_name")
+        if not standard_name:
+            return None
+        parts = [f"【指标口径提示】{standard_name}：{payload.get('definition')}"]
+        caliber_notes = payload.get("caliber_notes")
+        if caliber_notes:
+            parts.append(str(caliber_notes).rstrip("。") + "。")
+        confusable_names = payload.get("confusable_names") or []
+        if confusable_names:
+            parts.append(
+                f"易混淆口径：{'、'.join(confusable_names)}。若上下文证据为上述其他口径而非 {standard_name}，"
+                "请在 answer 中标注实际口径或返回 N/A，禁止混用口径作答。"
+            )
+        return "".join(parts)
+
+    def _answer_metric_definition_question(
+        self,
+        *,
+        question: str,
+        schema: str,
+        route_decision: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        # LLM-Wiki 分层路由：指标定义类问题由原子库直接回答（结构化优先、语义兑底），不走检索；
+        # 未命中原子或 schema 不适配（非 text）时回落通用 RAG 路径（fail-closed）。
+        query_plan: QueryPlan = route_decision["query_plan"]
+        if query_plan.route != "metric_atom_store" or (schema or "").lower() != "text":
+            return None
+        payload = query_plan.metric_atom or {}
+        standard_name = payload.get("standard_name")
+        if not standard_name:
+            return None
+        answer_lines = [f"{standard_name}：{payload.get('definition')}。"]
+        caliber_notes = payload.get("caliber_notes")
+        if caliber_notes:
+            answer_lines.append(f"口径说明：{str(caliber_notes).rstrip('。')}。")
+        confusable_names = payload.get("confusable_names") or []
+        if confusable_names:
+            answer_lines.append(f"注意与以下易混淆口径区分：{'、'.join(confusable_names)}。")
+        if payload.get("unit"):
+            answer_lines.append(f"计量单位：{payload['unit']}。")
+        answer_text = "\n".join(answer_lines)
+        route_info = dict(route_decision.get("route_info") or {})
+        route_info["route_mode"] = "metric_atom_store"
+        route_info["metric_atom_id"] = payload.get("atom_id")
+        reasoning = (
+            f"定义类问题命中指标原子 {payload.get('atom_id')}（{standard_name}），"
+            "由口径原子库直接回答，未触发检索。"
+        )
+        return {
+            "final_answer": answer_text,
+            "relevant_pages": [],
+            "references": [],
+            "citations": [],
+            "confidence": "high",
+            "confidence_reason": "答案来自指标口径原子库（人工校准的领域知识），非检索生成。",
+            "reasoning_summary": reasoning,
+            "step_by_step_analysis": reasoning if self.reasoning_debug_enabled else "",
+            "search_queries": query_plan.search_queries,
+            "query_plan": query_plan.to_dict(),
+            "route_info": route_info,
+            "candidate_pool_size_before_rerank": None,
+            "reranking_strategy": self.reranking_strategy,
+            "initial_candidate_pool_size": None,
+            "colbert_candidate_pool_size": None,
+            "colbert_top_n": self.colbert_top_n if self.reranking_strategy == "cascade" else None,
+            "final_reranking_backend": self.final_reranking_backend or os.getenv("RERANKING_BACKEND", "llm_prompt").lower(),
+            "hyde": self._build_hyde_debug_payload(retrieval_results=[], candidate_pool_size_before_rerank=None),
+            "retrieval_pages": [],
+            "retrieval_results": [],
+            "retrieval_report_groups": {},
+            "response_data": {},
+            "validation_flags": [],
+        }
+
     def _answer_metadata_count_question(
         self,
         *,
@@ -2998,6 +3076,7 @@ class QuestionsProcessor:
                 schema=schema,
                 model=self.answering_model,
                 temperature=self.answer_temperature,
+                metric_caliber_hint=self._build_metric_caliber_hint(rewrite_result),
             )
             self.response_data = dict(getattr(self.api_processor, "response_data", {}) or {})
 
@@ -3074,6 +3153,14 @@ class QuestionsProcessor:
                 route_decision["companies"],
                 schema,
             )
+
+        definition_answer = self._answer_metric_definition_question(
+            question=question,
+            schema=schema,
+            route_decision=route_decision,
+        )
+        if definition_answer is not None:
+            return definition_answer
 
         metadata_count_answer = self._answer_metadata_count_question(
             question=question,

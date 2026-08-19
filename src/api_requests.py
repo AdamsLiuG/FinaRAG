@@ -1349,8 +1349,11 @@ class APIProcessor:
             **kwargs
         )
 
-    def get_answer_from_rag_context(self, question, rag_context, schema, model, temperature: float = 0):
+    def get_answer_from_rag_context(self, question, rag_context, schema, model, temperature: float = 0, metric_caliber_hint: Optional[str] = None):
         system_prompt, response_format, user_prompt = self._build_rag_context_prompts(schema)
+        if metric_caliber_hint:
+            # LLM-Wiki 口径注入：命中指标原子时把口径定义与易混淆提示拼入 system prompt
+            system_prompt = f"{system_prompt}\n{metric_caliber_hint}"
         if not isinstance(rag_context, str):
             rag_context = json.dumps(rag_context, ensure_ascii=False, indent=2)
         

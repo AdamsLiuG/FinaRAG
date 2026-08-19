@@ -140,6 +140,26 @@ class QueryRewriteTests(unittest.TestCase):
         rd_input = rewriter.rewrite("某公司2024年研发投入是多少？", schema="number")
         self.assertEqual(rd_input.metric, "研发投入")
 
+    def test_definition_qa_routes_to_atom_store(self):
+        # P3c 分层路由：定义类问题直达原子库，不走检索；数据查询类仍走 metric 流水线
+        rewriter = QuestionRewriter()
+        plan = rewriter.rewrite("归母净利润是什么口径？和易混淆指标有什么区别？", schema="text")
+        self.assertEqual(plan.task_type, "definition_qa")
+        self.assertEqual(plan.route, "metric_atom_store")
+        self.assertEqual(plan.operation, "define")
+        self.assertEqual(plan.metric, "归母净利润")
+        lookup = rewriter.rewrite("某公司2024年归母净利润是多少？", schema="number")
+        self.assertEqual(lookup.task_type, "single_metric_lookup")
+
+    def test_metric_atom_payload_mounted(self):
+        # P2 原子挂载：数字问题的 QueryPlan.metric_atom 携带完整口径知识供生成注入
+        rewriter = QuestionRewriter()
+        plan = rewriter.rewrite("某公司2024年扣非归母净利润是多少？", schema="number")
+        payload = plan.metric_atom or {}
+        self.assertEqual(payload.get("atom_id"), "K1-MET-001")
+        self.assertTrue(payload.get("definition"))
+        self.assertIn("归母净利润", payload.get("confusable_names") or [])
+
 
 if __name__ == "__main__":
     unittest.main()

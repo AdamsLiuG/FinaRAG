@@ -32,6 +32,7 @@ class QueryPlan:
     route: str = "general_rag"
     operation: Optional[str] = None
     metric: Optional[str] = None
+    metric_atom: Optional[Dict[str, Any]] = None
     scope: Dict[str, Any] = field(default_factory=dict)
     limit: Optional[int] = None
     sort_order: Optional[str] = None

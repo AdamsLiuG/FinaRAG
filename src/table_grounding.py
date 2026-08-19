@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.logical_table_merger import LogicalTableMerger
+from src.metric_atoms import get_default_store
 from src.retrieval_filters import RetrievalFilters
 from src.text_normalization import normalize_text, parse_numeric_value, tokenize_for_bm25
 
@@ -167,6 +168,28 @@ def _table_scope_score(question: str, table_context: str) -> float:
     if any(term in compact for term in ("关联方", "分部信息", "按产品", "按地区", "母公司")):
         score -= 3.0
     return score
+
+
+def _metric_statement_prior_score(question: str, table_context: str) -> float:
+    """LLM-Wiki 知识先验：问题命中指标原子时，按其 statement_location 给匹配报表的表格加分。
+
+    如归母净利润问题优先命中合并利润表/主要财务指标，而非分部信息表——
+    从硬编码权重（_table_scope_score 仅覆盖营收）走向知识驱动的报表定位。
+    """
+    atom = get_default_store().find_metric(normalize_text(question))
+    if atom is None or not atom.statement_location:
+        return 0.0
+    compact = _compact_text(table_context)
+    keywords = [piece.strip() for piece in re.split(r"[/／]", atom.statement_location) if piece.strip()]
+    for keyword in keywords:
+        if keyword and keyword in compact:
+            return 2.5
+    # 弱命中：statement_location 为"合并利润表"时，"利润表"也视为报表类型匹配
+    weak_keywords = [keyword.replace("合并", "") for keyword in keywords if keyword.startswith("合并")]
+    for keyword in weak_keywords:
+        if keyword and keyword in compact:
+            return 1.5
+    return 0.0
 
 
 def _convert_to_target_unit(value: Optional[float], target_unit: Optional[str]) -> Optional[float]:
@@ -484,6 +507,7 @@ class TableGrounder:
                     score += _score_overlap(query_tokens, col_text) * 1.8
                     score += _score_overlap(query_tokens, table_context) * 0.8
                     score += _table_scope_score(question, table_context)
+                    score += _metric_statement_prior_score(question, table_context)
                     if _is_revenue_question(question):
                         compact_row = _compact_text(row_text)
                         compact_table = _compact_text(table_context)

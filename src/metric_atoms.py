@@ -114,6 +114,28 @@ class MetricAtomStore:
         return len(self._atoms)
 
 
+def build_caliber_hint(atom: MetricAtom, store: MetricAtomStore) -> str:
+    """生成阶段口径注入文本（追加至 system prompt 尾部）。
+
+    按需注入原则：仅 QueryPlan 命中指标原子时由调用方生成，未命中时零 token 成本。
+    消歧分支：confusable 原子存在时，提示模型按证据实际口径区分作答（P3d）。
+    """
+    parts = [f"【指标口径提示】{atom.standard_name}：{atom.definition}"]
+    if atom.caliber_notes:
+        parts.append(atom.caliber_notes.rstrip("。") + "。")
+    confusable_names = [
+        conf.standard_name
+        for ref in atom.confusable_with
+        if (conf := store.get(ref)) is not None
+    ]
+    if confusable_names:
+        parts.append(
+            f"易混淆口径：{'、'.join(confusable_names)}。若上下文证据为上述其他口径而非 "
+            f"{atom.standard_name}，请在 answer 中标注实际口径或返回 N/A，禁止混用口径作答。"
+        )
+    return "".join(parts)
+
+
 _DEFAULT_STORE: Optional[MetricAtomStore] = None
 
 

@@ -1,6 +1,6 @@
 # FinaRAG × LLM-Wiki：金融指标口径原子库改造方案
 
-> 分支：`feature/llm-wiki-metric-atoms`
+> 分支：`feature/llm-wiki-metric-atoms`（Phase 1/2/3 均已实施，见文末实施结果）
 > 方法论来源：XX公司实习（四K全书知识工程化改造）→ 淘天（工业级知识治理）→ 本方案（方法论迁移到个人项目）
 > 核心判断：**LLM-Wiki 不替代 RAG，只接管 RAG 管不好的那部分知识**——判据：错不起（口径唯一）、反复用（高频）、相对稳（不随文档集变）、RAG 管不好（语义近似命中不一致版本）。
 
@@ -172,6 +172,33 @@ src/metric_atoms.py::MetricAtomStore（最长匹配索引 + 口径内扩展词�
 
 | 节点 | 内容 | 面试叙事增量 |
 |---|---|---|
-| M1（Phase 1） | 原子库 + D1/D2/D3 修复 + 回归测试 | "迁移顺手修了三个隐藏口径缺陷"——对标兜底条款故事 |
-| M2（Phase 2） | 口径注入 + 前后对比数据 | "设计评测→量化验证"闭环 + 数字 |
-| M3（Phase 3a） | 50+ 原子 + 蒸馏链路 | 知识生产规模化，三段经历矩阵中间格完全坐实 |
+| M1（Phase 1）✅ | 原子库 + D1/D2/D3 修复 + 回归测试 | "迁移顺手修了三个隐藏口径缺陷"——对标兑底条款故事 |
+| M2（Phase 2）✅ | 口径注入 + 分层路由 + Level1 评测 100% | "设计评测→量化验证"闭环 + 数字 |
+| M3（Phase 3）✅ | 蒸馏链路 + grounding 先验 + definition 路由 | 知识生产规模化链路就绪，三段经历矩阵中间格坐实 |
+
+## 实施结果（2026-08-19）
+
+**Phase 1（commit 5638af1）**：12 原子入库、MetricAtomStore 最长匹配、D1/D2/D3 修复，11 个新增回归测试。
+
+**Phase 2**：
+- `QueryPlan.metric_atom` 原子挂载（definition/caliber_notes/confusable_names）；
+- 生成侧口径注入：`get_answer_from_rag_context(metric_caliber_hint=...)`，命中原子才注入（未命中零 token 成本）；
+- 校验侧：`metric_evidence_mismatch` 已随 Phase 1 由原子库驱动（读 QueryPlan.evidence_targets）；
+- 评测：`eval/metric_consistency/`（gen_variants 38 变体 + Level1 评测）——
+
+| 指标 | 结果 |
+|---|---|
+| 意图命中率（26 数值变体） | **100%** |
+| 原子挂载率 | **100%** |
+| 口径污染违规 | **0**（旧实现会产生"…收入是多少"污染查询） |
+| 定义类分层路由命中率（12 变体） | **100%** |
+
+**Phase 3**：
+- 3a 蒸馏链路：`src/metric_atom_mining.py`（规则校验器：口径放宽词拒绝/重叠检测/字段校验）+ `scripts/mine_metric_atoms.py` CLI（需 API key）；
+- 3b grounding 先验：`_metric_statement_prior_score`（statement_location 强命中+2.5/弱命中+1.5）；
+- 3c 分层路由：definition_qa → metric_atom_store，原子直接回答（含 fail-closed 回落）；
+- 3d 消歧提示：融入口径注入文本（confusable 分支指令）。
+
+**测试**：32/32 相关测试全绿；全量 268 测试中 6 个失败为历史遗留环境依赖（多 GPU/vLLM/量化/数据集，stash 验证与本次改动无关）。
+
+**待办（需环境）**：Level2 端到端口径一致率/答案一致率（API key + 数据集）；蒸馏扩原子 12→50+（跑 mine_metric_atoms.py + 人工校准）。

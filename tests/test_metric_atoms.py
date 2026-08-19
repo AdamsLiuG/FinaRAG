@@ -1,6 +1,11 @@
 import unittest
 
-from src.metric_atoms import MetricAtomStore, get_default_store, reset_default_store
+from src.metric_atoms import (
+    MetricAtomStore,
+    build_caliber_hint,
+    get_default_store,
+    reset_default_store,
+)
 
 
 class MetricAtomStoreTests(unittest.TestCase):
@@ -61,6 +66,29 @@ class MetricAtomStoreTests(unittest.TestCase):
         # 研发投入的 aliases 不含 standard_name 时，match_terms 仍须覆盖它
         atom = self.store.get("K1-MET-009")
         self.assertIn("研发投入", atom.match_terms)
+
+
+class CaliberHintTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.store = get_default_store()
+
+    def test_hint_with_confusable(self):
+        # 生成阶段口径注入（P2）：含定义+口径说明+易混淆分支（P3d 消歧）
+        atom = self.store.get("K1-MET-002")
+        hint = build_caliber_hint(atom, self.store)
+        self.assertIn("【指标口径提示】归母净利润", hint)
+        self.assertIn("净利润扣除少数股东损益", hint)
+        self.assertIn("易混淆口径", hint)
+        self.assertIn("扣非归母净利润", hint)
+        self.assertIn("禁止混用口径", hint)
+
+    def test_hint_without_confusable(self):
+        # 营业收入原子 confusable_with 为空，hint 不应含消歧分支
+        atom = self.store.get("K1-MET-004")
+        hint = build_caliber_hint(atom, self.store)
+        self.assertIn("营业收入", hint)
+        self.assertNotIn("易混淆口径", hint)
 
 
 class DefaultStoreTests(unittest.TestCase):

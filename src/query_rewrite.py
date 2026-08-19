@@ -327,6 +327,23 @@ class QuestionRewriter:
 
         scope = intent_result.normalized_scope()
         evidence_targets = intent_result.normalized_evidence_targets()
+        metric_atom_payload: Optional[Dict[str, Any]] = None
+        if intent_result.metric:
+            store = get_default_store()
+            atom = store.find_metric(normalized_query)
+            if atom is not None:
+                metric_atom_payload = {
+                    "atom_id": atom.atom_id,
+                    "standard_name": atom.standard_name,
+                    "definition": atom.definition,
+                    "caliber_notes": atom.caliber_notes,
+                    "unit": atom.unit,
+                    "confusable_names": [
+                        conf.standard_name
+                        for ref in atom.confusable_with
+                        if (conf := store.get(ref)) is not None
+                    ],
+                }
         route_hints = {
             "currency": filters.currency,
             "year": filters.year,
@@ -366,6 +383,7 @@ class QuestionRewriter:
             route=intent_result.route,
             operation=intent_result.operation,
             metric=intent_result.metric,
+            metric_atom=metric_atom_payload,
             scope=scope,
             limit=intent_result.limit,
             sort_order=intent_result.sort_order,
@@ -412,6 +430,19 @@ class QuestionRewriter:
                 evidence_targets=metric_targets,
                 fallback_route="table_grounding_then_rag",
                 intent_confidence=0.9 if operation == "top_k" else 0.84,
+            )
+
+        if metric and self._is_metric_definition_question(normalized_question):
+            # LLM-Wiki 分层路由：指标定义类问题直达原子库，不走检索（结构化优先、语义兑底）
+            return IntentParseResult(
+                task_type="definition_qa",
+                route="metric_atom_store",
+                operation="define",
+                metric=metric,
+                scope=scope,
+                evidence_targets=metric_targets,
+                fallback_route="general_rag",
+                intent_confidence=0.9,
             )
 
         if self._is_metadata_aggregation_intent(question, normalized_question, schema, tag_filters):
@@ -634,6 +665,13 @@ class QuestionRewriter:
         if (schema or "").lower() == "boolean":
             return "membership"
         return "list"
+
+    @staticmethod
+    def _is_metric_definition_question(normalized_question: str) -> bool:
+        return any(
+            token in normalized_question
+            for token in ("是什么", "什么意思", "指什么", "有何区别", "有什么区别", "什么区别", "口径")
+        )
 
     @staticmethod
     def _is_summary_question(normalized_question: str) -> bool:
