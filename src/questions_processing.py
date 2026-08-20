@@ -1107,19 +1107,38 @@ class QuestionsProcessor:
         candidate_doc_ids: Optional[List[str]] = None,
         backend_scope: str = "all",
     ) -> List[Tuple[str, List[Dict]]]:
-        retrieval_runs: List[Tuple[str, List[Dict]]] = []
-        for search_query in search_queries:
-            if not str(search_query or "").strip():
-                continue
-            results = retriever.retrieve_candidates_by_company_name(
-                company_name=company_name,
-                query=search_query,
-                top_n=max(self.llm_reranking_sample_size, self.retrieval_debug_top_n),
-                parent_retrieval_mode=self.parent_retrieval_mode,
-                filters=filters,
-                candidate_doc_ids=candidate_doc_ids,
-                backend_scope=backend_scope,
+        # A2 层 3：多查询并行。线程预算：内层四路并行固定 4 workers，
+        # 外层 = RETRIEVAL_MAX_THREADS // 4（默认 8 → 2 条查询并行），两层乘积
+        # 不超过全局上限。
+        cleaned_queries = [q for q in search_queries if str(q or "").strip()]
+        if not cleaned_queries:
+            return []
+        retrieve_kwargs = dict(
+            top_n=max(self.llm_reranking_sample_size, self.retrieval_debug_top_n),
+            parent_retrieval_mode=self.parent_retrieval_mode,
+            filters=filters,
+            candidate_doc_ids=candidate_doc_ids,
+            backend_scope=backend_scope,
+        )
+
+        def _run_single_query(search_query: str) -> List[Dict]:
+            return retriever.retrieve_candidates_by_company_name(
+                company_name=company_name, query=search_query, **retrieve_kwargs
             )
+
+        parallel = getattr(retriever, "_parallel_backends_enabled", False)
+        if parallel and len(cleaned_queries) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+
+            max_threads = int(os.getenv("RETRIEVAL_MAX_THREADS", "8"))
+            outer_workers = max(1, max_threads // 4)
+            with ThreadPoolExecutor(max_workers=min(len(cleaned_queries), outer_workers)) as pool:
+                mapped = list(pool.map(_run_single_query, cleaned_queries))
+        else:
+            mapped = [_run_single_query(q) for q in cleaned_queries]
+
+        retrieval_runs: List[Tuple[str, List[Dict]]] = []
+        for search_query, results in zip(cleaned_queries, mapped):
             if results:
                 retrieval_runs.append((search_query, results))
         return retrieval_runs

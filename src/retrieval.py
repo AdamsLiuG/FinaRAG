@@ -4,6 +4,7 @@ import os
 import pickle
 import threading
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple
 
@@ -820,6 +821,10 @@ class HybridRetriever:
         self.use_sparse_lexical_db = use_sparse_lexical_db
         self.use_tag_db = use_tag_db
         self.fusion_method = os.getenv("HYBRID_RETRIEVAL_FUSION", "rrf").strip().lower()
+        # A2 层 2 四路并行开关：0/false 关闭回到串行（串行路径保持旧异常传播语义）
+        self._parallel_backends_enabled = (
+            os.getenv("HYBRID_RETRIEVAL_PARALLEL", "1").strip().lower() not in {"0", "false", "no"}
+        )
         self.rrf_k = int(os.getenv("HYBRID_RETRIEVAL_RRF_K", "60"))
         self.reranking_strategy = (reranking_strategy or "single").strip().lower()
         if self.reranking_strategy not in {"single", "cascade"}:
@@ -974,6 +979,43 @@ class HybridRetriever:
         merged_results.sort(key=lambda item: item["distance"], reverse=True)
         return merged_results[:top_n]
 
+    @staticmethod
+    def _safe_backend_retrieve(name: str, retriever, retrieve_kwargs: Dict) -> List[Dict]:
+        """单路检索的并行容器：异常降级为空结果并记 warning（单路失败不拖垮整体）。"""
+        try:
+            return retriever.retrieve_by_company_name(**retrieve_kwargs)
+        except Exception as exc:
+            _log.warning("检索路 %s 失败，降级为空结果（%s: %s）", name, type(exc).__name__, exc)
+            return []
+
+    def _retrieve_backends_serial(
+        self, backends: List[Tuple[str, object, bool]], retrieve_kwargs: Dict
+    ) -> Dict[str, List[Dict]]:
+        """串行回退路径：保持旧语义（一路抛错整体失败）。"""
+        results: Dict[str, List[Dict]] = {}
+        for name, retriever, enabled in backends:
+            if retriever is None or not enabled:
+                continue
+            results[name] = retriever.retrieve_by_company_name(**retrieve_kwargs)
+        return results
+
+    def _retrieve_backends_parallel(
+        self, backends: List[Tuple[str, object, bool]], retrieve_kwargs: Dict
+    ) -> Dict[str, List[Dict]]:
+        """四路并行：每路 _safe_backend_retrieve 独立降级；结果按路名收集（确定性）。"""
+        enabled_backends = [(name, retriever) for name, retriever, enabled in backends if retriever is not None and enabled]
+        if not enabled_backends:
+            return {}
+        results: Dict[str, List[Dict]] = {}
+        with ThreadPoolExecutor(max_workers=min(4, len(enabled_backends))) as pool:
+            futures = {
+                name: pool.submit(self._safe_backend_retrieve, name, retriever, retrieve_kwargs)
+                for name, retriever in enabled_backends
+            }
+            for name, future in futures.items():
+                results[name] = future.result()
+        return results
+
     def retrieve_candidates_by_company_name(
         self,
         company_name: str,
@@ -994,45 +1036,34 @@ class HybridRetriever:
         sparse_results: List[Dict] = []
         tag_results: List[Dict] = []
 
-        if self.vector_retriever is not None:
-            vector_results = self.vector_retriever.retrieve_by_company_name(
-                company_name=company_name,
-                query=query,
-                top_n=top_n,
-                parent_retrieval_mode=parent_retrieval_mode,
-                filters=filters,
-                candidate_doc_ids=candidate_doc_ids,
-            )
-
-        if backend_scope == "all" and self.bm25_retriever is not None:
-            bm25_results = self.bm25_retriever.retrieve_by_company_name(
-                company_name=company_name,
-                query=query,
-                top_n=top_n,
-                parent_retrieval_mode=parent_retrieval_mode,
-                filters=filters,
-                candidate_doc_ids=candidate_doc_ids,
-            )
-
-        if backend_scope == "all" and self.sparse_retriever is not None:
-            sparse_results = self.sparse_retriever.retrieve_by_company_name(
-                company_name=company_name,
-                query=query,
-                top_n=top_n,
-                parent_retrieval_mode=parent_retrieval_mode,
-                filters=filters,
-                candidate_doc_ids=candidate_doc_ids,
-            )
-
-        if backend_scope == "all" and self.tag_retriever is not None:
-            tag_results = self.tag_retriever.retrieve_by_company_name(
-                company_name=company_name,
-                query=query,
-                top_n=top_n,
-                parent_retrieval_mode=parent_retrieval_mode,
-                filters=filters,
-                candidate_doc_ids=candidate_doc_ids,
-            )
+        # A2 层 2：四路并行（IO 密集）；每路独立降级（单路异常不拖垮整体，
+        # 与串行版「一路抛错整体失败」语义不同——降级路径记 warning 可观测）。
+        # HYBRID_RETRIEVAL_PARALLEL=0 可回退串行（测试对照/疑难回退）。
+        backends = [
+            ("vector", self.vector_retriever, True),
+            ("bm25", self.bm25_retriever, backend_scope == "all"),
+            ("sparse", self.sparse_retriever, backend_scope == "all"),
+            ("tag", self.tag_retriever, backend_scope == "all"),
+        ]
+        parallel = self._parallel_backends_enabled and (
+            sum(1 for _, retriever, enabled in backends if retriever is not None and enabled) > 1
+        )
+        retrieve_kwargs = dict(
+            company_name=company_name,
+            query=query,
+            top_n=top_n,
+            parent_retrieval_mode=parent_retrieval_mode,
+            filters=filters,
+            candidate_doc_ids=candidate_doc_ids,
+        )
+        if parallel:
+            results_by_name = self._retrieve_backends_parallel(backends, retrieve_kwargs)
+        else:
+            results_by_name = self._retrieve_backends_serial(backends, retrieve_kwargs)
+        vector_results = results_by_name.get("vector", [])
+        bm25_results = results_by_name.get("bm25", [])
+        sparse_results = results_by_name.get("sparse", [])
+        tag_results = results_by_name.get("tag", [])
 
         active_results = {}
         if vector_results:
