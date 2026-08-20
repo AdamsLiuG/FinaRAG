@@ -478,3 +478,25 @@ pip install fastapi uvicorn sse-starlette   # 或确认 venv 已有（无则 req
 **纪律（同 FinaWiki）**：独立 commit；现有断言不改通过（行为等价）；新增配置
 带加载期校验 + 缺失容错降级；Agentic 默认关闭；所有 trace/日志字段名进本文档
 §5.2/§4.2 的 schema，不得漂移；F3 基线矩阵在 A1 之前采样存档。
+
+
+---
+
+## 7. 实施结果回填（2026-08-21 实测）
+
+第一批（A1/A4/F3）与第二批（A2/Agentic）已完成，共 6 个 commit：
+
+| commit | 内容 | 实测要点 |
+|---|---|---|
+| 1a22cbc | A1 融合量纲修复 | 检索层实测已有每路归一（方案病灶二不成立，范围收窄为仅 rerank 层三类）；reranking.py 原有 _minmax_normalize 被发现并复用（v2 方案漏调研）；顺带修复 test_event_atoms 基线 HEAD 漂移炸弹（钉死 2f2bc8e） |
+| ae80d0f | A4 题型加权 | yaml 键覆盖 QueryPlan 8 类 task_type 实测值域；穿链 5 处；测试替身签名同步 2 文件 |
+| 7c537a1 | F3 阶段归因 v1 | 八分支归因树（比方案五分支多出 routing/parse 异常归类与 citation_error 优先序修正）；基线矩阵挂 NULL 不伪造（存量跑分与 core120 零对齐，记录于 eval/reports/stage_attribution_baseline.json） |
+| bf69124 | A2 层1 索引常驻 | _IndexCache 自建（lru_cache 逐键删除缺失 + 驱逐语义不符）；粗粒度锁预留给层 2 |
+| 5690fca | A2 层2/3 并行 | 串行回退路径保留旧异常传播语义（HYBRID_RETRIEVAL_PARALLEL=0 完整回退）；并行==串行输出全等双测试 |
+| c71664f | Agentic v1 | 挂点收窄为检索后预检（生成段重入留 v2 与 D3 配套，如实声明）；覆盖判定 OR 语义修正（evidence_targets 混有位置词，AND 语义几乎永触发）；try 语义以模块级测试锁定 |
+
+**最终状态**：全量 446 tests（较实施前 405 +41），失败维持 6 个历史环境依赖项（multi_gpu×2 / core200 / quantization / colbert_model env 污染 / ragas），零回归。
+
+**磁盘故障记录（本轮 3 次）**：SearchReplace 报 save failed 两次实写一次真失败；终端 grep 输出一次陈旧假象（显示旧内容实际已替换）。防线：python 直改 + assert 锚点计数 + 字节级回读校验，未发生重复写入。
+
+**剩余**：D1+D3（第三批，服务化）未开工。Agentic v2（校验后 try-then-closed 闭环）与 D3 trace 配套。端到端收益验收（Level2/number 准确率/归因矩阵首跑）仍卡 API key。
