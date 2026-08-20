@@ -1,0 +1,29 @@
+# 事件原子库（FinaWiki 事件层）：公司事实/主体类知识的识别规则。
+# 命名约定：event_id 前缀 EVT；与 MET-（指标口径）、PLB-（分析剧本）、flag（话题标签）正交。
+# 迁移来源：questions_processing._LEGAL_REP_PATTERNS / _LEGAL_REP_NEGATIVE_TERMS / 行触发词
+# （provenance: extracted——逐字迁移，等价测试以 git 基线为准）。
+version: "1.0"
+
+events:
+  - event_id: EVT-001
+    event_name: 现任法定代表人识别
+    description: 从年报文本识别现任法定代表人（人名），服务 name 类问题
+    # 行级触发词：行不含任一触发词则跳过（正则也只在触发行上尝试）
+    trigger_terms: [法定代表人, 法人代表, 公司负责人]
+    # 检测模式：按置信度降序尝试，首个命中的模式决定 match_type 与基础分
+    detection_patterns:
+      - match_type: explicit_legal_representative
+        score: 100.0
+        regex: '(?:公司(?:的)?法定代表人|法定代表人|法人代表)\s*(?:[:：|]\s*)+([\u4e00-\u9fff·]{2,8})'
+      - match_type: signed_legal_representative
+        score: 84.0
+        regex: '([\u4e00-\u9fff·]{2,8})\s*(?:法定代表人|法人代表)(?=[、,，\s|]|$)'
+      - match_type: company_leader_fallback
+        score: 62.0
+        regex: '公司负责人\s*(?:[:：|]\s*)?([\u4e00-\u9fff·]{2,8})(?=[、,，\s|及声明]|$)'
+    # 否定排除：命中任一词的行描述的是任职历史/变更过程，不是现任表述
+    negative_terms: [辞去法定代表人, 曾任法定代表人, 原法定代表人, 不再担任法定代表人, 变更法定代表人, 法定代表人变更, 历任, 任职表, 履历, 简历]
+    pitfalls: 历任/履历/简历段落是任职历史非现任；签名区人名后紧跟"法定代表人"标注为次高置信
+    version: "1.0"
+    verified_at: "2026-08-20"
+    provenance: {trigger_terms: extracted, detection_patterns: extracted, negative_terms: extracted}

@@ -45,35 +45,14 @@ def _result_merge_key(result: Dict) -> tuple:
     return source_name, result_scope, result.get("page"), result.get("text")
 
 
-_LEGAL_REP_NEGATIVE_TERMS = (
-    "辞去法定代表人",
-    "曾任法定代表人",
-    "原法定代表人",
-    "不再担任法定代表人",
-    "变更法定代表人",
-    "法定代表人变更",
-    "历任",
-    "任职表",
-    "履历",
-    "简历",
-)
-_LEGAL_REP_PATTERNS = (
-    (
-        re.compile(r"(?:公司(?:的)?法定代表人|法定代表人|法人代表)\s*(?:[:：|]\s*)+([\u4e00-\u9fff·]{2,8})"),
-        100.0,
-        "explicit_legal_representative",
-    ),
-    (
-        re.compile(r"([\u4e00-\u9fff·]{2,8})\s*(?:法定代表人|法人代表)(?=[、,，\s|]|$)"),
-        84.0,
-        "signed_legal_representative",
-    ),
-    (
-        re.compile(r"公司负责人\s*(?:[:：|]\s*)?([\u4e00-\u9fff·]{2,8})(?=[、,，\s|及声明]|$)"),
-        62.0,
-        "company_leader_fallback",
-    ),
-)
+def _legal_rep_event():
+    """法代识别知识自 EVT-001 事件原子获取（原 _LEGAL_REP_* 常量已迁 config/event_atoms.yaml）。"""
+    from src.event_atoms import get_default_event_store
+
+    event = get_default_event_store().find_event("EVT-001")
+    if event is None:
+        raise RuntimeError("EVT-001（现任法定代表人识别）事件原子缺失，请检查知识层编译")
+    return event
 def _dividend_mention_terms() -> tuple:
     """分红事实表述词表——唯一真源是 PLB-001 剧本（cash_dividend_mentions）。
 
@@ -570,16 +549,18 @@ class QuestionsProcessor:
         best_score = 0.0
         for page, page_text in self._document_pages(document):
             page_score = self._legal_page_priority(page, page_text)
+            event = _legal_rep_event()
             for line in page_text.splitlines():
                 normalized_line = normalize_text(line).replace(" ", "").replace("⼈", "人")
-                if not any(term in normalized_line for term in ("法定代表人", "法人代表", "公司负责人")):
+                if not any(term in normalized_line for term in event.trigger_terms):
                     continue
-                if any(term in normalized_line for term in _LEGAL_REP_NEGATIVE_TERMS):
+                if any(term in normalized_line for term in event.negative_terms):
                     continue
-                for pattern, base_score, match_type in _LEGAL_REP_PATTERNS:
-                    match = pattern.search(normalized_line)
+                for detection in event.detection_patterns:
+                    match = detection.regex.search(normalized_line)
                     if not match:
                         continue
+                    base_score, match_type = detection.score, detection.match_type
                     name = self._clean_person_name(match.group(1))
                     if not name:
                         continue

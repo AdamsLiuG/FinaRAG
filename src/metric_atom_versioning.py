@@ -20,13 +20,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.event_atoms import EventAtom, EventAtomStore
 from src.metric_atoms import MetricAtom, MetricAtomStore
 
 DEFAULT_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "config" / "atom_snapshot.json"
 DEFAULT_SOURCE_PATH = Path(__file__).resolve().parent.parent / "config" / "metric_atoms.yaml"
+DEFAULT_EVENT_SOURCE_PATH = Path(__file__).resolve().parent.parent / "config" / "event_atoms.yaml"
 
 HASH_LENGTH = 12
-GENERATION_SCHEMA_VERSION = "1.1"
+GENERATION_SCHEMA_VERSION = "1.2"
 # version 不参与哈希：它标记发布批次，不构成语义内容
 _EXCLUDED_FIELDS = ("version",)
 
@@ -83,6 +85,58 @@ def build_snapshot(store: MetricAtomStore) -> Dict[str, Any]:
     return {"atom_count": len(store), "atoms": {a.atom_id: atom_content_hash(a) for a in store.all_atoms()}}
 
 
+def _event_payload(event: EventAtom) -> Dict[str, Any]:
+    """事件原子完整序列化（DetectionPattern → 可 JSON 化 dict，regex 以源串保存）。"""
+    from dataclasses import asdict as _asdict
+
+    payload = _asdict(event)
+    payload["detection_patterns"] = [
+        {"match_type": p.match_type, "score": p.score, "regex_source": p.regex_source}
+        for p in event.detection_patterns
+    ]
+    return payload
+
+
+def event_content_hash(event: EventAtom) -> str:
+    """事件原子语义哈希（排除 version；regex 按源串参与，编译对象不参与）。"""
+    payload = {k: v for k, v in _event_payload(event).items() if k != "version"}
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:HASH_LENGTH]
+
+
+def build_event_section(store: EventAtomStore, source_path: Optional[Path] = None) -> Dict[str, Any]:
+    """编译事件资产段：完整序列化 + 内容哈希 + 源指纹。"""
+    source_path = Path(source_path) if source_path else DEFAULT_EVENT_SOURCE_PATH
+    source_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    return {
+        "source": {"path": f"config/{source_path.name}", "sha256": source_sha},
+        "event_count": len(store),
+        "events": {
+            e.event_id: {"hash": event_content_hash(e), "event": _event_payload(e)}
+            for e in store.all_events()
+        },
+    }
+
+
+def event_hash_view(section: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        event_id: (item["hash"] if isinstance(item, dict) else item)
+        for event_id, item in (section.get("events") or {}).items()
+    }
+
+
+def diff_event_section(old_section: Dict[str, Any], new_section: Dict[str, Any]) -> Dict[str, List[str]]:
+    old_events = event_hash_view(old_section or {})
+    new_events = event_hash_view(new_section or {})
+    return {
+        "added": sorted(set(new_events) - set(old_events)),
+        "removed": sorted(set(old_events) - set(new_events)),
+        "changed": sorted(
+            e for e in set(old_events) & set(new_events) if old_events[e] != new_events[e]
+        ),
+    }
+
+
 def load_snapshot(path: Optional[Path] = None) -> Dict[str, Any]:
     """读 Generation（或旧格式快照）；缺失返回空。"""
     path = Path(path or DEFAULT_SNAPSHOT_PATH)
@@ -91,10 +145,27 @@ def load_snapshot(path: Optional[Path] = None) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save_generation(store: MetricAtomStore, path: Optional[Path] = None, source_path: Optional[Path] = None) -> Path:
-    """编译并落盘 Generation（原子写入语义：整体重写，无中间态）。"""
+def save_generation(
+    store: MetricAtomStore,
+    path: Optional[Path] = None,
+    source_path: Optional[Path] = None,
+    event_store: Optional[EventAtomStore] = None,
+    event_source_path: Optional[Path] = None,
+) -> Path:
+    """编译并落盘 Generation v1.2（指标 + 事件双资产，原子写入语义：整体重写）。"""
     path = Path(path or DEFAULT_SNAPSHOT_PATH)
     generation = build_generation(store, source_path)
+    if event_store is None:
+        event_store = EventAtomStore.load_source(event_source_path)
+    event_section = build_event_section(event_store, event_source_path)
+    generation["schema_version"] = GENERATION_SCHEMA_VERSION
+    generation["sources"] = {
+        "metric_atoms": generation.pop("source"),
+        "event_atoms": event_section["source"],
+    }
+    generation["event_atoms"] = {
+        key: value for key, value in event_section.items() if key != "source"
+    }
     payload = json.dumps(generation, ensure_ascii=False, indent=2, sort_keys=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload + "\n", encoding="utf-8")

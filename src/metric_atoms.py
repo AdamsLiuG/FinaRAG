@@ -256,17 +256,21 @@ class MetricAtomStore:
                 "请先运行 python scripts/compile_atoms.py 编译知识层"
             )
         generation = json.loads(generation_path.read_text(encoding="utf-8"))
-        source_rel = str((generation.get("source") or {}).get("path") or "config/metric_atoms.yaml")
+        # v1.2 多资产 Generation：源指纹住 sources["metric_atoms"]；兼容 v1.1 顶层 source
+        source_info = (generation.get("sources") or {}).get("metric_atoms") or generation.get("source") or {}
+        source_rel = str(source_info.get("path") or "config/metric_atoms.yaml")
         # 源路径相对仓库根；Generation 位于 <root>/config/ 下，上溯两级即根
         source_path = generation_path.parent.parent / source_rel
-        expected_sha = str((generation.get("source") or {}).get("sha256") or "")
-        if source_path.exists():
-            actual_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
-            if actual_sha != expected_sha:
-                raise RuntimeError(
-                    f"源 {source_rel} 已变更但未重新编译（Generation 落后于源码）。\n"
-                    "请运行 python scripts/compile_atoms.py 确认变更并刷新 Generation后再启动。"
-                )
+        expected_sha = str(source_info.get("sha256") or "")
+        if not source_path.exists():
+            # 源缺失同样拒绝：静默跳过校验会让同步锁形同虚设
+            raise RuntimeError(f"Generation 记录的源不存在：{source_path}")
+        actual_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if actual_sha != expected_sha:
+            raise RuntimeError(
+                f"源 {source_rel} 已变更但未重新编译（Generation 落后于源码）。\n"
+                "请运行 python scripts/compile_atoms.py 确认变更并刷新 Generation后再启动。"
+            )
         atoms_payload = (generation.get("atoms") or {}).values()
         atoms = [_atom_from_payload(item.get("atom")) for item in atoms_payload if item.get("atom")]
         if not atoms:

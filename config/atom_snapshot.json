@@ -932,10 +932,72 @@
       "hash": "01f893f77b25"
     }
   },
-  "build_id": "gen-20260820-073931",
-  "schema_version": "1.1",
-  "source": {
-    "path": "config/metric_atoms.yaml",
-    "sha256": "4741c385c9477d5f41d0eae6bdd76509e2c83024da9a25f4c73ede842a0b6cf3"
+  "build_id": "gen-20260820-121034",
+  "event_atoms": {
+    "event_count": 1,
+    "events": {
+      "EVT-001": {
+        "event": {
+          "description": "从年报文本识别现任法定代表人（人名），服务 name 类问题",
+          "detection_patterns": [
+            {
+              "match_type": "explicit_legal_representative",
+              "regex_source": "(?:公司(?:的)?法定代表人|法定代表人|法人代表)\\s*(?:[:：|]\\s*)+([\\u4e00-\\u9fff·]{2,8})",
+              "score": 100.0
+            },
+            {
+              "match_type": "signed_legal_representative",
+              "regex_source": "([\\u4e00-\\u9fff·]{2,8})\\s*(?:法定代表人|法人代表)(?=[、,，\\s|]|$)",
+              "score": 84.0
+            },
+            {
+              "match_type": "company_leader_fallback",
+              "regex_source": "公司负责人\\s*(?:[:：|]\\s*)?([\\u4e00-\\u9fff·]{2,8})(?=[、,，\\s|及声明]|$)",
+              "score": 62.0
+            }
+          ],
+          "event_id": "EVT-001",
+          "event_name": "现任法定代表人识别",
+          "expires_at": "",
+          "negative_terms": [
+            "辞去法定代表人",
+            "曾任法定代表人",
+            "原法定代表人",
+            "不再担任法定代表人",
+            "变更法定代表人",
+            "法定代表人变更",
+            "历任",
+            "任职表",
+            "履历",
+            "简历"
+          ],
+          "pitfalls": "历任/履历/简历段落是任职历史非现任；签名区人名后紧跟\"法定代表人\"标注为次高置信",
+          "provenance": {
+            "detection_patterns": "extracted",
+            "negative_terms": "extracted",
+            "trigger_terms": "extracted"
+          },
+          "trigger_terms": [
+            "法定代表人",
+            "法人代表",
+            "公司负责人"
+          ],
+          "verified_at": "2026-08-20",
+          "version": "1.0"
+        },
+        "hash": "e40a618b2882"
+      }
+    }
+  },
+  "schema_version": "1.2",
+  "sources": {
+    "event_atoms": {
+      "path": "config/event_atoms.yaml",
+      "sha256": "93a9843a740b54468647173d0a932437b578d2d7d2e4e764b99399feea292d57"
+    },
+    "metric_atoms": {
+      "path": "config/metric_atoms.yaml",
+      "sha256": "4741c385c9477d5f41d0eae6bdd76509e2c83024da9a25f4c73ede842a0b6cf3"
+    }
   }
 }

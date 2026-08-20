@@ -111,7 +111,10 @@ class FrozenGenerationTests(unittest.TestCase):
 
     def test_generation_carries_governance_fields(self):
         generation = load_snapshot()
-        self.assertEqual(generation["schema_version"], "1.1")
+        # v1.2：多资产 Generation（指标 + 事件），双源指纹住 sources 映射
+        self.assertEqual(generation["schema_version"], "1.2")
+        self.assertIn("event_atoms", generation)
+        self.assertEqual(sorted(generation["sources"]), ["event_atoms", "metric_atoms"])
         payload = generation["atoms"]["MET-004"]["atom"]
         self.assertIn("provenance", payload)
         self.assertIn("verified_at", payload)

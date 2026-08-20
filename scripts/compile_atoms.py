@@ -17,13 +17,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.metric_atom_versioning import (  # noqa: E402
     GENERATION_SCHEMA_VERSION,
+    build_event_section,
     build_snapshot,
+    diff_event_section,
     diff_snapshot,
     load_snapshot,
     render_changelog,
     save_generation,
 )
 from src.metric_atoms import MetricAtomStore  # noqa: E402
+from src.event_atoms import EventAtomStore  # noqa: E402
 
 
 def main() -> None:
@@ -36,16 +39,25 @@ def main() -> None:
     generation_path = Path(args.generation) if args.generation else None
     source_path = Path(args.source) if args.source else None
     store = MetricAtomStore.load_source(source_path)
+    event_store = EventAtomStore.load_source()
     existing = load_snapshot(generation_path)
     changes = diff_snapshot(existing, build_snapshot(store))
     print(render_changelog(changes, store), end="")
+
+    # 事件资产变更（EVT- 段 hash 对照）
+    event_changes = diff_event_section(
+        existing.get("event_atoms") or {}, build_event_section(event_store)
+    )
+    if any(event_changes.values()):
+        flat = [*(event_changes["added"]), *(event_changes["removed"]), *(event_changes["changed"])]
+        print(f"- **事件原子变更**：{'、'.join(flat)}")
 
     # 格式代差（旧快照无 schema_version）本身就是需要重编译的变更
     stale_format = existing.get("schema_version") != GENERATION_SCHEMA_VERSION
     if stale_format:
         print(f"Generation 格式代差（{existing.get('schema_version') or '旧格式'} -> {GENERATION_SCHEMA_VERSION}），需重编译。")
 
-    if not any(changes.values()) and not stale_format:
+    if not any(changes.values()) and not any(event_changes.values()) and not stale_format:
         print("Generation 与源一致，无需编译。")
         sys.exit(0)
     if args.update:

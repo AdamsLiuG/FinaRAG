@@ -384,3 +384,18 @@ atom_changelog.py 已删除（功能并入 compile_atoms.py）。测试 349（+1
 
 测试 381（+32 于 Stage G 起点）；失败维持 6 个历史环境依赖；Level1 六项维持 100%。
 所有新词表 provenance: inferred，待端到端环境（API key）验证真实收益。
+
+### 8.3 EVT- 事件原子类型（G-4 悬案决策落地）
+
+类型体系补第四类：事件原子（EVT-）——公司事实/主体类知识的识别规则
+（触发词/检测模式/否定排除），与 MET-/PLB-/flag 正交。首个实例 EVT-001
+（现任法定代表人识别）自 questions_processing 硬编码迁移。
+
+| 交付 | 验收 |
+|---|---|
+| config/event_atoms.yaml + src/event_atoms.py | 结构校验（空模式/重复 match_type/坏正则/重复 id 加载期拒绝）；provenance=extracted |
+| Generation v1.2 多资产（指标+事件双源指纹） | 双资产运行时加载只读编译产物；compile CLI 报告事件变更与格式代差 |
+| 消费点迁移（删 2 个常量 + 内联触发词） | git 黄金基线逐字等价（regex 源串/score/match_type/否定词/触发词全等）+ 7 组代表性行为等价 + 常量不残留断言 |
+| 顺带修复 G-3 漏洞 | 源缺失原静默跳过同步校验（metric/event 两处 load 同病）——现在源缺失同样拒绝加载，由事件同步锁测试抓出 |
+
+测试 395（+14）；失败维持 6 个历史环境依赖；Level1 六项维持 100%。
