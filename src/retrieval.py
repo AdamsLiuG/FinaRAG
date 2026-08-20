@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import pickle
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple
 
@@ -21,6 +23,78 @@ from src.reranking import (
 from src.text_normalization import normalize_text, tokenize_for_bm25
 
 _log = logging.getLogger(__name__)
+
+
+class _IndexCache:
+    """索引常驻缓存：按「索引文件」计数 LRU 驱逐；mtime 变化自动失效重载。
+
+    不用 functools.lru_cache 的原因：它按调用键（path, mtime）驱逐，会把同一
+    索引的旧 mtime 键挤掉而非最旧索引，且无逐键删除 API（cache_clear 全清会
+    引发 LRU 抖动）。自建名册语义可控。
+
+    线程安全：粗粒度锁——A2 层 2 四路并行下 bm25/sparse 两路会并发取索引；
+    锁内反序列化是主要成本，但同路径重复加载本身被缓存消除，串行化代价
+    只发生在冷启动首次。
+    内存预算：单索引数十 MB × max_slots（默认 16）≈ 上限约 0.5-1GB。
+    """
+
+    def __init__(self, max_slots: int):
+        self.max_slots = max(1, int(max_slots))
+        self._entries: "OrderedDict[Tuple[str, int], object]" = OrderedDict()
+        self._lock = threading.Lock()
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+
+    def get(self, path: Path):
+        """取索引；mtime 变化（索引重建）自动失效重载，旧键清理。"""
+        stat = path.stat()
+        key = (str(path), stat.st_mtime_ns)
+        with self._lock:
+            obj = self._entries.get(key)
+            if obj is not None:
+                self._entries.move_to_end(key)
+                self.hits += 1
+                return obj
+            for stale_key in [k for k in self._entries if k[0] == key[0]]:
+                del self._entries[stale_key]  # 同路径旧 mtime：索引已重建
+        with open(path, "rb") as f:
+            obj = pickle.load(f)
+        with self._lock:
+            self._entries[key] = obj
+            self.misses += 1
+            while len(self._entries) > self.max_slots:
+                self._entries.popitem(last=False)
+                self.evictions += 1
+        return obj
+
+    def stats(self) -> Dict[str, int]:
+        with self._lock:
+            return {
+                "slots": len(self._entries),
+                "max": self.max_slots,
+                "hits": self.hits,
+                "misses": self.misses,
+                "evictions": self.evictions,
+            }
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+_INDEX_CACHE_MAX_SLOTS = int(os.getenv("INDEX_CACHE_MAX_SLOTS", "16"))
+_INDEX_CACHE = _IndexCache(_INDEX_CACHE_MAX_SLOTS)
+
+
+def _load_index(path: Path):
+    """BM25/sparse 索引加载统一入口（常驻缓存）。"""
+    return _INDEX_CACHE.get(path)
+
+
+def reset_index_cache() -> None:
+    """测试隔离。"""
+    _INDEX_CACHE.clear()
 _VALID_PARENT_RETRIEVAL_MODES = {"child", "page", "block"}
 
 
@@ -390,8 +464,7 @@ class BM25Retriever(_DocumentBackedRetriever):
             bm25_path = self.bm25_db_dir / f"{document['metainfo']['sha1_name']}.pkl"
             if not bm25_path.exists():
                 raise ValueError(f"No BM25 index found for '{company_name}' at {bm25_path}.")
-            with open(bm25_path, "rb") as f:
-                bm25_index = pickle.load(f)
+            bm25_index = _load_index(bm25_path)
 
             scores = bm25_index.get_scores(tokenize_for_bm25(query))
             ranked_hits = sorted(
@@ -440,8 +513,7 @@ class BGEM3SparseRetriever(_DocumentBackedRetriever):
             if not sparse_path.exists():
                 raise ValueError(f"No sparse lexical index found for '{company_name}' at {sparse_path}.")
 
-            with open(sparse_path, "rb") as f:
-                sparse_index = pickle.load(f)
+            sparse_index = _load_index(sparse_path)
 
             lexical_weights = sparse_index.get("lexical_weights")
             if lexical_weights is None:
