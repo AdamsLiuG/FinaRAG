@@ -19,7 +19,9 @@ from src.event_atoms import (
     reset_default_event_store,
 )
 
-BASELINE_COMMIT = "HEAD"  # 迁移前状态（EVT 改造未提交）
+# 黄金基线钉死到迁移前具体 commit（EVT 改造 1f8af0c 的父提交）——
+# 不能用 HEAD：commit 后 HEAD 前进会使基线提取到已迁移版本，常量块不存在而炸
+BASELINE_COMMIT = "2f2bc8e"
 
 
 def _load_baseline_constants():

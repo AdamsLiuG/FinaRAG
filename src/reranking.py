@@ -49,6 +49,35 @@ def _normalize_remote_scores(scores: list[float]) -> list[float]:
     return _minmax_normalize([float(score) for score in scores])
 
 
+def _fuse_scores(
+    rel_scores: list[float],
+    dist_scores: list[float],
+    llm_weight: float,
+) -> list[float]:
+    """两路分数各自池内 min-max 归一到 0-1 后加权融合。
+
+    语义：combined_score 为候选池内相对强度，名义权重=实际权重。必要性：
+    relevance_score（reranker 分数，0-1）与 distance（检索层融合分）量纲不一致且
+    随 fusion_method 漂移——rrf 模式下 distance≈Σ1/(60+rank)（量级 <0.1），
+    直接线性组合使向量路实际权重仅 ~2%（名义 30%）。
+    常数池语义沿用本文件既有 _minmax_normalize（>0 → 1.0 / =0 → 0.0），
+    与检索层 retrieval._normalize_scores 对齐（「该路有无信号」而非「池内半分」）。
+    """
+    if rel_scores and dist_scores and len(rel_scores) != len(dist_scores):
+        n = min(len(rel_scores), len(dist_scores))
+        print(
+            f"Warning: _fuse_scores length mismatch "
+            f"({len(rel_scores)} vs {len(dist_scores)}); truncating to {n}"
+        )
+        rel_scores, dist_scores = rel_scores[:n], dist_scores[:n]
+    rel_norm = _minmax_normalize(rel_scores)
+    dist_norm = _minmax_normalize(dist_scores)
+    return [
+        llm_weight * rel + (1.0 - llm_weight) * dist
+        for rel, dist in zip(rel_norm, dist_norm)
+    ]
+
+
 def _parse_devices(value: str | None) -> list[str]:
     if not value:
         return ["cuda:0"]
@@ -337,16 +366,21 @@ class FlagEmbeddingReranker:
             else:
                 raise
 
-        vector_weight = 1 - llm_weight
         results = []
         for doc, score in zip(documents, scores):
             item = doc.copy()
             item["relevance_score"] = round(float(score), 4)
             item["final_relevance_score"] = item["relevance_score"]
-            item["combined_score"] = round(
-                llm_weight * item["relevance_score"] + vector_weight * item["distance"], 4
-            )
             results.append(item)
+        # 池内归一化融合：distance 量纲随检索层 fusion_method 漂移（rrf <0.1），
+        # 逐文档直加会使名义权重失真（见 _fuse_scores docstring）
+        fused = _fuse_scores(
+            [item["relevance_score"] for item in results],
+            [float(item["distance"]) for item in results],
+            llm_weight,
+        )
+        for item, combined in zip(results, fused):
+            item["combined_score"] = round(combined, 4)
 
         results.sort(key=lambda x: x["combined_score"], reverse=True)
         self.last_debug = {
@@ -457,17 +491,20 @@ class VLLMApiReranker:
             )
 
         scores = self._extract_scores(response.json(), len(documents))
-        vector_weight = 1 - llm_weight
         results = []
         for doc, score in zip(documents, scores):
             item = doc.copy()
             item["relevance_score"] = round(float(score), 4)
             item["final_relevance_score"] = item["relevance_score"]
-            item["combined_score"] = round(
-                llm_weight * item["relevance_score"] + vector_weight * float(item.get("distance", 0.0)),
-                4,
-            )
             results.append(item)
+        # 池内归一化融合（同 FlagEmbeddingReranker，见 _fuse_scores docstring）
+        fused = _fuse_scores(
+            [item["relevance_score"] for item in results],
+            [float(item.get("distance", 0.0)) for item in results],
+            llm_weight,
+        )
+        for item, combined in zip(results, fused):
+            item["combined_score"] = round(combined, 4)
 
         results.sort(key=lambda item: item["combined_score"], reverse=True)
         self.last_debug = {
@@ -654,6 +691,16 @@ class LLMReranker:
             for batch in batch_results:
                 all_results.extend(batch)
         
+        # 池内归一化重融合：batch/single/fallback 各路径已在文档上留下 relevance_score
+        # 与原始 distance，统一在候选池层面归一后加权（逐文档融合会使名义权重失真，
+        # 见 _fuse_scores docstring；此处覆盖 _build_scored_document 的临时值）
+        fused = _fuse_scores(
+            [float(item.get("relevance_score", 0.0)) for item in all_results],
+            [float(item.get("distance", 0.0)) for item in all_results],
+            llm_weight,
+        )
+        for item, combined in zip(all_results, fused):
+            item["combined_score"] = round(combined, 4)
         # Sort results by combined score in descending order
         all_results.sort(key=lambda x: x["combined_score"], reverse=True)
         self.last_debug = {
