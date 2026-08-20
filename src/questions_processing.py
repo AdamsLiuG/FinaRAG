@@ -186,6 +186,9 @@ class QuestionsProcessor:
         self._lock = threading.Lock()
         self._retriever_cache = threading.local()
         self._document_cache: Dict[str, Dict[str, Any]] = {}
+        # D1 并发修复：读路径原先在锁外（GIL 下无害但不规范），统一锁内；
+        # 服务化多线程共享 processor 实例时的字典一致性保障
+        self._document_cache_lock = threading.Lock()
         self._revenue_grounding_cache: Dict[Tuple[str, Optional[int], str], Optional[Dict[str, Any]]] = {}
         self._revenue_grounding_cache_lock = threading.Lock()
         self.question_rewriter = QuestionRewriter()
@@ -338,8 +341,10 @@ class QuestionsProcessor:
         doc_id = str(doc_id or "").strip()
         if not doc_id:
             return None
-        if doc_id in self._document_cache:
-            return self._document_cache[doc_id]
+        with self._document_cache_lock:
+            cached = self._document_cache.get(doc_id)
+        if cached is not None:
+            return cached
 
         candidate_paths = []
         if doc_id.endswith(".json"):
@@ -355,7 +360,8 @@ class QuestionsProcessor:
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            self._document_cache[doc_id] = payload
+            with self._document_cache_lock:
+                self._document_cache[doc_id] = payload
             return payload
 
         for path in self.documents_dir.glob("*.json"):
@@ -366,7 +372,8 @@ class QuestionsProcessor:
             metainfo = payload.get("metainfo") or {}
             observed_doc_id = metainfo.get("sha1_name") or metainfo.get("doc_id") or path.stem
             if str(observed_doc_id) == doc_id:
-                self._document_cache[doc_id] = payload
+                with self._document_cache_lock:
+                    self._document_cache[doc_id] = payload
                 return payload
         return None
 
