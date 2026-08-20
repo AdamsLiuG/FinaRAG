@@ -235,3 +235,21 @@ proj_ref.md
 Project_Reference.tex
 README_former.md
 resume.tex
+
+# ==== 个人求职材料 / 本地草稿：仅根目录，绝不入库 ====
+# 用模式而非枚举文件名：此前 "*面试问题解答.md" 因实际文件带 _MIMO/_GPT/_Gemini
+# 等模型后缀而全部漏网，一次 `git add -A` 误提交了 33 个无关文件。
+# 前导 / 限定只作用于仓库根目录，不影响 docs/ 下的项目文档。
+/*面试*
+/*面经*
+/*问题解答*
+/*简历*
+/*resume*
+/*口径.md
+/RAG_[0-9]*.md
+/Agent项目部分内容.md
+/评测方案demo.md
+# 代码库导出快照（体积巨大，且随时可重新生成）
+/repomix-*
+# 本地 AI 助手配置
+/CLAUDE.md
