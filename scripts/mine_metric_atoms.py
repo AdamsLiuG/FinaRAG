@@ -1,4 +1,4 @@
-"""蒸馏扩原子 CLI（P3a）：LLM 草稿 → 规则校验 → draft YAML 供人工校准。
+"""蒸馏扩原子 CLI：LLM 草稿 → 规则校验 → draft YAML 供人工校准。
 
 用法（需 API key 环境）：
     python scripts/mine_metric_atoms.py --n-target 40 --output config/metric_atoms_draft.yaml
