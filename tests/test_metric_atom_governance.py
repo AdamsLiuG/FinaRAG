@@ -41,7 +41,7 @@ atoms:
             f.write(bad_yaml)
             path = Path(f.name)
         with self.assertRaises(ValueError) as ctx:
-            MetricAtomStore.load(path)
+            MetricAtomStore.load_source(path)
         self.assertIn("hallucinated", str(ctx.exception))
         path.unlink()
 
@@ -87,7 +87,7 @@ atoms:
             f.write(bad_yaml)
             path = Path(f.name)
         with self.assertRaises(ValueError) as ctx:
-            MetricAtomStore.load(path)
+            MetricAtomStore.load_source(path)
         self.assertIn("expires_at", str(ctx.exception))
         path.unlink()
 

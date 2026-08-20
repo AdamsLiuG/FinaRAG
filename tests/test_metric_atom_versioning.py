@@ -11,7 +11,7 @@ from src.metric_atom_versioning import (
     diff_snapshot,
     load_snapshot,
     render_changelog,
-    save_snapshot,
+    save_generation,
     snapshot_is_current,
 )
 from src.metric_atoms import MetricAtomStore, get_default_store
@@ -82,7 +82,7 @@ class SnapshotDiffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "snap.json"
             store = get_default_store()
-            save_snapshot(store, path)
+            save_generation(store, path)
             self.assertTrue(snapshot_is_current(store, path))
             payload = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(payload["atom_count"], len(store))
@@ -97,6 +97,56 @@ class SnapshotDiffTests(unittest.TestCase):
         self.assertIn("无变更", render_changelog({"added": [], "removed": [], "changed": []}, store))
 
 
+class FrozenGenerationTests(unittest.TestCase):
+    """G-3 冻结 Generation：运行时只读编译产物，源失步即拒绝加载（对齐决策一）。"""
+
+    def test_generation_load_equals_source_load(self):
+        gen_store = MetricAtomStore.load()
+        src_store = MetricAtomStore.load_source()
+        self.assertEqual(len(gen_store), len(src_store))
+        for atom in src_store.all_atoms():
+            mirror = gen_store.get(atom.atom_id)
+            self.assertIsNotNone(mirror, atom.atom_id)
+            self.assertEqual(atom_content_hash(mirror), atom_content_hash(atom), atom.atom_id)
+
+    def test_generation_carries_governance_fields(self):
+        generation = load_snapshot()
+        self.assertEqual(generation["schema_version"], "1.1")
+        payload = generation["atoms"]["MET-004"]["atom"]
+        self.assertIn("provenance", payload)
+        self.assertIn("verified_at", payload)
+        self.assertEqual(payload["provenance"]["grounding"], "extracted")
+
+    def test_stale_source_refused_at_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "metric_atoms.yaml"
+            source.write_text(
+                "atoms:\n  - atom_id: MET-001\n    standard_name: 测试\n    aliases: [测试]\n",
+                encoding="utf-8",
+            )
+            store = MetricAtomStore.load_source(source)
+            generation_path = root / "atom_snapshot.json"
+            save_generation(store, path=generation_path, source_path=source)
+            loaded = MetricAtomStore.load(generation_path)
+            self.assertEqual(len(loaded), 1)
+            # 源变更但不重编译 → 拒绝加载（fail-closed）
+            source.write_text(
+                "atoms:\n  - atom_id: MET-001\n    standard_name: 测试2\n    aliases: [测试]\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                MetricAtomStore.load(generation_path)
+            self.assertIn("重新编译", str(ctx.exception))
+
+    def test_missing_generation_refused_at_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError) as ctx:
+                MetricAtomStore.load(Path(tmp) / "absent.json")
+            message = str(ctx.exception)
+            self.assertIn("compile_atoms", message)
+
+
 class SnapshotRegressionLockTests(unittest.TestCase):
     """回归锁：改了 metric_atoms.yaml 而未刷新快照即失败。"""
 
@@ -107,7 +157,7 @@ class SnapshotRegressionLockTests(unittest.TestCase):
             changes,
             {"added": [], "removed": [], "changed": []},
             msg="知识库与 config/atom_snapshot.json 不一致，"
-            "请运行 python scripts/atom_changelog.py --update 确认变更",
+            "请运行 python scripts/compile_atoms.py --update 确认变更并重新编译",
         )
 
 

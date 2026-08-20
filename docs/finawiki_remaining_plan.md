@@ -360,3 +360,16 @@ reserved_non_flags: [has_pdfcrawl_metadata, has_table_context, has_chart_context
 
 验收：provenance 非法值加载期拒绝；过期边界（今天/明天）单测；audit 显式列缺口；
 yaml 改动未重编译时 load() 报错指路；Generation 加载与源码加载行为等价（hash 全等）。
+
+### 8.1 实测结果（G-1/G-2/G-3 完成）
+
+| 项 | 交付 | 验收证据 |
+|---|---|---|
+| G-1 | provenance 刻度（per-field extracted/inferred，缺省 inferred） | 12 原子如实标注；非法值/坏日期加载期 ValueError；快照回归锁首次真实运转（yaml 加字段即报 12 个变更） |
+| G-2 | verified_at/expires_at + validity_audit + 温和过期门禁 | 12 原子全部未声明有效期（显式缺口而非伪装永不过期）；过期 → metric_atom_expired flag + 降一级（不拒答，与口径门禁严格语义刻意区分） |
+| G-3 | 冻结 Generation（编译产物）+ 运行时只读编译产物 | 等价性：Generation 加载 vs 源码加载 12 原子 hash 全等（含 grounding tuple 还原）；源失步演练：改 yaml 不重编译 → RuntimeError 拦截；Generation 缺失 → 报错指路 compile_atoms.py；格式代差（旧快照无 schema_version）触发重编译 |
+
+开发流程变更：改 `config/metric_atoms.yaml` 后必须运行 `python scripts/compile_atoms.py --update`，
+否则 `MetricAtomStore.load()` 启动即失败——知识变更因此必须在 code review 中显式出现。
+atom_changelog.py 已删除（功能并入 compile_atoms.py）。测试 349（+16 于 Stage F 基线），
+失败维持 6 个历史环境依赖；Level1 六项维持 100%。

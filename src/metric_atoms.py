@@ -10,16 +10,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from src.text_normalization import normalize_text
 
 DEFAULT_ATOMS_PATH = Path(__file__).resolve().parent.parent / "config" / "metric_atoms.yaml"
+# 冻结 Generation（编译产物）：运行时唯一加载源，yaml 是构建输入不是 Serving 输入
+DEFAULT_GENERATION_PATH = Path(__file__).resolve().parent.parent / "config" / "atom_snapshot.json"
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,55 @@ def _parse_date(raw: object, field_name: str, atom_id: str) -> str:
     except ValueError as exc:
         raise ValueError(f"{atom_id}: {field_name} 非法日期 {text!r}（需 YYYY-MM-DD）") from exc
     return text
+
+
+def _grounding_from_payload(raw: object) -> Optional[GroundingRule]:
+    """从 Generation JSON 反序列化取证规则（tuple 结构由 JSON list 还原）。"""
+    if not raw:
+        return None
+    return GroundingRule(
+        match_terms=[str(t) for t in (raw.get("match_terms") or [])],
+        exact_row_headers=[str(t) for t in (raw.get("exact_row_headers") or [])],
+        secondary_row_headers=[str(t) for t in (raw.get("secondary_row_headers") or [])],
+        weak_row_headers=[str(t) for t in (raw.get("weak_row_headers") or [])],
+        low_priority_row_headers=[str(t) for t in (raw.get("low_priority_row_headers") or [])],
+        bad_row_headers=[str(t) for t in (raw.get("bad_row_headers") or [])],
+        bad_col_headers=[str(t) for t in (raw.get("bad_col_headers") or [])],
+        preferred_statements=[
+            ([str(t) for t in terms], float(score)) for terms, score in (raw.get("preferred_statements") or [])
+        ],
+        penalized_statements=[
+            ([str(t) for t in terms], float(score)) for terms, score in (raw.get("penalized_statements") or [])
+        ],
+        segment_guard=bool(raw.get("segment_guard")),
+        nested_row_bonus=[
+            (str(prefix), str(context), float(score))
+            for prefix, context, score in (raw.get("nested_row_bonus") or [])
+        ],
+        early_page_bonus=[(int(page), float(score)) for page, score in (raw.get("early_page_bonus") or [])],
+        collect_support_candidates=bool(raw.get("collect_support_candidates")),
+    )
+
+
+def _atom_from_payload(data: Dict[str, Any]) -> MetricAtom:
+    """从 Generation JSON 反序列化原子。"""
+    return MetricAtom(
+        atom_id=str(data["atom_id"]),
+        standard_name=str(data["standard_name"]),
+        aliases=[str(t) for t in (data.get("aliases") or [])],
+        definition=str(data.get("definition") or ""),
+        caliber_notes=str(data.get("caliber_notes") or ""),
+        unit=str(data.get("unit") or ""),
+        statement_location=str(data.get("statement_location") or ""),
+        confusable_with=[str(t) for t in (data.get("confusable_with") or [])],
+        pitfalls=str(data.get("pitfalls") or ""),
+        evidence_targets=[str(t) for t in (data.get("evidence_targets") or [])],
+        grounding=_grounding_from_payload(data.get("grounding")),
+        version=str(data.get("version") or "1.0"),
+        provenance={str(k): str(v) for k, v in (data.get("provenance") or {}).items()},
+        verified_at=str(data.get("verified_at") or ""),
+        expires_at=str(data.get("expires_at") or ""),
+    )
 
 
 def _parse_grounding(raw: object) -> Optional[GroundingRule]:
@@ -190,6 +243,39 @@ class MetricAtomStore:
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "MetricAtomStore":
+        """运行时加载：只读冻结 Generation（对齐 LLM-Wiki 决策一：编译而非检索）。
+
+        - Generation 缺失 → 报错指路编译，而非回退读 yaml（fail-closed：未编译的知识不上线）；
+        - 源 yaml 与 Generation 记录的 sha256 不一致 → 拒绝加载（源已变更，需重新编译）；
+        - 仅校验源同步性（读字节算哈希），不消费源码内容。
+        """
+        generation_path = Path(path) if path else DEFAULT_GENERATION_PATH
+        if not generation_path.exists():
+            raise RuntimeError(
+                f"冻结 Generation 不存在：{generation_path}\n"
+                "请先运行 python scripts/compile_atoms.py 编译知识层"
+            )
+        generation = json.loads(generation_path.read_text(encoding="utf-8"))
+        source_rel = str((generation.get("source") or {}).get("path") or "config/metric_atoms.yaml")
+        # 源路径相对仓库根；Generation 位于 <root>/config/ 下，上溯两级即根
+        source_path = generation_path.parent.parent / source_rel
+        expected_sha = str((generation.get("source") or {}).get("sha256") or "")
+        if source_path.exists():
+            actual_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            if actual_sha != expected_sha:
+                raise RuntimeError(
+                    f"源 {source_rel} 已变更但未重新编译（Generation 落后于源码）。\n"
+                    "请运行 python scripts/compile_atoms.py 确认变更并刷新 Generation后再启动。"
+                )
+        atoms_payload = (generation.get("atoms") or {}).values()
+        atoms = [_atom_from_payload(item.get("atom")) for item in atoms_payload if item.get("atom")]
+        if not atoms:
+            raise RuntimeError(f"Generation 中无原子：{generation_path}")
+        return cls(atoms)
+
+    @classmethod
+    def load_source(cls, path: Optional[Path] = None) -> "MetricAtomStore":
+        """源码直读（构建/编译工具用）；运行时路径请用 load()。"""
         path = path or DEFAULT_ATOMS_PATH
         payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         atoms = [

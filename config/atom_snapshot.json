@@ -1,17 +1,513 @@
 {
   "atom_count": 12,
   "atoms": {
-    "MET-001": "472e0bb06f64",
-    "MET-002": "0b29f38c802e",
-    "MET-003": "ac60199870c1",
-    "MET-004": "100ac7ac7df7",
-    "MET-005": "c64af7950bf2",
-    "MET-006": "6a832d6e2e87",
-    "MET-007": "b9838d68cde5",
-    "MET-008": "19ac60a2d142",
-    "MET-009": "82b7b2e7eac2",
-    "MET-010": "2ca854e8dca3",
-    "MET-011": "1c195ede90eb",
-    "MET-012": "ce8c2f402aa4"
+    "MET-001": {
+      "atom": {
+        "aliases": [
+          "扣非归母净利润",
+          "扣非净利润",
+          "归母扣非净利润"
+        ],
+        "atom_id": "MET-001",
+        "caliber_notes": "与归母净利润区分——未扣除非经常性损益（政府补助、处置资产收益等）",
+        "confusable_with": [
+          "MET-002"
+        ],
+        "definition": "归母净利润扣除非经常性损益后的部分，反映主营业务持续盈利能力",
+        "evidence_targets": [
+          "扣非归母净利润",
+          "扣除非经常性损益后的净利润",
+          "合并利润表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "部分报告简称\"扣非净利润\"时默认指归母口径，需结合上下文确认",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "扣非归母净利润",
+        "statement_location": "合并利润表/主要财务指标",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "472e0bb06f64"
+    },
+    "MET-002": {
+      "atom": {
+        "aliases": [
+          "归母净利润",
+          "母公司股东净利润",
+          "归属于母公司股东的净利润",
+          "归母"
+        ],
+        "atom_id": "MET-002",
+        "caliber_notes": "与净利润区分（后者含少数股东损益）；与扣非归母净利润区分（后者再扣非经常性损益）",
+        "confusable_with": [
+          "MET-001"
+        ],
+        "definition": "净利润扣除少数股东损益后归属母公司股东的部分",
+        "evidence_targets": [
+          "归母净利润",
+          "归属于母公司股东的净利润",
+          "合并利润表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "部分研报\"净利润\"默认指归母口径，需核对报告口径声明",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "归母净利润",
+        "statement_location": "合并利润表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "0b29f38c802e"
+    },
+    "MET-003": {
+      "atom": {
+        "aliases": [
+          "经营活动现金流量净额",
+          "经营活动现金流净额",
+          "经营现金流净额",
+          "经营性现金流净额",
+          "经营现金流"
+        ],
+        "atom_id": "MET-003",
+        "caliber_notes": "与净利润区分——权责发生制 vs 收付实现制，长期背离提示盈余质量风险",
+        "confusable_with": [],
+        "definition": "经营活动现金流入减去现金流出的净额，收付实现制口径",
+        "evidence_targets": [
+          "经营活动现金流量净额",
+          "现金流量表",
+          "经营现金流"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "现金流量表补充资料提供净利润调节为经营现金流的桥接表，是验证口径的首选证据",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "经营活动现金流量净额",
+        "statement_location": "合并现金流量表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "ac60199870c1"
+    },
+    "MET-004": {
+      "atom": {
+        "aliases": [
+          "营业收入",
+          "营收",
+          "主营业务收入"
+        ],
+        "atom_id": "MET-004",
+        "caliber_notes": "与营业总收入区分——金融类企业营业总收入还含利息收入等；扩展查询严禁放宽为\"收入\"",
+        "confusable_with": [],
+        "definition": "主营业务收入与其他业务收入之和",
+        "evidence_targets": [
+          "营业收入",
+          "主营业务收入",
+          "合并利润表"
+        ],
+        "expires_at": "",
+        "grounding": {
+          "bad_col_headers": [
+            "分部收入",
+            "关联方",
+            "数量合计"
+          ],
+          "bad_row_headers": [
+            "占营业收入比例",
+            "营业收入比例",
+            "销售费用占",
+            "研发投入占营业收入"
+          ],
+          "collect_support_candidates": true,
+          "early_page_bonus": [
+            [
+              10,
+              8.0
+            ],
+            [
+              20,
+              4.0
+            ]
+          ],
+          "exact_row_headers": [
+            "营业收入",
+            "一、营业收入",
+            "-、营业收入"
+          ],
+          "low_priority_row_headers": [
+            "扣除与主营业务无关",
+            "不具备商业实质"
+          ],
+          "match_terms": [
+            "营业收入",
+            "营业总收入",
+            "营收"
+          ],
+          "nested_row_bonus": [
+            [
+              "其中:营业收入",
+              "营业总收入",
+              6.0
+            ]
+          ],
+          "penalized_statements": [
+            [
+              [
+                "关联方",
+                "分部信息",
+                "按产品",
+                "按地区",
+                "母公司"
+              ],
+              -3.0
+            ]
+          ],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              5.0
+            ],
+            [
+              [
+                "公司简介和主要财务指标"
+              ],
+              2.0
+            ],
+            [
+              [
+                "合并利润表",
+                "利润表"
+              ],
+              2.5
+            ]
+          ],
+          "secondary_row_headers": [
+            "营业总收入",
+            "一、营业总收入",
+            "-、营业总收入"
+          ],
+          "segment_guard": true,
+          "weak_row_headers": [
+            "营业收入",
+            "营业总收入",
+            "一、营业总收入",
+            "-、营业总收入"
+          ]
+        },
+        "pitfalls": "旧准则下\"主营业务收入\"不含其他业务收入，与现口径存在历史口径差异",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "grounding": "extracted",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "营业收入",
+        "statement_location": "合并利润表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "100ac7ac7df7"
+    },
+    "MET-005": {
+      "atom": {
+        "aliases": [
+          "货币资金",
+          "现金及现金等价物"
+        ],
+        "atom_id": "MET-005",
+        "caliber_notes": "与现金及现金等价物近似但口径不同——后者剔除受限资金等差异项",
+        "confusable_with": [],
+        "definition": "库存现金、银行存款与其他货币资金之和",
+        "evidence_targets": [
+          "货币资金",
+          "现金及现金等价物",
+          "资产负债表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "货币资金高不等于流动性无忧，需关注受限资金与短期债务到期结构",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "货币资金",
+        "statement_location": "合并资产负债表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "c64af7950bf2"
+    },
+    "MET-006": {
+      "atom": {
+        "aliases": [
+          "短期借款",
+          "短债"
+        ],
+        "atom_id": "MET-006",
+        "caliber_notes": "与一年内到期的非流动负债区分——后者是长期负债的当期到期部分",
+        "confusable_with": [],
+        "definition": "一年内到期需偿还的借款本金",
+        "evidence_targets": [
+          "短期借款",
+          "一年内到期的非流动负债",
+          "流动负债"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "短期借款激增需结合货币资金与经营现金流评估滚动续借风险",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "短期借款",
+        "statement_location": "合并资产负债表流动负债",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "6a832d6e2e87"
+    },
+    "MET-007": {
+      "atom": {
+        "aliases": [
+          "总资产",
+          "资产总计"
+        ],
+        "atom_id": "MET-007",
+        "caliber_notes": "合并口径含少数股东权益对应的资产；与归母口径股东权益区分",
+        "confusable_with": [
+          "MET-008"
+        ],
+        "definition": "企业拥有或控制的全部资产合计",
+        "evidence_targets": [
+          "总资产",
+          "资产总计",
+          "资产负债表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "资产总计科目名在部分报告中写作\"资产总计\"而非\"总资产\"",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "总资产",
+        "statement_location": "合并资产负债表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "b9838d68cde5"
+    },
+    "MET-008": {
+      "atom": {
+        "aliases": [
+          "总负债",
+          "负债合计"
+        ],
+        "atom_id": "MET-008",
+        "caliber_notes": "与资产负债率联动——资产负债率=总负债/总资产",
+        "confusable_with": [
+          "MET-007"
+        ],
+        "definition": "企业全部负债合计",
+        "evidence_targets": [
+          "总负债",
+          "负债合计",
+          "资产负债表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "负债合计含递延所得税负债等非付息项目，付息负债口径需单独计算",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "总负债",
+        "statement_location": "合并资产负债表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "19ac60a2d142"
+    },
+    "MET-009": {
+      "atom": {
+        "aliases": [
+          "研发投入"
+        ],
+        "atom_id": "MET-009",
+        "caliber_notes": "与研发费用严格区分——研发投入含资本化部分，数值通常大于研发费用",
+        "confusable_with": [
+          "MET-012"
+        ],
+        "definition": "研发费用（费用化部分）与资本化研发支出之和",
+        "evidence_targets": [
+          "研发投入",
+          "研发人员"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "研发投入占比是科创属性评价的核心口径，混用研发费用会低估投入",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "研发投入",
+        "statement_location": "主要财务指标/经营情况讨论",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "82b7b2e7eac2"
+    },
+    "MET-010": {
+      "atom": {
+        "aliases": [
+          "毛利率",
+          "综合毛利率"
+        ],
+        "atom_id": "MET-010",
+        "caliber_notes": "综合毛利率含其他业务收入口径；分产品毛利率需按业务拆分",
+        "confusable_with": [],
+        "definition": "(营业收入-营业成本)/营业收入×100%",
+        "evidence_targets": [
+          "毛利率",
+          "综合毛利率",
+          "主营业务收入"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "毛利率异常波动优先排查会计政策变更与业务结构变化",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "毛利率",
+        "statement_location": "主要财务指标/经营情况讨论",
+        "unit": "百分比",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "2ca854e8dca3"
+    },
+    "MET-011": {
+      "atom": {
+        "aliases": [
+          "资产负债率",
+          "负债率"
+        ],
+        "atom_id": "MET-011",
+        "caliber_notes": "分母为总资产（合并口径）；与有息负债率区分",
+        "confusable_with": [],
+        "definition": "总负债/总资产×100%",
+        "evidence_targets": [
+          "资产负债率",
+          "总资产",
+          "总负债"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "负债率在不同语境可能泛指其他比率，金融语境默认资产负债率",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "资产负债率",
+        "statement_location": "主要财务指标",
+        "unit": "百分比",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "1c195ede90eb"
+    },
+    "MET-012": {
+      "atom": {
+        "aliases": [
+          "研发费用"
+        ],
+        "atom_id": "MET-012",
+        "caliber_notes": "与研发投入区分——研发投入=研发费用+资本化研发支出",
+        "confusable_with": [
+          "MET-009"
+        ],
+        "definition": "费用化计入当期损益的研发支出",
+        "evidence_targets": [
+          "研发费用",
+          "合并利润表"
+        ],
+        "expires_at": "",
+        "grounding": null,
+        "pitfalls": "利润表科目为\"研发费用\"，年报\"研发投入\"口径更宽",
+        "provenance": {
+          "aliases": "extracted",
+          "caliber_notes": "inferred",
+          "definition": "inferred",
+          "evidence_targets": "inferred",
+          "pitfalls": "inferred"
+        },
+        "standard_name": "研发费用",
+        "statement_location": "合并利润表",
+        "unit": "元",
+        "verified_at": "2026-08-13",
+        "version": "1.0"
+      },
+      "hash": "ce8c2f402aa4"
+    }
+  },
+  "build_id": "gen-20260820-072811",
+  "schema_version": "1.1",
+  "source": {
+    "path": "config/metric_atoms.yaml",
+    "sha256": "6493a9a367a10333888e0ecb4c005a90f818f15646063890ded21232a9c5da72"
   }
 }
