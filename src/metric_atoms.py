@@ -22,6 +22,74 @@ DEFAULT_ATOMS_PATH = Path(__file__).resolve().parent.parent / "config" / "metric
 
 
 @dataclass(frozen=True)
+class GroundingRule:
+    """取证规则（FinaWiki 证据定位层）：指标专属的行列特征与报表偏好。
+
+    匹配语义存意区分，不得混用：
+    - ``exact_row_headers`` / ``secondary_row_headers``：**精确相等**（行首完全一致）；
+    - ``weak_row_headers`` / ``low_priority_row_headers`` / ``bad_*``：**子串包含**。
+    """
+
+    match_terms: List[str] = field(default_factory=list)
+    exact_row_headers: List[str] = field(default_factory=list)
+    secondary_row_headers: List[str] = field(default_factory=list)
+    weak_row_headers: List[str] = field(default_factory=list)
+    low_priority_row_headers: List[str] = field(default_factory=list)
+    bad_row_headers: List[str] = field(default_factory=list)
+    bad_col_headers: List[str] = field(default_factory=list)
+    preferred_statements: List[Tuple[List[str], float]] = field(default_factory=list)
+    penalized_statements: List[Tuple[List[str], float]] = field(default_factory=list)
+    segment_guard: bool = False
+    # 嵌套行加成：指标作为上级科目子项出现时的行首模式 (row_prefix, requires_context, score)
+    nested_row_bonus: List[Tuple[str, str, float]] = field(default_factory=list)
+    # 页码先验 (max_page, score)：仅对确实出现在报告前部摘要的指标配置，缺省不加分
+    early_page_bonus: List[Tuple[int, float]] = field(default_factory=list)
+    # 证据交叉验证：是否收集支撑候选（同一数值的不同出处互证）
+    collect_support_candidates: bool = False
+
+
+def _parse_statement_scores(raw: object) -> List[Tuple[List[str], float]]:
+    parsed: List[Tuple[List[str], float]] = []
+    for item in raw or []:
+        terms = [str(term) for term in (item.get("terms") or []) if str(term).strip()]
+        if terms:
+            parsed.append((terms, float(item.get("score") or 0.0)))
+    return parsed
+
+
+def _parse_grounding(raw: object) -> Optional[GroundingRule]:
+    if not raw:
+        return None
+    return GroundingRule(
+        match_terms=[str(term) for term in (raw.get("match_terms") or [])],
+        exact_row_headers=[str(term) for term in (raw.get("exact_row_headers") or [])],
+        secondary_row_headers=[str(term) for term in (raw.get("secondary_row_headers") or [])],
+        weak_row_headers=[str(term) for term in (raw.get("weak_row_headers") or [])],
+        low_priority_row_headers=[str(term) for term in (raw.get("low_priority_row_headers") or [])],
+        bad_row_headers=[str(term) for term in (raw.get("bad_row_headers") or [])],
+        bad_col_headers=[str(term) for term in (raw.get("bad_col_headers") or [])],
+        preferred_statements=_parse_statement_scores(raw.get("preferred_statements")),
+        penalized_statements=_parse_statement_scores(raw.get("penalized_statements")),
+        segment_guard=bool(raw.get("segment_guard")),
+        nested_row_bonus=[
+            (
+                str(item.get("row_prefix") or ""),
+                str(item.get("requires_context") or ""),
+                float(item.get("score") or 0.0),
+            )
+            for item in (raw.get("nested_row_bonus") or [])
+            if item.get("row_prefix")
+        ],
+        early_page_bonus=[
+            (int(item["max_page"]), float(item.get("score") or 0.0))
+            for item in (raw.get("early_page_bonus") or [])
+            if item.get("max_page") is not None
+        ],
+        collect_support_candidates=bool(raw.get("collect_support_candidates")),
+    )
+
+
+@dataclass(frozen=True)
 class MetricAtom:
     atom_id: str
     standard_name: str
@@ -33,6 +101,7 @@ class MetricAtom:
     confusable_with: List[str] = field(default_factory=list)
     pitfalls: str = ""
     evidence_targets: List[str] = field(default_factory=list)
+    grounding: Optional[GroundingRule] = None
     version: str = "1.0"
 
     @property
@@ -88,6 +157,7 @@ class MetricAtomStore:
                 confusable_with=list(item.get("confusable_with") or []),
                 pitfalls=str(item.get("pitfalls") or ""),
                 evidence_targets=list(item.get("evidence_targets") or []),
+                grounding=_parse_grounding(item.get("grounding")),
                 version=str(item.get("version") or "1.0"),
             )
             for item in (payload.get("atoms") or [])
@@ -103,6 +173,20 @@ class MetricAtomStore:
             if term and term in normalized_question:
                 return atom, term
         return None
+
+    def grounding_for(self, question: str) -> Optional[Tuple[MetricAtom, GroundingRule]]:
+        """问题命中且该原子带取证规则时返回 (原子, 规则)。"""
+        atom = self.find_metric(normalize_text(question))
+        if atom is None or atom.grounding is None:
+            return None
+        return atom, atom.grounding
+
+    def grounding_for(self, question: str) -> Optional[Tuple[MetricAtom, GroundingRule]]:
+        """问题命中且该原子带取证规则时返回 (原子, 规则)。"""
+        atom = self.find_metric(normalize_text(question))
+        if atom is None or atom.grounding is None:
+            return None
+        return atom, atom.grounding
 
     def get(self, atom_id: str) -> Optional[MetricAtom]:
         return self._by_id.get(atom_id)

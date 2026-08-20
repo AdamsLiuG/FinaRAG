@@ -47,6 +47,29 @@ atoms:
     confusable_with: []
     pitfalls: 旧准则下"主营业务收入"不含其他业务收入，与现口径存在历史口径差异
     evidence_targets: [营业收入, 主营业务收入, 合并利润表]
+    # 取证规则（本字段迁自 table_grounding 内的营收专用硬编码词表）。
+    # exact/secondary 为行首**精确相等**；weak/low_priority/bad_* 为**子串包含**。
+    grounding:
+      match_terms: [营业收入, 营业总收入, 营收]
+      exact_row_headers: [营业收入, 一、营业收入, -、营业收入]
+      secondary_row_headers: [营业总收入, 一、营业总收入, -、营业总收入]
+      weak_row_headers: [营业收入, 营业总收入, 一、营业总收入, -、营业总收入]
+      low_priority_row_headers: [扣除与主营业务无关, 不具备商业实质]
+      bad_row_headers: [占营业收入比例, 营业收入比例, 销售费用占, 研发投入占营业收入]
+      bad_col_headers: [分部收入, 关联方, 数量合计]
+      preferred_statements:
+        - {terms: [主要会计数据, 主要财务指标], score: 5.0}
+        - {terms: [公司简介和主要财务指标], score: 2.0}
+        - {terms: [合并利润表, 利润表], score: 2.5}
+      penalized_statements:
+        - {terms: [关联方, 分部信息, 按产品, 按地区, 母公司], score: -3.0}
+      segment_guard: true
+      nested_row_bonus:
+        - {row_prefix: "其中:营业收入", requires_context: 营业总收入, score: 6.0}
+      early_page_bonus:
+        - {max_page: 10, score: 8.0}
+        - {max_page: 20, score: 4.0}
+      collect_support_candidates: true
 
   - atom_id: MET-005
     standard_name: 货币资金

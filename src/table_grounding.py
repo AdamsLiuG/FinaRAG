@@ -19,25 +19,6 @@ _TARGET_UNIT_FACTORS = {
     "元": 1.0,
 }
 
-_BAD_REVENUE_ROW_TERMS = (
-    "占营业收入比例",
-    "营业收入比例",
-    "销售费用占",
-    "研发投入占营业收入",
-)
-_BAD_REVENUE_COL_TERMS = (
-    "同比",
-    "变动",
-    "比例",
-    "占比",
-    "百分比",
-    "本期比上年同期",
-    "期末余额",
-    "期初",
-    "数量合计",
-    "分部收入",
-    "关联方",
-)
 _BAD_SEGMENT_COL_TERMS = (
     "公司业务",
     "个人业务",
@@ -47,16 +28,6 @@ _BAD_SEGMENT_COL_TERMS = (
     "金融市场业务",
     "未分配项目",
     "其他业务",
-)
-_LOW_PRIORITY_REVENUE_TERMS = (
-    "扣除与主营业务无关",
-    "不具备商业实质",
-)
-_CONSOLIDATED_REVENUE_TERMS = (
-    "营业收入",
-    "营业总收入",
-    "一、营业总收入",
-    "-、营业总收入",
 )
 _NARRATIVE_VALUE_RE = re.compile(r"[\u4e00-\u9fff]{7,}")
 _NUMERIC_LIKE_RE = re.compile(
@@ -118,11 +89,6 @@ def _compact_text(text: str) -> str:
     return normalize_text((text or "").translate(_OCR_NORMALIZATION_MAP)).replace(" ", "")
 
 
-def _is_revenue_question(question: str) -> bool:
-    normalized_question = normalize_text(question)
-    return "营业收入" in normalized_question or "营收" in normalized_question
-
-
 def _infer_unit_hint(raw_unit_hint: object, table_context: str) -> Optional[str]:
     raw_unit = str(raw_unit_hint or "").strip()
     if "%" in raw_unit or "％" in raw_unit:
@@ -145,8 +111,147 @@ def _infer_unit_hint(raw_unit_hint: object, table_context: str) -> Optional[str]
     return raw_unit or None
 
 
-def _reject_revenue_unit(question: str, unit_hint: Optional[str]) -> bool:
-    if not _is_revenue_question(question):
+# 通用取证守卫词表（与指标无关，对所有指标生效）：衍生列/变动列
+_UNIVERSAL_BAD_COL_TERMS = (
+    "同比",
+    "变动",
+    "比例",
+    "占比",
+    "百分比",
+    "本期比上年同期",
+    "期末余额",
+    "期初",
+)
+# 口径维度守卫：表格限定了某维度而问题未提及时否决（对称条件）
+_SCOPE_DIMENSION_TERMS = ("分部", "地区", "产品", "关联方", "客户")
+
+
+def _has_grounding_rule(question: str) -> bool:
+    """问题是否命中带取证规则的指标原子（取代 _is_revenue_question 硬门控）。"""
+    return get_default_store().grounding_for(question) is not None
+
+
+def _universal_row_guard(question: str, row_text: str, col_text: str, unit_kind: str = "currency") -> bool:
+    """通用取证守卫：期间粒度/主体范围/口径维度/单位/衍生列。
+
+    全部为“表格限定了某条件而问题未提及则否决”的**对称条件**，不引入单边否决；
+    原先被囚在营收专用函数内，其余指标一条都用不上。返回 False 表示否决。
+    """
+    normalized_question = normalize_text(question)
+    row_normalized = normalize_text(row_text)
+    col_normalized = normalize_text(col_text)
+    combined = f"{row_normalized} {col_normalized}"
+    has_year_col = bool(re.search(r"20\d{2}", col_normalized))
+
+    if any(term in col_normalized for term in _UNIVERSAL_BAD_COL_TERMS):
+        return False
+    if "增减" in col_normalized and not has_year_col:
+        return False
+    if "季度" in col_normalized and "季度" not in normalized_question:
+        return False
+    if unit_kind == "currency" and "%" not in normalized_question and (
+        "%" in col_normalized or "百分点" in col_normalized
+    ):
+        return False
+    if "母公司" in combined and "母公司" not in normalized_question:
+        return False
+    if "本行" in combined and "本行" not in normalized_question:
+        return False
+    if any(term in combined for term in _SCOPE_DIMENSION_TERMS) and not any(
+        term in normalized_question for term in _SCOPE_DIMENSION_TERMS
+    ):
+        return False
+    return True
+
+
+def _segment_col_guard(col_text: str) -> bool:
+    """分部列守卫（按原子 segment_guard 开关启用）。"""
+    col_normalized = normalize_text(col_text)
+    return not (
+        any(term in col_normalized for term in _BAD_SEGMENT_COL_TERMS) and "合计" not in col_normalized
+    )
+
+
+def _consolidated_bonus(col_text: str) -> float:
+    """合并口径加成（通用）：列名明确为本集团/合计时加分。"""
+    col_normalized = normalize_text(col_text)
+    return 2.0 if ("本集团" in col_normalized or "合计" in col_normalized) else 0.0
+
+
+def _atom_unit_kind(atom) -> str:
+    unit = str(getattr(atom, "unit", "") or "")
+    return "percent" if "%" in unit else "currency"
+
+
+def _atom_row_score(question: str, row_text: str, col_text: str, raw_value: object = None) -> Optional[float]:
+    """原子驱动的行打分（取代 _revenue_row_score）。
+
+    指标专属词表来自 `atom.grounding`，通用守卫对所有指标生效；
+    未命中带规则的原子时返回 0.0（与原门控行为一致）。
+    """
+    hit = get_default_store().grounding_for(question)
+    if hit is None:
+        return 0.0
+    atom, rule = hit
+
+    row_normalized = normalize_text(row_text)
+    col_normalized = normalize_text(col_text)
+    combined = f"{row_normalized} {col_normalized}"
+
+    if rule.match_terms and not any(normalize_text(term) in combined for term in rule.match_terms):
+        return None
+    # bad_row_headers 查 combined（与原实现一致：衍生行名也可能出现在列上）
+    if any(normalize_text(term) in combined for term in rule.bad_row_headers):
+        return None
+    if any(normalize_text(term) in col_normalized for term in rule.bad_col_headers):
+        return None
+    if not _universal_row_guard(question, row_text, col_text, unit_kind=_atom_unit_kind(atom)):
+        return None
+    if rule.segment_guard and not _segment_col_guard(col_text):
+        return None
+
+    # 分级给分：exact/secondary 为精确相等；low_priority/weak 为子串包含；
+    # 合并口径加成仅作用于 exact/secondary（与原实现一致）。
+    if row_normalized in {normalize_text(term) for term in rule.exact_row_headers}:
+        return 8.0 + _consolidated_bonus(col_text)
+    if row_normalized in {normalize_text(term) for term in rule.secondary_row_headers}:
+        return 7.5 + _consolidated_bonus(col_text)
+    if any(normalize_text(term) in row_normalized for term in rule.low_priority_row_headers):
+        return 1.0
+    if any(normalize_text(term) in row_normalized for term in rule.weak_row_headers):
+        return 4.0
+    return 1.5
+
+
+def _atom_statement_score(question: str, table_context: str) -> float:
+    """原子驱动的报表偏好打分（取代 _table_scope_score）。
+
+    与 `_metric_statement_prior_score` 共存：后者按 statement_location 加分，两者对
+    “合并利润表”存在**既有的重复加分**（原实现即如此）。在无端到端评测环境下
+    保留该行为以保证等价性，待准确率可测后再调优权重。
+    """
+    hit = get_default_store().grounding_for(question)
+    if hit is None:
+        return 0.0
+    _atom, rule = hit
+    compact = _compact_text(table_context)
+    score = 0.0
+    for terms, points in rule.preferred_statements:
+        if any(term in compact for term in terms):
+            score += points
+    for terms, points in rule.penalized_statements:
+        if any(term in compact for term in terms):
+            score += points
+    return score
+
+
+def _reject_unit_by_atom(question: str, unit_hint: Optional[str]) -> bool:
+    """单位守卫（取代 _reject_revenue_unit）：按 atom.unit 判定，货币类指标拒百分比单位。"""
+    hit = get_default_store().grounding_for(question)
+    if hit is None:
+        return False
+    atom, _rule = hit
+    if _atom_unit_kind(atom) != "currency":
         return False
     if "%" in (question or ""):
         return False
@@ -154,20 +259,86 @@ def _reject_revenue_unit(question: str, unit_hint: Optional[str]) -> bool:
     return "%" in unit_text or "百分点" in unit_text
 
 
-def _table_scope_score(question: str, table_context: str) -> float:
-    if not _is_revenue_question(question):
+def _atom_nested_row_bonus(question: str, row_text: str, table_context: str) -> float:
+    """嵌套行加成：指标作为上级科目子项（如“其中:营业收入”）且上下文含上级科目时加分。"""
+    hit = get_default_store().grounding_for(question)
+    if hit is None:
         return 0.0
-    compact = _compact_text(table_context)
+    _atom, rule = hit
+    if not rule.nested_row_bonus:
+        return 0.0
+    compact_row = _compact_text(row_text)
+    compact_table = _compact_text(table_context)
     score = 0.0
-    if "主要会计数据" in compact or "主要财务指标" in compact:
-        score += 5.0
-    if "公司简介和主要财务指标" in compact:
-        score += 2.0
-    if "合并利润表" in compact or "利润表" in compact:
-        score += 2.5
-    if any(term in compact for term in ("关联方", "分部信息", "按产品", "按地区", "母公司")):
-        score -= 3.0
+    for row_prefix, requires_context, points in rule.nested_row_bonus:
+        if compact_row.startswith(_compact_text(row_prefix)) and (
+            not requires_context or _compact_text(requires_context) in compact_table
+        ):
+            score += points
     return score
+
+
+def _atom_early_page_bonus(question: str, page: object) -> float:
+    """页码先验：仅对显式配置了 early_page_bonus 的原子生效。
+
+    未配置则不加分——否则给其他指标配上 grounding 后会误吃该加成（如货币资金在
+    资产负债表而非前部摘要）。
+    """
+    hit = get_default_store().grounding_for(question)
+    if hit is None or page is None:
+        return 0.0
+    _atom, rule = hit
+    if not rule.early_page_bonus:
+        return 0.0
+    try:
+        page_number = int(page)
+    except (TypeError, ValueError):
+        return 0.0
+    for max_page, points in sorted(rule.early_page_bonus):
+        if page_number <= max_page:
+            return points
+    return 0.0
+
+
+def _atom_nested_row_bonus(question: str, row_text: str, table_context: str) -> float:
+    """嵌套行加成：指标作为上级科目子项（如“其中:营业收入”）且上下文含上级科目时加分。"""
+    hit = get_default_store().grounding_for(question)
+    if hit is None:
+        return 0.0
+    _atom, rule = hit
+    if not rule.nested_row_bonus:
+        return 0.0
+    compact_row = _compact_text(row_text)
+    compact_table = _compact_text(table_context)
+    score = 0.0
+    for row_prefix, requires_context, points in rule.nested_row_bonus:
+        if compact_row.startswith(_compact_text(row_prefix)) and (
+            not requires_context or _compact_text(requires_context) in compact_table
+        ):
+            score += points
+    return score
+
+
+def _atom_early_page_bonus(question: str, page: object) -> float:
+    """页码先验：仅对显式配置了 early_page_bonus 的原子生效。
+
+    未配置则不加分——否则给其他指标配上 grounding 后会误吃该加成（如货币资金在
+    资产负债表而非前部摘要）。
+    """
+    hit = get_default_store().grounding_for(question)
+    if hit is None or page is None:
+        return 0.0
+    _atom, rule = hit
+    if not rule.early_page_bonus:
+        return 0.0
+    try:
+        page_number = int(page)
+    except (TypeError, ValueError):
+        return 0.0
+    for max_page, points in sorted(rule.early_page_bonus):
+        if page_number <= max_page:
+            return points
+    return 0.0
 
 
 def _metric_statement_prior_score(question: str, table_context: str) -> float:
@@ -217,55 +388,6 @@ def _is_valid_numeric_raw_value(raw_value: object, question: str) -> bool:
     if parsed is None:
         return False
     return bool(_NUMERIC_LIKE_RE.match(text))
-
-
-def _revenue_row_score(question: str, row_text: str, col_text: str, raw_value: object = None) -> Optional[float]:
-    normalized_question = normalize_text(question)
-    if "营业收入" not in normalized_question and "营收" not in normalized_question:
-        return 0.0
-
-    row_normalized = normalize_text(row_text)
-    col_normalized = normalize_text(col_text)
-    combined = f"{row_normalized} {col_normalized}"
-    if not any(term in combined for term in ("营业收入", "营业总收入", "营收")):
-        return None
-    if any(term in combined for term in _BAD_REVENUE_ROW_TERMS):
-        return None
-    has_year_col = bool(re.search(r"20\d{2}", col_normalized))
-    if any(term in col_normalized for term in _BAD_REVENUE_COL_TERMS):
-        return None
-    if "增减" in col_normalized and not has_year_col:
-        return None
-    if any(term in col_normalized for term in _BAD_SEGMENT_COL_TERMS) and "合计" not in col_normalized:
-        return None
-    if "季度" in col_normalized and "季度" not in normalized_question:
-        return None
-    if "%" not in normalized_question and ("%" in col_normalized or "百分点" in col_normalized):
-        return None
-    if "母公司" in combined and "母公司" not in normalized_question:
-        return None
-    if "本行" in combined and "本行" not in normalized_question:
-        return None
-    if any(term in combined for term in ("分部", "地区", "产品", "关联方", "客户")) and not any(
-        term in normalized_question for term in ("分部", "地区", "产品", "关联方", "客户")
-    ):
-        return None
-
-    if row_normalized in {"营业收入", "一、营业收入", "-、营业收入"}:
-        score = 8.0
-        if "本集团" in col_normalized or "合计" in col_normalized:
-            score += 2.0
-        return score
-    if row_normalized in {"营业总收入", "一、营业总收入", "-、营业总收入"}:
-        score = 7.5
-        if "本集团" in col_normalized or "合计" in col_normalized:
-            score += 2.0
-        return score
-    if any(term in row_normalized for term in _LOW_PRIORITY_REVENUE_TERMS):
-        return 1.0
-    if any(term in row_normalized for term in _CONSOLIDATED_REVENUE_TERMS):
-        return 4.0
-    return 1.5
 
 
 class TableGrounder:
@@ -497,32 +619,19 @@ class TableGrounder:
                     row_text = " ".join(cell.get("matched_row_headers") or [])
                     col_text = " ".join(cell.get("matched_col_headers") or [])
                     unit_hint = _infer_unit_hint(cell.get("unit_hint"), table_context)
-                    if _reject_revenue_unit(question, unit_hint):
+                    if _reject_unit_by_atom(question, unit_hint):
                         continue
-                    revenue_score = _revenue_row_score(question, row_text, col_text, raw_value=raw_value)
-                    if revenue_score is None:
+                    row_score = _atom_row_score(question, row_text, col_text, raw_value=raw_value)
+                    if row_score is None:
                         continue
-                    score += revenue_score
+                    score += row_score
                     score += _score_overlap(query_tokens, row_text) * 2.2
                     score += _score_overlap(query_tokens, col_text) * 1.8
                     score += _score_overlap(query_tokens, table_context) * 0.8
-                    score += _table_scope_score(question, table_context)
+                    score += _atom_statement_score(question, table_context)
                     score += _metric_statement_prior_score(question, table_context)
-                    if _is_revenue_question(question):
-                        compact_row = _compact_text(row_text)
-                        compact_table = _compact_text(table_context)
-                        if compact_row.startswith("其中:营业收入") and "营业总收入" in compact_table:
-                            score += 6.0
-                    if _is_revenue_question(question) and cell.get("page") is not None:
-                        try:
-                            page_number = int(cell.get("page"))
-                        except (TypeError, ValueError):
-                            page_number = None
-                        if page_number is not None:
-                            if page_number <= 10:
-                                score += 8.0
-                            elif page_number <= 20:
-                                score += 4.0
+                    score += _atom_nested_row_bonus(question, row_text, table_context)
+                    score += _atom_early_page_bonus(question, cell.get("page"))
 
                     if cell.get("page") in candidate_pages:
                         score += 1.5
@@ -594,7 +703,7 @@ class TableGrounder:
                 context_match["logical_context_support"] = True
                 logical_context_matches.append(context_match)
             best_match["logical_context_matches"] = logical_context_matches
-        if _is_revenue_question(question) and normalized_value is not None:
+        if _has_grounding_rule(question) and normalized_value is not None:
             support_candidates: List[Dict[str, Any]] = []
             best_key = (
                 best_match.get("source_doc_id"),
