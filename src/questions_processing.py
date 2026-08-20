@@ -341,41 +341,43 @@ class QuestionsProcessor:
         doc_id = str(doc_id or "").strip()
         if not doc_id:
             return None
+        # 整个 load 持锁（double-checked）：分离的读锁/写锁存在 check-then-act
+        # 竞态——并发 cold miss 时多线程各自加载产生不同 payload 对象
+        # （并发一致性测试抓到）。锁内 IO 串行化冷加载可接受（一次性成本），
+        # 热路径缓存命中快速返回。
         with self._document_cache_lock:
             cached = self._document_cache.get(doc_id)
-        if cached is not None:
-            return cached
+            if cached is not None:
+                return cached
 
-        candidate_paths = []
-        if doc_id.endswith(".json"):
-            candidate_paths.append(self.documents_dir / doc_id)
-        else:
-            candidate_paths.append(self.documents_dir / f"{doc_id}.json")
-            candidate_paths.append(self.documents_dir / doc_id)
+            candidate_paths = []
+            if doc_id.endswith(".json"):
+                candidate_paths.append(self.documents_dir / doc_id)
+            else:
+                candidate_paths.append(self.documents_dir / f"{doc_id}.json")
+                candidate_paths.append(self.documents_dir / doc_id)
 
-        for path in candidate_paths:
-            if not path.exists() or not path.is_file():
-                continue
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            with self._document_cache_lock:
+            for path in candidate_paths:
+                if not path.exists() or not path.is_file():
+                    continue
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
                 self._document_cache[doc_id] = payload
-            return payload
-
-        for path in self.documents_dir.glob("*.json"):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            metainfo = payload.get("metainfo") or {}
-            observed_doc_id = metainfo.get("sha1_name") or metainfo.get("doc_id") or path.stem
-            if str(observed_doc_id) == doc_id:
-                with self._document_cache_lock:
-                    self._document_cache[doc_id] = payload
                 return payload
-        return None
+
+            for path in self.documents_dir.glob("*.json"):
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                metainfo = payload.get("metainfo") or {}
+                observed_doc_id = metainfo.get("sha1_name") or metainfo.get("doc_id") or path.stem
+                if str(observed_doc_id) == doc_id:
+                    self._document_cache[doc_id] = payload
+                    return payload
+            return None
 
     def _selected_doc_id(
         self,
