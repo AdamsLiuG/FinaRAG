@@ -329,6 +329,8 @@ class QuestionRewriter:
                         for ref in atom.confusable_with
                         if (conf := store.get(ref)) is not None
                     ],
+                    # 治理字段：过期口径仍可能正确（准则未变），降级而非拒答；未声明有效期时为 False
+                    "expired": atom.is_expired(),
                 }
         playbook_payload: Optional[Dict[str, Any]] = None
         if intent_result.intent:

@@ -25,7 +25,9 @@ _VALIDATION_FLAG_LABELS = {
     "chart_unit_mismatch": "图表单位与问题不一致",
     "chart_year_mismatch": "图表年份与问题不一致",
     "implicit_intent_evidence_mismatch": "隐含意图缺少对应证据",
+    "implicit_intent_evidence_incomplete": "隐含意图必需指标证据不足",
     "metric_evidence_mismatch": "指标证据与问题不匹配",
+    "metric_atom_expired": "指标口径定义已过有效期",
     "topk_result_count_mismatch": "top-k 返回数量不足",
     "no_retrieval_results": "未返回检索证据",
     "processing_error": "处理流程报错",
@@ -268,6 +270,13 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
                 answer["final_answer"] = "N/A"
                 final_answer = "N/A"
                 confidence = "low"
+
+            # 有效期门禁（温和语义）：过期口径仍可能正确（会计准则未必随时间失效），
+            # 标记并降级而非拒答——与口径门禁的严格语义刻意区分。
+            atom_payload = getattr(query_plan, "metric_atom", None) or {}
+            if atom_payload.get("expired"):
+                validation_flags.append("metric_atom_expired")
+                confidence = _downgrade_confidence(confidence)
 
         if query_plan.operation == "top_k" and query_plan.limit:
             answer_count = _topk_answer_count(final_answer)

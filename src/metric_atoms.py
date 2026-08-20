@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -55,6 +56,31 @@ def _parse_statement_scores(raw: object) -> List[Tuple[List[str], float]]:
         if terms:
             parsed.append((terms, float(item.get("score") or 0.0)))
     return parsed
+
+
+def _parse_provenance(raw: object, atom_id: str) -> Dict[str, str]:
+    """解析 per-field provenance 标注；非法值在加载期暴露（fail-fast）。"""
+    parsed: Dict[str, str] = {}
+    for key, value in (raw or {}).items():
+        value_str = str(value).strip()
+        if value_str not in ("extracted", "inferred"):
+            raise ValueError(
+                f"{atom_id}: provenance['{key}'] 非法值 {value_str!r}（仅允许 extracted/inferred）"
+            )
+        parsed[str(key)] = value_str
+    return parsed
+
+
+def _parse_date(raw: object, field_name: str, atom_id: str) -> str:
+    """解析 ISO 日期（YYYY-MM-DD）；空值返回空串（未声明）。"""
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"{atom_id}: {field_name} 非法日期 {text!r}（需 YYYY-MM-DD）") from exc
+    return text
 
 
 def _parse_grounding(raw: object) -> Optional[GroundingRule]:
@@ -103,6 +129,16 @@ class MetricAtom:
     evidence_targets: List[str] = field(default_factory=list)
     grounding: Optional[GroundingRule] = None
     version: str = "1.0"
+    # 治理字段（Stage G，对齐 LLM-Wiki Claim 证据链）：
+    # provenance 按字段声明知识来源——extracted（从生产代码迁移，有等价测试佐证）/ inferred（手写知识，
+    # 未经语义验证）；缺省按 inferred 处理（未声明来源不得按高可信消费）。
+    provenance: Dict[str, str] = field(default_factory=dict)
+    # verified_at/expires_at 为 ISO 日期（YYYY-MM-DD）；空串 = 未声明，是显式缺口（validity_audit 可见），
+    # 不解读为"永不过期"。
+    verified_at: str = ""
+    expires_at: str = ""
+
+    _PROVENANCE_VALUES = ("extracted", "inferred")
 
     @property
     def match_terms(self) -> List[str]:
@@ -112,6 +148,17 @@ class MetricAtom:
             if term and term not in terms:
                 terms.append(term)
         return terms
+
+    def provenance_of(self, field_name: str) -> str:
+        """字段来源；未标注时返回 inferred（fail-closed：未知来源按低可信处理）。"""
+        value = self.provenance.get(field_name)
+        return value if value in self._PROVENANCE_VALUES else "inferred"
+
+    def is_expired(self, as_of: Optional[date] = None) -> bool:
+        """expires_at 已声明且不晚于 as_of 时为 True；未声明有效期不视为过期（但 audit 会暴露缺口）。"""
+        if not self.expires_at:
+            return False
+        return date.fromisoformat(self.expires_at) <= (as_of or date.today())
 
 
 class MetricAtomStore:
@@ -159,6 +206,9 @@ class MetricAtomStore:
                 evidence_targets=list(item.get("evidence_targets") or []),
                 grounding=_parse_grounding(item.get("grounding")),
                 version=str(item.get("version") or "1.0"),
+                provenance=_parse_provenance(item.get("provenance"), str(item["atom_id"])),
+                verified_at=_parse_date(item.get("verified_at"), "verified_at", str(item["atom_id"])),
+                expires_at=_parse_date(item.get("expires_at"), "expires_at", str(item["atom_id"])),
             )
             for item in (payload.get("atoms") or [])
         ]
@@ -181,12 +231,20 @@ class MetricAtomStore:
             return None
         return atom, atom.grounding
 
-    def grounding_for(self, question: str) -> Optional[Tuple[MetricAtom, GroundingRule]]:
-        """问题命中且该原子带取证规则时返回 (原子, 规则)。"""
-        atom = self.find_metric(normalize_text(question))
-        if atom is None or atom.grounding is None:
-            return None
-        return atom, atom.grounding
+    def validity_audit(self) -> List[Dict[str, object]]:
+        """有效期审计：未声明 verified_at/expires_at 是显式缺口，不解读为"永不过期"。"""
+        today = date.today()
+        return [
+            {
+                "atom_id": atom.atom_id,
+                "standard_name": atom.standard_name,
+                "verified_at": atom.verified_at or None,
+                "expires_at": atom.expires_at or None,
+                "expired": atom.is_expired(as_of=today),
+                "undeclared_expiry": not atom.expires_at,
+            }
+            for atom in self._atoms
+        ]
 
     def get(self, atom_id: str) -> Optional[MetricAtom]:
         return self._by_id.get(atom_id)

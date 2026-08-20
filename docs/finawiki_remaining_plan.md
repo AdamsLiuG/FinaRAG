@@ -341,3 +341,22 @@ reserved_non_flags: [has_pdfcrawl_metadata, has_table_context, has_chart_context
 **过程中暴露并已建防线的两类质量问题**：
 1. 形近字错写（「润」→「潦」，同一会话复现 3 次）使规则静默失效——防线为"知识与旧常量逐字一致断言" + 黄金基线从 git 加载而非手抄 + 码点转义书写负向断言；
 2. 磁盘写入报失败但延迟落盘，重试导致函数/YAML 键重复（Python 与 YAML 均不报错）——处理流程为报失败后先计数验证再决定重试，去重用带 assert 保护的脚本。
+
+---
+
+## 8. Stage G：治理机制对齐 LLM-Wiki（2026-08-20 立项）
+
+> 背景纠偏：本项目的知识层技术锚点是 KnowledgeBrain `_llm-wiki/` 工程的四条架构决策
+> （编译而非检索 / fail-closed 拒答语义 / 三层 Registry 状态机 / Builder 永不自批）
+> 及其 Claim 粒度证据链（provenance 刻度、有效期、Gap 一等公民），不是"实习方法论泛化"。
+> Stage E/F 已自发同构决策三/四的雏形；Stage G 补齐证据链与决策一/二的落地形态。
+
+| 序 | 项 | 对齐特点 | 设计要点 |
+|---|---|---|---|
+| G-1 | provenance 刻度进原子 schema | Claim 证据链、缺口不包装 | 每原子标注各字段来源 extracted（从生产代码迁移，等价测试可证）/ inferred（手写知识，未语义验证）；缺省按 inferred（fail-closed）。存量：aliases=extracted（源自 query_rewrite 旧正则），定义类字段=inferred，MET-004.grounding=extracted（源自 _revenue_row_score） |
+| G-2 | 有效期 verified_at/expires_at | 知识带有效期 | 过期原子 payload 带 expired 标志，answer_validation 加 metric_atom_expired flag + 降置信度（温和语义：不拒答——口径可能仍正确，完全 Gap 语义适用于独立 Serving 而非 RAG 内知识层）；validity_audit() 把未声明有效期暴露为显式缺口 |
+| G-3 | 快照升级为冻结 Generation | 决策一+三 | atom_snapshot.json 从 hash 映射升级为完整编译产物（原子规范化序列化 + per-atom hash + buildId + 源 yaml sha256）；MetricAtomStore.load() 运行时只读冻结版并校验源同步，yaml 变更未重编译即启动失败（fail-closed）；load_source() 保留源码直读供构建工具 |
+| G-4 | 条目填充（后续） | — | grounding 扩容 11 原子、flag 词表补全、剧本收编分红词表——每个新条目必须带 provenance |
+
+验收：provenance 非法值加载期拒绝；过期边界（今天/明天）单测；audit 显式列缺口；
+yaml 改动未重编译时 load() 报错指路；Generation 加载与源码加载行为等价（hash 全等）。

@@ -13,6 +13,8 @@ atoms:
     statement_location: 合并利润表/主要财务指标
     confusable_with: [MET-002]
     pitfalls: 部分报告简称"扣非净利润"时默认指归母口径，需结合上下文确认
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [扣非归母净利润, 扣除非经常性损益后的净利润, 合并利润表]
 
   - atom_id: MET-002
@@ -24,6 +26,8 @@ atoms:
     statement_location: 合并利润表
     confusable_with: [MET-001]
     pitfalls: 部分研报"净利润"默认指归母口径，需核对报告口径声明
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [归母净利润, 归属于母公司股东的净利润, 合并利润表]
 
   - atom_id: MET-003
@@ -35,6 +39,8 @@ atoms:
     statement_location: 合并现金流量表
     confusable_with: []
     pitfalls: 现金流量表补充资料提供净利润调节为经营现金流的桥接表，是验证口径的首选证据
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [经营活动现金流量净额, 现金流量表, 经营现金流]
 
   - atom_id: MET-004
@@ -46,6 +52,8 @@ atoms:
     statement_location: 合并利润表
     confusable_with: []
     pitfalls: 旧准则下"主营业务收入"不含其他业务收入，与现口径存在历史口径差异
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: extracted}
     evidence_targets: [营业收入, 主营业务收入, 合并利润表]
     # 取证规则（本字段迁自 table_grounding 内的营收专用硬编码词表）。
     # exact/secondary 为行首**精确相等**；weak/low_priority/bad_* 为**子串包含**。
@@ -80,6 +88,8 @@ atoms:
     statement_location: 合并资产负债表
     confusable_with: []
     pitfalls: 货币资金高不等于流动性无忧，需关注受限资金与短期债务到期结构
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [货币资金, 现金及现金等价物, 资产负债表]
 
   - atom_id: MET-006
@@ -91,6 +101,8 @@ atoms:
     statement_location: 合并资产负债表流动负债
     confusable_with: []
     pitfalls: 短期借款激增需结合货币资金与经营现金流评估滚动续借风险
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [短期借款, 一年内到期的非流动负债, 流动负债]
 
   - atom_id: MET-007
@@ -102,6 +114,8 @@ atoms:
     statement_location: 合并资产负债表
     confusable_with: [MET-008]
     pitfalls: 资产总计科目名在部分报告中写作"资产总计"而非"总资产"
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [总资产, 资产总计, 资产负债表]
 
   - atom_id: MET-008
@@ -113,6 +127,8 @@ atoms:
     statement_location: 合并资产负债表
     confusable_with: [MET-007]
     pitfalls: 负债合计含递延所得税负债等非付息项目，付息负债口径需单独计算
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [总负债, 负债合计, 资产负债表]
 
   - atom_id: MET-009
@@ -124,6 +140,8 @@ atoms:
     statement_location: 主要财务指标/经营情况讨论
     confusable_with: [MET-012]
     pitfalls: 研发投入占比是科创属性评价的核心口径，混用研发费用会低估投入
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [研发投入, 研发人员]
 
   - atom_id: MET-012
@@ -135,6 +153,8 @@ atoms:
     statement_location: 合并利润表
     confusable_with: [MET-009]
     pitfalls: 利润表科目为"研发费用"，年报"研发投入"口径更宽
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [研发费用, 合并利润表]
 
   - atom_id: MET-010
@@ -146,6 +166,8 @@ atoms:
     statement_location: 主要财务指标/经营情况讨论
     confusable_with: []
     pitfalls: 毛利率异常波动优先排查会计政策变更与业务结构变化
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [毛利率, 综合毛利率, 主营业务收入]
 
   - atom_id: MET-011
@@ -157,4 +179,6 @@ atoms:
     statement_location: 主要财务指标
     confusable_with: []
     pitfalls: 负债率在不同语境可能泛指其他比率，金融语境默认资产负债率
+    verified_at: "2026-08-13"
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
     evidence_targets: [资产负债率, 总资产, 总负债]
