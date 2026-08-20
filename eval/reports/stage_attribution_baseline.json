@@ -1,0 +1,14 @@
+{
+  "status": "pending_first_scoring_run",
+  "recorded_at": "2026-08-21",
+  "note": "F3 归因工具（eval/stage_attribution.py）已就绪并有 14 项单测，但基线矩阵挂 NULL：存量 answers_*（erc2 英文冒烟残留，5 条 N/A）与 finance_eval_benchmark_v2/core120 gold（中文 120 题）零对齐（unmatched_predictions=5, n=0）。不伪造基线数字。",
+  "first_valid_matrix_requires": [
+    "API key（生成侧 LLM 调用）",
+    "跑分产出与 core120 对齐的 answers bundle（run_finance_benchmark.py）"
+  ],
+  "usage_after_scoring": "../venv/bin/python -m eval.stage_attribution --pred <answers.json> --gold ../../data/finance_eval_benchmark_v2/core120/answers_gold.json --output <path>",
+  "intended_comparisons": {
+    "a1_fusion_fix": "排序相关分支（evidence_mislocalization/generation_error）前后占比",
+    "agentic": "evidence_mislocalization/over_refusal 开关前后占比"
+  }
+}
