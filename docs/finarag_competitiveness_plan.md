@@ -499,4 +499,14 @@ pip install fastapi uvicorn sse-starlette   # 或确认 venv 已有（无则 req
 
 **磁盘故障记录（本轮 3 次）**：SearchReplace 报 save failed 两次实写一次真失败；终端 grep 输出一次陈旧假象（显示旧内容实际已替换）。防线：python 直改 + assert 锚点计数 + 字节级回读校验，未发生重复写入。
 
-**剩余**：D1+D3（第三批，服务化）未开工。Agentic v2（校验后 try-then-closed 闭环）与 D3 trace 配套。端到端收益验收（Level2/number 准确率/归因矩阵首跑）仍卡 API key。
+**第三批（D1+D3，2026-08-21 完成）**：
+
+| commit | 内容 | 实测要点 |
+|---|---|---|
+| ee448d8 | D1 并发审计 | v2 方案两处评估错误修正：reranker.last_debug 共享残留不成立（_retriever_cache 是 threading.local，retriever/reranker 每线程一套，测试锁定该前提）；_document_cache 读锁外 + 写无锁 → 入锁 |
+| 3bf8a94 | D3 服务层 | **离线环境装不上 fastapi（pip SSL 断连）→ stdlib ThreadingHTTPServer 降级实现**，事件 schema 与 FastAPI 版设计对齐（QaService 业务逻辑与 HTTP 解耦，有网换框架不变）；/qa + /qa/stream SSE 七阶段（如实声明伪流式）+ /healthz（知识层 fail-closed 状态透出 + 索引缓存 stats）；预算 v1 为超限标记（降级链属 v2） |
+| 0d2c3e2 | D1 补丁 | 初版分离锁的 check-then-act 竞态被并发一致性测试抓到（8 线程 cold miss 产生不同 payload 对象）→ double-checked locking 整体持锁。教训：缓存修复必须测并发 cold miss，仅测读写互斥不够 |
+
+**五项全部完成**。最终状态：全量 **458 tests**（较实施前 405 +53），失败维持 6 个历史环境依赖项，零回归。测试间污染已知项：colbert_model 测试在 discover 全量时因 env 残留失败（单独跑通过，历史问题非本轮引入）。
+
+**v2 待办（如实声明）**：真流式（pipeline per-stage 回调）、预算逐级降级链、Agentic 校验后闭环（try-then-closed 完整版）、FastAPI 换装。端到端收益验收（Level2/number 准确率/归因矩阵首跑）仍卡 API key。
