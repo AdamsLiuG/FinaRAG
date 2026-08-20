@@ -348,7 +348,7 @@ class MetadataRoutingTests(unittest.TestCase):
 
         recorded = {}
 
-        def fake_run_retrieval(retriever, mode: str, company_name: str, query: str, filters, candidate_doc_ids=None):
+        def fake_run_retrieval(retriever, mode: str, company_name: str, query: str, filters, candidate_doc_ids=None, task_type=None):
             recorded["filters"] = filters
             recorded["candidate_doc_ids"] = list(candidate_doc_ids or [])
             return [

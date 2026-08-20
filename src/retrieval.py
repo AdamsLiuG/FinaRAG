@@ -11,7 +11,13 @@ import numpy as np
 from src.document_store import get_document_store
 from src.embedding_backend import EmbeddingBackend, BGEM3SparseEmbeddingBackend
 from src.retrieval_filters import RetrievalFilters, apply_retrieval_filters, build_result_metadata
-from src.reranking import CascadeReranker, LLMReranker, FlagEmbeddingReranker, VLLMApiReranker
+from src.reranking import (
+    CascadeReranker,
+    FlagEmbeddingReranker,
+    LLMReranker,
+    VLLMApiReranker,
+    resolve_llm_weight,
+)
 from src.text_normalization import normalize_text, tokenize_for_bm25
 
 _log = logging.getLogger(__name__)
@@ -984,6 +990,7 @@ class HybridRetriever:
         parent_retrieval_mode: str = "child",
         filters: Optional[RetrievalFilters] = None,
         candidate_doc_ids: Optional[List[str]] = None,
+        task_type: Optional[str] = None,
     ) -> List[Dict]:
         if not str(query or "").strip():
             return []
@@ -1006,6 +1013,7 @@ class HybridRetriever:
             documents_batch_size=documents_batch_size,
             top_n=top_n,
             llm_weight=llm_weight,
+            task_type=task_type,
         )
         return reranked_results
 
@@ -1016,6 +1024,7 @@ class HybridRetriever:
         documents_batch_size: int = 2,
         top_n: int = 6,
         llm_weight: float = 0.7,
+        task_type: Optional[str] = None,
     ) -> List[Dict]:
         if not candidate_results:
             self.last_rerank_debug = {
@@ -1031,7 +1040,7 @@ class HybridRetriever:
             query=query,
             documents=candidate_results,
             documents_batch_size=documents_batch_size,
-            llm_weight=llm_weight,
+            llm_weight=resolve_llm_weight(task_type, llm_weight),
         )
         self.last_rerank_debug = dict(getattr(self.reranker, "last_debug", {}) or {})
         if not self.last_rerank_debug:

@@ -947,7 +947,16 @@ class QuestionsProcessor:
             self._retriever_cache.bundle = bundle
         return bundle
 
-    def _run_retrieval(self, retriever, mode: str, company_name: str, query: str, filters, candidate_doc_ids: Optional[List[str]] = None) -> List[Dict]:
+    def _run_retrieval(
+        self,
+        retriever,
+        mode: str,
+        company_name: str,
+        query: str,
+        filters,
+        candidate_doc_ids: Optional[List[str]] = None,
+        task_type: Optional[str] = None,
+    ) -> List[Dict]:
         if mode == "full_context":
             return retriever.retrieve_all(company_name, filters=filters, candidate_doc_ids=candidate_doc_ids)
         if not str(query or "").strip():
@@ -963,6 +972,7 @@ class QuestionsProcessor:
                 parent_retrieval_mode=self.parent_retrieval_mode,
                 filters=filters,
                 candidate_doc_ids=candidate_doc_ids,
+                task_type=task_type,
             )
         if mode == "hybrid":
             return retriever.retrieve_candidates_by_company_name(
@@ -1069,6 +1079,7 @@ class QuestionsProcessor:
         search_queries: List[str],
         filters,
         candidate_doc_ids: Optional[List[str]] = None,
+        task_type: Optional[str] = None,
     ) -> Tuple[List[Dict], int, List[Tuple[str, List[Dict]]], List[Dict]]:
         retrieval_runs = self._retrieve_multi_query_candidate_runs(
             retriever=retriever,
@@ -1083,6 +1094,7 @@ class QuestionsProcessor:
             question=question,
             retrieval_runs=retrieval_runs,
             pool_cap=candidate_pool_cap,
+            task_type=task_type,
         )
         return reranked_results, len(merged_candidates), retrieval_runs, merged_candidates
 
@@ -1118,6 +1130,7 @@ class QuestionsProcessor:
         question: str,
         retrieval_runs: List[Tuple[str, List[Dict]]],
         pool_cap: int,
+        task_type: Optional[str] = None,
     ) -> Tuple[List[Dict], List[Dict]]:
         merged_candidates = self.merge_multi_query_candidates(retrieval_runs, pool_cap=pool_cap)
         if not merged_candidates:
@@ -1128,6 +1141,7 @@ class QuestionsProcessor:
             candidate_results=merged_candidates,
             documents_batch_size=self.final_reranking_batch_size,
             top_n=self.retrieval_debug_top_n,
+            task_type=task_type,
         )
         return reranked_results, merged_candidates
 
@@ -2887,7 +2901,10 @@ class QuestionsProcessor:
         )
 
         if mode == "full_context":
-            retrieval_results = self._run_retrieval(retriever, mode, company_name, question, rewrite_result.filters, candidate_doc_ids)
+            retrieval_results = self._run_retrieval(
+                retriever, mode, company_name, question, rewrite_result.filters, candidate_doc_ids,
+                task_type=getattr(rewrite_result, "task_type", None),
+            )
             reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
             hyde_debug = self._build_hyde_debug_payload(
                 retrieval_results=retrieval_results,
@@ -2901,6 +2918,7 @@ class QuestionsProcessor:
                 search_queries=rewrite_result.search_queries,
                 filters=rewrite_result.filters,
                 candidate_doc_ids=candidate_doc_ids,
+                task_type=getattr(rewrite_result, "task_type", None),
             )
             reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
             hyde_debug = self._build_hyde_debug_payload(
@@ -2949,6 +2967,7 @@ class QuestionsProcessor:
                                     question=question,
                                     retrieval_runs=retrieval_runs + hyde_candidate_runs,
                                     pool_cap=self._candidate_pool_cap(len(rewrite_result.search_queries) + 1),
+                                    task_type=getattr(rewrite_result, "task_type", None),
                                 )
                                 candidate_pool_size_before_rerank = len(merged_candidates)
                                 reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
@@ -2958,7 +2977,10 @@ class QuestionsProcessor:
         else:
             retrieval_runs = []
             for search_query in rewrite_result.search_queries:
-                results = self._run_retrieval(retriever, mode, company_name, search_query, rewrite_result.filters, candidate_doc_ids)
+                results = self._run_retrieval(
+                    retriever, mode, company_name, search_query, rewrite_result.filters, candidate_doc_ids,
+                    task_type=getattr(rewrite_result, "task_type", None),
+                )
                 if results:
                     retrieval_runs.append(results)
             retrieval_results = self._merge_multi_query_results(retrieval_runs, self.retrieval_debug_top_n)

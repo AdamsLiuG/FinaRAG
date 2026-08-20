@@ -14,6 +14,11 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from src.api_requests import APIProcessor
 from src.embedding_backend import _bgem3_encode_texts, _load_bgem3_model
 
+try:
+    import yaml
+except ImportError:  # pragma: no cover - yaml 是项目硬依赖，仅防御性声明
+    yaml = None
+
 
 def _get_env_value(*names, default=None):
     for name in names:
@@ -76,6 +81,71 @@ def _fuse_scores(
         llm_weight * rel + (1.0 - llm_weight) * dist
         for rel, dist in zip(rel_norm, dist_norm)
     ]
+
+
+_FUSION_WEIGHTS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config", "retrieval_fusion_weights.yaml",
+)
+_fusion_weights_cache: Optional[dict] = None
+
+
+def _load_fusion_weights() -> dict:
+    """加载题型→llm_weight 映射（config/retrieval_fusion_weights.yaml）。
+
+    软硬失败分级：文件缺失/不可解析 → 空 dict（回退调用方 default，部署容错）；
+    权重值越界（∉(0,1)）或非数值 → ValueError（配置错误应显式暴露）。
+    """
+    global _fusion_weights_cache
+    if _fusion_weights_cache is not None:
+        return _fusion_weights_cache
+    weights: dict = {}
+    if yaml is None:
+        return weights
+    try:
+        with open(_FUSION_WEIGHTS_PATH, encoding="utf-8") as f:
+            payload = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"Warning: 题型融合权重配置不可用（{exc}），全部回退默认 llm_weight")
+        _fusion_weights_cache = weights
+        return weights
+    raw_weights = payload.get("task_type_weights") or {}
+    if not isinstance(raw_weights, dict):
+        print("Warning: task_type_weights 结构非法（应为映射），全部回退默认 llm_weight")
+        _fusion_weights_cache = weights
+        return weights
+    for task_type, spec in raw_weights.items():
+        value = spec.get("llm_weight") if isinstance(spec, dict) else None
+        if value is None:
+            print(f"Warning: 题型 {task_type} 缺 llm_weight，回退默认")
+            continue
+        numeric = float(value)
+        if not (0.0 < numeric < 1.0):
+            raise ValueError(
+                f"题型融合权重越界：{task_type} 的 llm_weight={numeric}，必须在 (0,1) 开区间"
+            )
+        weights[str(task_type)] = numeric
+    _fusion_weights_cache = weights
+    return weights
+
+
+def reset_fusion_weights_cache() -> None:
+    """测试隔离：重置题型权重缓存（注入临时配置后必调）。"""
+    global _fusion_weights_cache
+    _fusion_weights_cache = None
+
+
+def resolve_llm_weight(task_type: Optional[str], default: float) -> float:
+    """A4 题型加权：task_type → llm_weight；未注册题型/未提供回退 default。
+
+    task_type 值域来自 QueryPlan 路由（evidence_qa/definition_qa/
+    single_metric_lookup 等 8 类）。语义权重经 _fuse_scores 池内归一后生效
+    （名义权重=实际权重），配置进 yaml 不进代码。
+    """
+    if not task_type:
+        return float(default)
+    weights = _load_fusion_weights()
+    return float(weights.get(task_type, default))
 
 
 def _parse_devices(value: str | None) -> list[str]:

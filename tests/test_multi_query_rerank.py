@@ -87,6 +87,7 @@ class FakeHybridRetriever:
         documents_batch_size: int = 2,
         top_n: int = 6,
         llm_weight: float = 0.7,
+        task_type=None,
     ):
         self.rerank_calls.append(
             {
@@ -127,6 +128,7 @@ class FakeHybridRetriever:
         parent_retrieval_mode: str = "child",
         filters=None,
         candidate_doc_ids=None,
+        task_type=None,
     ):
         self.retrieve_calls.append(
             {

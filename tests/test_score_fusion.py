@@ -143,3 +143,83 @@ class TestRetrievalFusionRegression(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTaskTypeWeights(unittest.TestCase):
+    """A4 题型加权：task_type → llm_weight（config/retrieval_fusion_weights.yaml）。"""
+
+    def setUp(self):
+        from src import reranking
+        self._reranking = reranking
+        reranking.reset_fusion_weights_cache()
+        self.addCleanup(reranking.reset_fusion_weights_cache)
+
+    def test_t9_registered_task_types(self):
+        resolve = self._reranking.resolve_llm_weight
+        self.assertAlmostEqual(resolve("definition_qa", 0.7), 0.85)
+        self.assertAlmostEqual(resolve("single_metric_lookup", 0.7), 0.50)
+        self.assertAlmostEqual(resolve("evidence_qa", 0.7), 0.70)
+
+    def test_t10_unregistered_falls_back_to_default(self):
+        resolve = self._reranking.resolve_llm_weight
+        self.assertAlmostEqual(resolve("novel_type", 0.7), 0.7)
+        self.assertAlmostEqual(resolve(None, 0.7), 0.7)
+        self.assertAlmostEqual(resolve("", 0.7), 0.7)
+
+    def test_t11_out_of_range_weight_raises(self):
+        """权重越界（∉(0,1) 开区间）→ ValueError：配置错误显式暴露。"""
+        import tempfile
+        import os
+        from unittest.mock import patch
+
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write("task_type_weights:\n  definition_qa: {llm_weight: 1.5}\n")
+            tmp_path = tmp.name
+        try:
+            with patch.object(self._reranking, "_FUSION_WEIGHTS_PATH", tmp_path):
+                with self.assertRaises(ValueError):
+                    self._reranking.resolve_llm_weight("definition_qa", 0.7)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_t12_missing_config_falls_back(self):
+        """yaml 缺失 → 空 dict 回退 default（部署容错，不阻断启动）。"""
+        from unittest.mock import patch
+
+        with patch.object(self._reranking, "_FUSION_WEIGHTS_PATH", "/nonexistent/path.yaml"):
+            resolve = self._reranking.resolve_llm_weight
+            self.assertAlmostEqual(resolve("definition_qa", 0.7), 0.7)
+
+    def test_t13_rerank_candidates_resolves_weight(self):
+        """集成：rerank_candidates 按 task_type 解析权重并传给 reranker。"""
+        from src.retrieval import HybridRetriever
+
+        captured = {}
+
+        class _FakeReranker:
+            def rerank_documents(self, query, documents, documents_batch_size, llm_weight):
+                captured["llm_weight"] = llm_weight
+                return list(documents)
+
+        retriever = object.__new__(HybridRetriever)
+        retriever.reranker = _FakeReranker()
+        retriever.reranking_strategy = "single"
+        retriever.colbert_top_n = 10
+        retriever.final_reranking_backend = "llm_prompt"
+        candidates = [_make_doc(1, 0.5)]
+        retriever.rerank_candidates(
+            query="q", candidate_results=candidates, llm_weight=0.7,
+            task_type="definition_qa",
+        )
+        self.assertAlmostEqual(captured["llm_weight"], 0.85)
+        retriever.rerank_candidates(
+            query="q", candidate_results=candidates, llm_weight=0.7,
+            task_type="single_metric_lookup",
+        )
+        self.assertAlmostEqual(captured["llm_weight"], 0.50)
+        retriever.rerank_candidates(
+            query="q", candidate_results=candidates, llm_weight=0.7,
+        )
+        self.assertAlmostEqual(captured["llm_weight"], 0.7)

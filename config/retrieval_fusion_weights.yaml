@@ -1,0 +1,21 @@
+# A4 题型加权融合：task_type → rerank 的 llm_weight（知识层驱动检索融合）
+#
+# 语义：llm_weight 是 rerank 融合中语义相关性（reranker 分数）的权重，
+# 1-llm_weight 即精确词信号（检索层融合分：向量/BM25/sparse 融合）的权重。
+# 分数经池内归一化后加权（src/reranking.py _fuse_scores），名义权重=实际权重。
+#
+# 取值依据：
+# - definition_qa / summary：答案取决于语义理解，精确词匹配噪声大 → 语义主导
+# - single_metric_lookup / metric_aggregation：数字证据靠精确指标词命中 → 精确词补强
+# - comparison：口径对齐重要但表述多变 → 略偏语义
+# - metadata_aggregation：按元数据过滤为主，检索排序影响小 → 默认
+version: "1.0"
+task_type_weights:
+  evidence_qa:          {llm_weight: 0.70}  # 默认兜底题型
+  definition_qa:        {llm_weight: 0.85}  # 定义类：语义信号主导
+  summary:              {llm_weight: 0.80}  # 总结类：语义主导
+  implicit_intent_qa:   {llm_weight: 0.60}  # 剧本类：混合证据（精确指标词也要命中）
+  comparison:           {llm_weight: 0.55}  # 比较类：口径词精确命中优先
+  single_metric_lookup: {llm_weight: 0.50}  # 数字类：精确词信号补强
+  metric_aggregation:   {llm_weight: 0.50}  # 聚合类：同上
+  metadata_aggregation: {llm_weight: 0.70}  # 元数据类：默认
