@@ -20,13 +20,61 @@
           "合并利润表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "每股收益"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "扣除非经常性损益后的净利润",
+            "扣除非经常性损益后归属于母公司股东的净利润",
+            "扣除非经常性损益后归属于母公司所有者的净利润",
+            "扣非后归属于母公司股东的净利润",
+            "扣非后净利润",
+            "扣非归母净利润"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "扣除非经常性损益",
+            "扣非"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [
+            [
+              [
+                "非经常性损益项目",
+                "非经常性损益明细"
+              ],
+              -3.0
+            ]
+          ],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              5.0
+            ]
+          ],
+          "secondary_row_headers": [
+            "归属于上市公司股东的扣除非经常性损益的净利润",
+            "扣除非经常性损益后的归属于上市公司股东的净利润"
+          ],
+          "segment_guard": true,
+          "weak_row_headers": [
+            "扣除非经常性损益"
+          ]
+        },
         "pitfalls": "部分报告简称\"扣非净利润\"时默认指归母口径，需结合上下文确认",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "扣非归母净利润",
@@ -35,7 +83,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "472e0bb06f64"
+      "hash": "ff8dd7563b76"
     },
     "MET-002": {
       "atom": {
@@ -57,13 +105,61 @@
           "合并利润表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "扣除非经常性损益",
+            "扣非",
+            "所有者权益",
+            "少数股东损益",
+            "每股收益"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "归属于母公司股东的净利润",
+            "归属于母公司所有者的净利润",
+            "归属于上市公司股东的净利润"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "归属于母公司股东",
+            "归属于母公司所有者",
+            "归属于上市公司股东",
+            "归母"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              5.0
+            ],
+            [
+              [
+                "合并利润表",
+                "利润表"
+              ],
+              2.5
+            ]
+          ],
+          "secondary_row_headers": [
+            "归母净利润",
+            "净利润（归属于母公司股东）"
+          ],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "部分研报\"净利润\"默认指归母口径，需核对报告口径声明",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "归母净利润",
@@ -72,7 +168,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "0b29f38c802e"
+      "hash": "2a9627484cde"
     },
     "MET-003": {
       "atom": {
@@ -93,13 +189,60 @@
           "经营现金流"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "投资活动",
+            "筹资活动",
+            "现金流入小计",
+            "现金流出小计",
+            "销售商品",
+            "购买商品",
+            "提供劳务",
+            "支付给职工"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "经营活动产生的现金流量净额",
+            "一、经营活动产生的现金流量净额",
+            "-、经营活动产生的现金流量净额"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "经营活动"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并现金流量表",
+                "现金流量表"
+              ],
+              3.0
+            ],
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              4.0
+            ]
+          ],
+          "secondary_row_headers": [
+            "经营活动现金流量净额"
+          ],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "现金流量表补充资料提供净利润调节为经营现金流的桥接表，是验证口径的首选证据",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "经营活动现金流量净额",
@@ -108,7 +251,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "ac60199870c1"
+      "hash": "d16e33e3a330"
     },
     "MET-004": {
       "atom": {
@@ -251,13 +394,43 @@
           "资产负债表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "现金及现金等价物",
+            "使用受限"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "货币资金"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "货币资金"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并资产负债表",
+                "资产负债表"
+              ],
+              3.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "货币资金高不等于流动性无忧，需关注受限资金与短期债务到期结构",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "货币资金",
@@ -266,7 +439,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "c64af7950bf2"
+      "hash": "0e8a105e6cb9"
     },
     "MET-006": {
       "atom": {
@@ -284,13 +457,46 @@
           "流动负债"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "抵押借款",
+            "质押借款",
+            "保证借款",
+            "信用借款",
+            "借款利息"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "短期借款"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "短期借款"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并资产负债表",
+                "资产负债表"
+              ],
+              3.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "短期借款激增需结合货币资金与经营现金流评估滚动续借风险",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "短期借款",
@@ -299,7 +505,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "6a832d6e2e87"
+      "hash": "20193d411d0e"
     },
     "MET-007": {
       "atom": {
@@ -319,13 +525,52 @@
           "资产负债表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "流动资产合计",
+            "非流动资产合计"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "资产总计",
+            "总资产"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "资产总计",
+            "总资产"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并资产负债表",
+                "资产负债表"
+              ],
+              3.0
+            ],
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              4.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "资产总计科目名在部分报告中写作\"资产总计\"而非\"总资产\"",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "总资产",
@@ -334,7 +579,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "b9838d68cde5"
+      "hash": "415c85da9393"
     },
     "MET-008": {
       "atom": {
@@ -354,13 +599,48 @@
           "资产负债表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "流动负债合计",
+            "非流动负债合计",
+            "所有者权益"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "负债合计",
+            "负债总计",
+            "总负债"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "负债合计",
+            "负债总计",
+            "总负债"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并资产负债表",
+                "资产负债表"
+              ],
+              3.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "负债合计含递延所得税负债等非付息项目，付息负债口径需单独计算",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "总负债",
@@ -369,7 +649,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "19ac60a2d142"
+      "hash": "dc83011c2130"
     },
     "MET-009": {
       "atom": {
@@ -387,13 +667,55 @@
           "研发人员"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "资本化研发投入",
+            "费用化研发投入",
+            "占营业收入比例",
+            "研发人员"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "研发投入",
+            "研发投入金额",
+            "研发投入合计",
+            "研发投入总额"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "研发投入"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              4.0
+            ],
+            [
+              [
+                "董事会报告",
+                "经营情况讨论与分析"
+              ],
+              3.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "研发投入占比是科创属性评价的核心口径，混用研发费用会低估投入",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "研发投入",
@@ -402,7 +724,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "82b7b2e7eac2"
+      "hash": "de056db6c16f"
     },
     "MET-010": {
       "atom": {
@@ -420,13 +742,52 @@
           "主营业务收入"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "净利率"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "毛利率",
+            "综合毛利率",
+            "主营业务毛利率",
+            "销售毛利率"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "毛利率"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              3.5
+            ],
+            [
+              [
+                "经营情况讨论与分析",
+                "董事会报告"
+              ],
+              3.0
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "毛利率异常波动优先排查会计政策变更与业务结构变化",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "毛利率",
@@ -435,7 +796,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "2ca854e8dca3"
+      "hash": "89034cb5708d"
     },
     "MET-011": {
       "atom": {
@@ -453,13 +814,40 @@
           "总负债"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "资产负债率"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "资产负债率"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              3.5
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "负债率在不同语境可能泛指其他比率，金融语境默认资产负债率",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "资产负债率",
@@ -468,7 +856,7 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "1c195ede90eb"
+      "hash": "aa51a6cbd354"
     },
     "MET-012": {
       "atom": {
@@ -486,13 +874,53 @@
           "合并利润表"
         ],
         "expires_at": "",
-        "grounding": null,
+        "grounding": {
+          "bad_col_headers": [],
+          "bad_row_headers": [
+            "研发人员",
+            "研发投入占",
+            "占营业收入比例"
+          ],
+          "collect_support_candidates": false,
+          "early_page_bonus": [],
+          "exact_row_headers": [
+            "研发费用",
+            "研发费"
+          ],
+          "low_priority_row_headers": [],
+          "match_terms": [
+            "研发费用",
+            "研发费"
+          ],
+          "nested_row_bonus": [],
+          "penalized_statements": [],
+          "preferred_statements": [
+            [
+              [
+                "合并利润表",
+                "利润表"
+              ],
+              3.0
+            ],
+            [
+              [
+                "主要会计数据",
+                "主要财务指标"
+              ],
+              3.5
+            ]
+          ],
+          "secondary_row_headers": [],
+          "segment_guard": true,
+          "weak_row_headers": []
+        },
         "pitfalls": "利润表科目为\"研发费用\"，年报\"研发投入\"口径更宽",
         "provenance": {
           "aliases": "extracted",
           "caliber_notes": "inferred",
           "definition": "inferred",
           "evidence_targets": "inferred",
+          "grounding": "inferred",
           "pitfalls": "inferred"
         },
         "standard_name": "研发费用",
@@ -501,13 +929,13 @@
         "verified_at": "2026-08-13",
         "version": "1.0"
       },
-      "hash": "ce8c2f402aa4"
+      "hash": "01f893f77b25"
     }
   },
-  "build_id": "gen-20260820-072811",
+  "build_id": "gen-20260820-073931",
   "schema_version": "1.1",
   "source": {
     "path": "config/metric_atoms.yaml",
-    "sha256": "6493a9a367a10333888e0ecb4c005a90f818f15646063890ded21232a9c5da72"
+    "sha256": "4741c385c9477d5f41d0eae6bdd76509e2c83024da9a25f4c73ede842a0b6cf3"
   }
 }

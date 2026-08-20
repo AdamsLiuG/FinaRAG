@@ -31,6 +31,8 @@ class AnalysisPlaybook:
     question_forms: List[str] = field(default_factory=list)
     required_metrics: List[str] = field(default_factory=list)
     evidence_keywords: List[str] = field(default_factory=list)
+    # 分红事实表述（区别于 evidence_keywords 的话题词：预案话题不等于分红事实）
+    cash_dividend_mentions: List[str] = field(default_factory=list)
     judgment: str = ""
     pitfalls: str = ""
     version: str = "1.0"
@@ -84,6 +86,7 @@ class PlaybookStore:
                 question_forms=list(item.get("question_forms") or []),
                 required_metrics=list(item.get("required_metrics") or []),
                 evidence_keywords=list(item.get("evidence_keywords") or []),
+        cash_dividend_mentions=list(item.get("cash_dividend_mentions") or []),
                 judgment=str(item.get("judgment") or ""),
                 pitfalls=str(item.get("pitfalls") or ""),
                 version=str(item.get("version") or "1.0"),

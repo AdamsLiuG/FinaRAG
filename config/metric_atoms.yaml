@@ -14,8 +14,18 @@ atoms:
     confusable_with: [MET-002]
     pitfalls: 部分报告简称"扣非净利润"时默认指归母口径，需结合上下文确认
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [扣非归母净利润, 扣除非经常性损益后的净利润, 合并利润表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [扣除非经常性损益, 扣非]
+      exact_row_headers: [扣除非经常性损益后的净利润, 扣除非经常性损益后归属于母公司股东的净利润, 扣除非经常性损益后归属于母公司所有者的净利润, 扣非后归属于母公司股东的净利润, 扣非后净利润, 扣非归母净利润]
+      secondary_row_headers: [归属于上市公司股东的扣除非经常性损益的净利润, 扣除非经常性损益后的归属于上市公司股东的净利润]
+      weak_row_headers: [扣除非经常性损益]
+      bad_row_headers: [每股收益]
+      preferred_statements: [{terms: [主要会计数据, 主要财务指标], score: 5.0}]
+      penalized_statements: [{terms: [非经常性损益项目, 非经常性损益明细], score: -3.0}]
+      segment_guard: true
 
   - atom_id: MET-002
     standard_name: 归母净利润
@@ -27,8 +37,17 @@ atoms:
     confusable_with: [MET-001]
     pitfalls: 部分研报"净利润"默认指归母口径，需核对报告口径声明
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [归母净利润, 归属于母公司股东的净利润, 合并利润表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [归属于母公司股东, 归属于母公司所有者, 归属于上市公司股东, 归母]
+      exact_row_headers: [归属于母公司股东的净利润, 归属于母公司所有者的净利润, 归属于上市公司股东的净利润]
+      secondary_row_headers: [归母净利润, 净利润（归属于母公司股东）]
+      weak_row_headers: []
+      bad_row_headers: [扣除非经常性损益, 扣非, 所有者权益, 少数股东损益, 每股收益]
+      preferred_statements: [{terms: [主要会计数据, 主要财务指标], score: 5.0}, {terms: [合并利润表, 利润表], score: 2.5}]
+      segment_guard: true
 
   - atom_id: MET-003
     standard_name: 经营活动现金流量净额
@@ -40,8 +59,17 @@ atoms:
     confusable_with: []
     pitfalls: 现金流量表补充资料提供净利润调节为经营现金流的桥接表，是验证口径的首选证据
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [经营活动现金流量净额, 现金流量表, 经营现金流]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [经营活动]
+      exact_row_headers: [经营活动产生的现金流量净额, 一、经营活动产生的现金流量净额, -、经营活动产生的现金流量净额]
+      secondary_row_headers: [经营活动现金流量净额]
+      weak_row_headers: []
+      bad_row_headers: [投资活动, 筹资活动, 现金流入小计, 现金流出小计, 销售商品, 购买商品, 提供劳务, 支付给职工]
+      preferred_statements: [{terms: [合并现金流量表, 现金流量表], score: 3.0}, {terms: [主要会计数据, 主要财务指标], score: 4.0}]
+      segment_guard: true
 
   - atom_id: MET-004
     standard_name: 营业收入
@@ -89,8 +117,17 @@ atoms:
     confusable_with: []
     pitfalls: 货币资金高不等于流动性无忧，需关注受限资金与短期债务到期结构
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [货币资金, 现金及现金等价物, 资产负债表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [货币资金]
+      exact_row_headers: [货币资金]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [现金及现金等价物, 使用受限]
+      preferred_statements: [{terms: [合并资产负债表, 资产负债表], score: 3.0}]
+      segment_guard: true
 
   - atom_id: MET-006
     standard_name: 短期借款
@@ -102,8 +139,17 @@ atoms:
     confusable_with: []
     pitfalls: 短期借款激增需结合货币资金与经营现金流评估滚动续借风险
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [短期借款, 一年内到期的非流动负债, 流动负债]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [短期借款]
+      exact_row_headers: [短期借款]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [抵押借款, 质押借款, 保证借款, 信用借款, 借款利息]
+      preferred_statements: [{terms: [合并资产负债表, 资产负债表], score: 3.0}]
+      segment_guard: true
 
   - atom_id: MET-007
     standard_name: 总资产
@@ -115,8 +161,17 @@ atoms:
     confusable_with: [MET-008]
     pitfalls: 资产总计科目名在部分报告中写作"资产总计"而非"总资产"
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [总资产, 资产总计, 资产负债表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [资产总计, 总资产]
+      exact_row_headers: [资产总计, 总资产]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [流动资产合计, 非流动资产合计]
+      preferred_statements: [{terms: [合并资产负债表, 资产负债表], score: 3.0}, {terms: [主要会计数据, 主要财务指标], score: 4.0}]
+      segment_guard: true
 
   - atom_id: MET-008
     standard_name: 总负债
@@ -128,8 +183,17 @@ atoms:
     confusable_with: [MET-007]
     pitfalls: 负债合计含递延所得税负债等非付息项目，付息负债口径需单独计算
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [总负债, 负债合计, 资产负债表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [负债合计, 负债总计, 总负债]
+      exact_row_headers: [负债合计, 负债总计, 总负债]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [流动负债合计, 非流动负债合计, 所有者权益]
+      preferred_statements: [{terms: [合并资产负债表, 资产负债表], score: 3.0}]
+      segment_guard: true
 
   - atom_id: MET-009
     standard_name: 研发投入
@@ -141,8 +205,17 @@ atoms:
     confusable_with: [MET-012]
     pitfalls: 研发投入占比是科创属性评价的核心口径，混用研发费用会低估投入
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [研发投入, 研发人员]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [研发投入]
+      exact_row_headers: [研发投入, 研发投入金额, 研发投入合计, 研发投入总额]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [资本化研发投入, 费用化研发投入, 占营业收入比例, 研发人员]
+      preferred_statements: [{terms: [主要会计数据, 主要财务指标], score: 4.0}, {terms: [董事会报告, 经营情况讨论与分析], score: 3.0}]
+      segment_guard: true
 
   - atom_id: MET-012
     standard_name: 研发费用
@@ -154,8 +227,17 @@ atoms:
     confusable_with: [MET-009]
     pitfalls: 利润表科目为"研发费用"，年报"研发投入"口径更宽
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [研发费用, 合并利润表]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [研发费用, 研发费]
+      exact_row_headers: [研发费用, 研发费]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [研发人员, 研发投入占, 占营业收入比例]
+      preferred_statements: [{terms: [合并利润表, 利润表], score: 3.0}, {terms: [主要会计数据, 主要财务指标], score: 3.5}]
+      segment_guard: true
 
   - atom_id: MET-010
     standard_name: 毛利率
@@ -167,8 +249,17 @@ atoms:
     confusable_with: []
     pitfalls: 毛利率异常波动优先排查会计政策变更与业务结构变化
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [毛利率, 综合毛利率, 主营业务收入]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [毛利率]
+      exact_row_headers: [毛利率, 综合毛利率, 主营业务毛利率, 销售毛利率]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: [净利率]
+      preferred_statements: [{terms: [主要会计数据, 主要财务指标], score: 3.5}, {terms: [经营情况讨论与分析, 董事会报告], score: 3.0}]
+      segment_guard: true
 
   - atom_id: MET-011
     standard_name: 资产负债率
@@ -180,5 +271,14 @@ atoms:
     confusable_with: []
     pitfalls: 负债率在不同语境可能泛指其他比率，金融语境默认资产负债率
     verified_at: "2026-08-13"
-    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred}
+    provenance: {aliases: extracted, definition: inferred, caliber_notes: inferred, pitfalls: inferred, evidence_targets: inferred, grounding: inferred}
     evidence_targets: [资产负债率, 总资产, 总负债]
+    # 取证规则（G-4 扩容，provenance: inferred——年报标准科目表述，待定向测试与端到端验证）
+    grounding:
+      match_terms: [资产负债率]
+      exact_row_headers: [资产负债率]
+      secondary_row_headers: []
+      weak_row_headers: []
+      bad_row_headers: []
+      preferred_statements: [{terms: [主要会计数据, 主要财务指标], score: 3.5}]
+      segment_guard: true

@@ -219,8 +219,22 @@ class UniversalGuardTests(unittest.TestCase):
 
     def test_atom_without_grounding_returns_zero(self):
         # 未配置 grounding 的原子：不参与取证打分（保持既有行为，不引入误加分）
-        self.assertEqual(current._atom_row_score("2024年货币资金是多少？", "货币资金", "2024年"), 0.0)
-        self.assertEqual(current._atom_statement_score("2024年货币资金是多少？", "合并资产负债表"), 0.0)
+        # G-4 后全库 12 原子均有 grounding，用临时去除规则的原子验证该语义
+        import dataclasses as _dc
+
+        from src.metric_atoms import MetricAtomStore, get_default_store, reset_default_store
+
+        original = get_default_store()
+        stripped = [
+            _dc.replace(atom, grounding=None) if atom.atom_id == "MET-005" else atom
+            for atom in original.all_atoms()
+        ]
+        try:
+            reset_default_store(MetricAtomStore(stripped))
+            self.assertEqual(current._atom_row_score("2024年货币资金是多少？", "货币资金", "2024年"), 0.0)
+            self.assertEqual(current._atom_statement_score("2024年货币资金是多少？", "合并资产负债表"), 0.0)
+        finally:
+            reset_default_store(original)
 
     def test_consolidated_bonus(self):
         self.assertEqual(current._consolidated_bonus("本集团"), 2.0)

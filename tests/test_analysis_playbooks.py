@@ -105,5 +105,26 @@ class DefaultPlaybookStoreTests(unittest.TestCase):
         self.assertIs(get_default_playbook_store(), custom)
 
 
+class DividendKeywordSingleSourceTests(unittest.TestCase):
+    """G-4 单一真源：分红表述只住 PLB-001，代码侧消费必须与剧本一致（防再漂移）。"""
+
+    def test_questions_processing_consumes_playbook_keywords(self):
+        from src.questions_processing import _dividend_mention_terms
+
+        playbook = get_default_playbook_store().get("PLB-001")
+        self.assertIsNotNone(playbook)
+        self.assertEqual(set(_dividend_mention_terms()), set(playbook.cash_dividend_mentions))
+
+    def test_playbook_covers_legacy_code_vocab(self):
+        # 收编证据：原 questions_processing._DIVIDEND_MENTION_TERMS 的 9 个词全部在剧本里
+        legacy = {"现金分红", "现金红利", "现金股利", "派发股息", "派发现金红利",
+                  "每10股派发", "每 10 股派发", "每10股派息", "每 10 股派息"}
+        mentions = set(get_default_playbook_store().get("PLB-001").cash_dividend_mentions)
+        self.assertTrue(legacy <= mentions)
+        # 语义边界：预案话题词不得混入事实表述词表
+        self.assertNotIn("利润分配预案", mentions)
+        self.assertNotIn("股份回购", mentions)
+
+
 if __name__ == "__main__":
     unittest.main()

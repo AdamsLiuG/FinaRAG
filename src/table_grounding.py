@@ -124,6 +124,8 @@ _UNIVERSAL_BAD_COL_TERMS = (
 )
 # 口径维度守卫：表格限定了某维度而问题未提及时否决（对称条件）
 _SCOPE_DIMENSION_TERMS = ("分部", "地区", "产品", "关联方", "客户")
+# 「母公司」作报表范围限定词：后不接「股东/所有者」（排除「归属于母公司股东…」归属表述）
+_PARENT_COMPANY_SCOPE_RE = re.compile(r"母公司(?!股东|所有者)")
 
 
 def _has_grounding_rule(question: str) -> bool:
@@ -154,7 +156,10 @@ def _universal_row_guard(question: str, row_text: str, col_text: str, unit_kind:
     ):
         return False
     if "母公司" in combined and "母公司" not in normalized_question:
-        return False
+        # 归属表述不是主体限定：「归属于母公司股东的净利润」是合并口径的归属拆分，
+        # 仅「母公司」作报表范围限定词（后不接「股东/所有者」）时才否决单体口径。
+        if _PARENT_COMPANY_SCOPE_RE.search(combined):
+            return False
     if "本行" in combined and "本行" not in normalized_question:
         return False
     if any(term in combined for term in _SCOPE_DIMENSION_TERMS) and not any(
@@ -180,7 +185,8 @@ def _consolidated_bonus(col_text: str) -> float:
 
 def _atom_unit_kind(atom) -> str:
     unit = str(getattr(atom, "unit", "") or "")
-    return "percent" if "%" in unit else "currency"
+    # 单位声明兼容 "%" 与中文「百分比」表述（yaml 存量为后者）
+    return "percent" if ("%" in unit or "百分" in unit) else "currency"
 
 
 def _atom_row_score(question: str, row_text: str, col_text: str, raw_value: object = None) -> Optional[float]:

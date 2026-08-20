@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from tqdm import tqdm
 
-from src.analysis_playbooks import build_playbook_hint
+from src.analysis_playbooks import build_playbook_hint, get_default_playbook_store
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.chart_grounding import ChartGrounder
@@ -74,17 +74,17 @@ _LEGAL_REP_PATTERNS = (
         "company_leader_fallback",
     ),
 )
-_DIVIDEND_MENTION_TERMS = (
-    "现金分红",
-    "现金红利",
-    "现金股利",
-    "派发股息",
-    "派发现金红利",
-    "每10股派发",
-    "每 10 股派发",
-    "每10股派息",
-    "每 10 股派息",
-)
+def _dividend_mention_terms() -> tuple:
+    """分红事实表述词表——唯一真源是 PLB-001 剧本（cash_dividend_mentions）。
+
+    语义边界：预案话题词（利润分配预案/股份回购）住 evidence_keywords 服务检索，
+    不在本词表——「董事会审议利润分配预案」不是分红发生的证据。
+    """
+    playbook = get_default_playbook_store().get("PLB-001")
+    if playbook is None:
+        return ()
+    return tuple(playbook.cash_dividend_mentions)
+
 class QuestionsProcessor:
     def __init__(
         self,
@@ -644,7 +644,7 @@ class QuestionsProcessor:
         if (schema or "").lower() != "boolean":
             return False
         question = question or ""
-        if not any(term in question for term in _DIVIDEND_MENTION_TERMS):
+        if not any(term in question for term in _dividend_mention_terms()):
             return False
         return any(term in question for term in ("是否提到", "是否提及", "年度利润分配预案", "利润分配预案", "重要事项"))
 
@@ -652,7 +652,7 @@ class QuestionsProcessor:
         best_match: Optional[Dict[str, Any]] = None
         best_score = 0.0
         for page, page_text in self._document_pages(document):
-            matched_term = next((term for term in _DIVIDEND_MENTION_TERMS if term in page_text), None)
+            matched_term = next((term for term in _dividend_mention_terms() if term in page_text), None)
             if not matched_term:
                 continue
             score = 50.0

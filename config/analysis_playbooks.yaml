@@ -9,7 +9,11 @@ playbooks:
     intent: shareholder_return
     question_forms: [股东回报, 对股东怎么样, 回报股东, 分红怎么样, 回购怎么样]
     required_metrics: []
-    evidence_keywords: [现金分红, 利润分配预案, 股份回购, 每10股派发]
+    # evidence_keywords=股东回报话题词（检索目标，含预案/回购）；
+    # cash_dividend_mentions=分红事实表述（原 questions_processing._DIVIDEND_MENTION_TERMS 收编，
+    # G-4 单一真源化）——预案话题词不是分红事实，两者语义不同不得合并。
+    evidence_keywords: [现金分红, 现金红利, 现金股利, 派发股息, 派发现金红利, 每10股派发, 每 10 股派发, 每10股派息, 每 10 股派息, 利润分配预案, 股份回购]
+    cash_dividend_mentions: [现金分红, 现金红利, 现金股利, 派发股息, 派发现金红利, 每10股派发, 每 10 股派发, 每10股派息, 每 10 股派息]
     judgment: 现金分红总额与分红率是否稳定或提升；是否有回购计划及执行进度；分配预案是否经董事会通过
     pitfalls: 分红预案未实施时不得表述为已分红；高分红率需结合经营现金流判断可持续性
 
