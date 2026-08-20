@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.analysis_playbooks import build_playbook_hint, get_default_playbook_store
+from src.adaptive_retrieval import adaptive_retrieval_enabled
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.chart_grounding import ChartGrounder
@@ -991,6 +992,92 @@ class QuestionsProcessor:
             filters=filters,
             candidate_doc_ids=candidate_doc_ids,
         )
+
+    def _run_adaptive_supplement(
+        self,
+        retriever,
+        company_name: str,
+        question: str,
+        rewrite_result,
+        retrieval_results: List[Dict],
+        candidate_doc_ids: Optional[List[str]] = None,
+    ) -> Optional[Dict]:
+        """Agentic 补检一轮：detect_gap → 原子/剧本驱动定向补检 → 合并 → 重排。
+
+        补检走纯召回（hybrid，不带 rerank——重排在合并后统一做一次）；
+        trace 追加 logs/adaptive_trace.jsonl（question/trigger/queries/new_hits）。
+        返回 None 表示无缺口（零成本路径）；有缺口但补检无新命中也返回 None。
+        """
+        from src.adaptive_retrieval import (
+            adaptive_max_rounds,
+            detect_gap,
+            merge_supplement_results,
+        )
+
+        top_score: Optional[float] = None
+        for item in retrieval_results:
+            score = item.get("combined_score")
+            if score is not None:
+                numeric = float(score)
+                top_score = numeric if top_score is None else max(top_score, numeric)
+
+        gap = detect_gap(rewrite_result, retrieval_results, top_score=top_score)
+        if gap is None:
+            return None
+
+        rounds = 0
+        supplement: List[Dict] = []
+        trigger = gap.trigger
+        queries_used: List[str] = []
+        while rounds < adaptive_max_rounds() and gap is not None:
+            rounds += 1
+            queries_used.extend(gap.supplement_queries)
+            for supplement_query in gap.supplement_queries:
+                supplement.extend(self._run_retrieval(
+                    retriever, "hybrid", company_name, supplement_query,
+                    rewrite_result.filters, candidate_doc_ids,
+                    task_type=getattr(rewrite_result, "task_type", None),
+                ))
+            gap = None  # v1 预检模式：单轮
+
+        if not supplement:
+            return None
+
+        merged = merge_supplement_results(retrieval_results, supplement)
+        reranked = retriever.rerank_candidates(
+            query=question,
+            candidate_results=merged,
+            documents_batch_size=self.final_reranking_batch_size,
+            top_n=self.retrieval_debug_top_n,
+            task_type=getattr(rewrite_result, "task_type", None),
+        )
+        trace_entry = {
+            "question": question,
+            "company_name": company_name,
+            "trigger": trigger,
+            "queries": queries_used,
+            "new_hits": len(supplement),
+            "rounds": rounds,
+        }
+        self._append_adaptive_trace(trace_entry)
+        return {
+            "adaptive_retrieval": trace_entry,
+            "retrieval_results": reranked,
+        }
+
+    @staticmethod
+    def _append_adaptive_trace(entry: Dict) -> None:
+        """补检 trace 追加 JSONL（D3 trace 体系前身；失败不阻断主流程）。"""
+        try:
+            from datetime import datetime
+
+            logs_dir = Path("logs")
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            entry = {"timestamp": datetime.now().isoformat(timespec="seconds"), **entry}
+            with open(logs_dir / "adaptive_trace.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            print(f"Warning: adaptive trace 写入失败（不影响主流程）：{exc}")
 
     @staticmethod
     def _candidate_pool_sort_key(result: Dict) -> tuple:
@@ -3008,6 +3095,21 @@ class QuestionsProcessor:
                 retrieval_results=retrieval_results,
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
+
+        # Agentic v1 预检（检索后/生成前）：知识层驱动的证据缺口定向补检。
+        # 默认关闭（ADAPTIVE_RETRIEVAL_ENABLED=1 开启）；预算 max 1 轮防循环。
+        adaptive_debug = None
+        if adaptive_retrieval_enabled() and retrieval_results and mode != "full_context":
+            adaptive_debug = self._run_adaptive_supplement(
+                retriever=retriever,
+                company_name=company_name,
+                question=question,
+                rewrite_result=rewrite_result,
+                retrieval_results=retrieval_results,
+                candidate_doc_ids=candidate_doc_ids,
+            )
+            if adaptive_debug is not None:
+                retrieval_results = adaptive_debug.pop("retrieval_results")
 
         grounding_result = None
         chart_grounding_result = None
