@@ -107,6 +107,33 @@ def _evidence_contains_any_target(retrieval_results: List[Dict[str, Any]], targe
     return False
 
 
+def _metric_caliber_conflict(query_plan, retrieval_results: List[Dict[str, Any]]) -> Optional[str]:
+    """口径冲突检测：证据中只有易混口径、没有本口径时返回冲突口径名。"""
+    payload = getattr(query_plan, "metric_atom", None) or {}
+    confusable_names = [str(name) for name in (payload.get("confusable_names") or []) if str(name)]
+    if not confusable_names:
+        return None
+    own_targets = [payload.get("standard_name"), *(query_plan.evidence_targets or [])]
+    own_targets = [str(term) for term in own_targets if term]
+    if _evidence_contains_any_target(retrieval_results, own_targets):
+        return None
+    blob = _retrieval_evidence_blob(retrieval_results)
+    if not blob:
+        return None
+    for name in confusable_names:
+        normalized_name = normalize_text(name)
+        if len(normalized_name) >= 2 and normalized_name in blob:
+            return name
+    return None
+
+
+def _should_refuse_on_caliber_conflict(query_plan) -> bool:
+    """fail-closed 边界（防误拒）：仅数值类 + 高置信度意图时才强制拒答。"""
+    if query_plan.expected_answer_type != "numeric":
+        return False
+    return float(getattr(query_plan, "intent_confidence", 0.0) or 0.0) >= 0.7
+
+
 def _playbook_metric_coverage(query_plan, retrieval_results: List[Dict[str, Any]]) -> Optional[float]:
     """剧本必需指标的证据覆盖率（无剧本或无必需指标时返回 None）。
 
@@ -232,6 +259,15 @@ def validate_answer(answer_dict: Dict[str, Any], retrieval_results: List[Dict[st
             if not has_structured_grounding and not _evidence_contains_any_target(retrieval_results, metric_targets):
                 validation_flags.append("metric_evidence_mismatch")
                 confidence = _downgrade_confidence(confidence)
+
+            # fail-closed 口径门禁：证据只出现易混口径、不出现本口径时强制拒答，
+            # 而非降低 confidence 后照常返回一个口径错位的数字。
+            conflict_name = _metric_caliber_conflict(query_plan, retrieval_results)
+            if conflict_name and _should_refuse_on_caliber_conflict(query_plan):
+                validation_flags.append("metric_caliber_conflict_refused")
+                answer["final_answer"] = "N/A"
+                final_answer = "N/A"
+                confidence = "low"
 
         if query_plan.operation == "top_k" and query_plan.limit:
             answer_count = _topk_answer_count(final_answer)

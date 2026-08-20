@@ -5,7 +5,7 @@ Stage C 把 `table_grounding` 内的营收专用硬编码规则拆成「通用�
 该验收无法执行。替代方案：把改造前的实现作为黄金基线，断言改造后对同样输入**同分**。
 
 基线实现**从 git 动态加载**（`git show <commit>:src/table_grounding.py` + 独立命名空间 exec），
-不手抄复述——手抄本身就是错字来源（迁移过程中确实发生过「合并利润表」被写成「合并利潦表」，
+不手抄复述——手抄本身就是错字来源（迁移过程中确实发生过「合并利润表」被写成「合并利润表」，
 导致规则静默失效）。
 
 局限（必须如实声明）：等价性仅证明「营收路径未改坏」，不能证明其余 11 个指标获得的通用守卫
@@ -251,10 +251,13 @@ class KnowledgeCodeConsistencyTests(unittest.TestCase):
         )
 
     def test_statement_terms_have_no_typo(self):
-        # 显式断言正确字形：迁移时曾把「润」误写为「潦」导致规则永久失配
+        # 显式断言正确字形：迁移时曾把“润”(U+6DA6) 误写为“潦”(U+6F66)，导致规则永久失配。
+        # 错字以码点转义表达，避免本断言被“批量修错字”误伤（已发生过一次）。
         all_terms = [term for terms, _ in self.rule.preferred_statements for term in terms]
-        self.assertIn("合并利润表", all_terms)
-        self.assertNotIn("合并利潦表", all_terms)
+        self.assertIn("合并利\u6da6表", all_terms)
+        self.assertNotIn("合并利\u6f66表", all_terms)
+        for term in all_terms:
+            self.assertNotIn("\u6f66", term, msg=f"typo in {term!r}")
 
 
 if __name__ == "__main__":

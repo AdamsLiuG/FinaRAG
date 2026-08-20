@@ -149,5 +149,98 @@ class AnswerValidationTests(unittest.TestCase):
         self.assertEqual(validated.confidence, "medium")
 
 
+class CaliberConflictRefusalTests(unittest.TestCase):
+    """fail-closed 口径门禁：口径错位时强制拒答，而非返回一个错口径的数字。"""
+
+    @staticmethod
+    def _retrieval(text):
+        return [
+            {
+                "page": 12,
+                "distance": 0.7,
+                "text": text,
+                "metadata": {
+                    "company_name": "宁德时代",
+                    "report_year": 2024,
+                    "topic_flags": [],
+                    "chunk_type": "text",
+                },
+            }
+        ]
+
+    @staticmethod
+    def _answer():
+        return {
+            "final_answer": 12345.0,
+            "confidence": "high",
+            "relevant_pages": [12],
+            "references": [{"pdf_sha1": "300750_2024", "page_index": 12}],
+            "citations": [{"page": 12, "chunk_type": "text"}],
+        }
+
+    def test_refuses_when_only_confusable_caliber_present(self):
+        # 问扣非归母，证据只有归母净利润——不得拿归母数字当扣非答案
+        query_plan = QuestionRewriter().rewrite(
+            "宁德时代2024年扣非归母净利润是多少？",
+            schema="number",
+            company_name="宁德时代",
+        )
+        validated = validate_answer(
+            self._answer(),
+            self._retrieval("本年度归母净利润为 12,345 万元，同比增长。"),
+            query_plan,
+        )
+        self.assertIn("metric_caliber_conflict_refused", validated.validation_flags)
+        self.assertEqual(validated.answer["final_answer"], "N/A")
+        self.assertEqual(validated.confidence, "low")
+
+    def test_no_refusal_when_own_caliber_present(self):
+        query_plan = QuestionRewriter().rewrite(
+            "宁德时代2024年扣非归母净利润是多少？",
+            schema="number",
+            company_name="宁德时代",
+        )
+        validated = validate_answer(
+            self._answer(),
+            self._retrieval("扣除非经常性损益后的净利润为 12,345 万元，归母净利润为 14,000 万元。"),
+            query_plan,
+        )
+        self.assertNotIn("metric_caliber_conflict_refused", validated.validation_flags)
+        self.assertEqual(validated.answer["final_answer"], 12345.0)
+
+    def test_no_refusal_for_non_numeric_schema(self):
+        # 防误拒边界一：非数值类不拒答
+        query_plan = QuestionRewriter().rewrite(
+            "宁德时代2024年扣非归母净利润是否为正？",
+            schema="boolean",
+            company_name="宁德时代",
+        )
+        answer = self._answer()
+        answer["final_answer"] = True
+        validated = validate_answer(
+            answer,
+            self._retrieval("本年度归母净利润为 12,345 万元。"),
+            query_plan,
+        )
+        self.assertNotIn("metric_caliber_conflict_refused", validated.validation_flags)
+        self.assertEqual(validated.answer["final_answer"], True)
+
+    def test_no_refusal_for_low_intent_confidence(self):
+        # 防误拒边界二：意图置信度不足时不拒答
+        query_plan = QuestionRewriter().rewrite(
+            "宁德时代2024年扣非归母净利润是多少？",
+            schema="number",
+            company_name="宁德时代",
+        )
+        query_plan.intent_confidence = 0.5
+        validated = validate_answer(
+            self._answer(),
+            self._retrieval("本年度归母净利润为 12,345 万元。"),
+            query_plan,
+        )
+        self.assertNotIn("metric_caliber_conflict_refused", validated.validation_flags)
+        self.assertEqual(validated.answer["final_answer"], 12345.0)
+
+
 if __name__ == "__main__":
     unittest.main()
