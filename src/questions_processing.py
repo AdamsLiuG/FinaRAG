@@ -1050,13 +1050,23 @@ class QuestionsProcessor:
         candidate_doc_ids: Optional[List[str]] = None,
         state: Optional[Dict] = None,
     ) -> Optional[List[Dict]]:
-        """预检补检（v2 过渡版：单轮；② 多轮收敛循环在下一 commit 展开）。
+        """预检多轮循环：detect_gap → 补检 → merge → rerank，直到收敛。
 
+        收敛三条件（任一满足即停）：
+        1. 缺口闭合：detect_gap 返回 None（剧本 required_metrics 全覆盖——
+           停止条件知识化，不是跑 N 轮碰运气）
+        2. 无新增证据：merge 后池长不变（边际收益为零）
+        3. 预算耗尽：rounds 达 adaptive_max_rounds()
+        附加防护：查询幂等停——本轮 gap.queries 与上轮完全相同 → break
+        （同查询重复补检是浪费）。
         state 为预检与校验后闭环共享的预算池（局部 dict 传递，不进实例
-        属性——D1 教训：多线程共享 processor 下实例属性串状态）。
-        返回最终 retrieval_results（含补检合并）；未触发返回 None。
+        属性——D1 教训）。返回最终 retrieval_results；未触发返回 None。
         """
-        from src.adaptive_retrieval import detect_gap, merge_supplement_results
+        from src.adaptive_retrieval import (
+            adaptive_max_rounds,
+            detect_gap,
+            merge_supplement_results,
+        )
 
         state = state if state is not None else {"rounds_used": 0, "traces": []}
 
@@ -1071,34 +1081,49 @@ class QuestionsProcessor:
         if gap is None:
             return None
 
-        supplement = self._collect_supplement(
-            retriever, company_name, rewrite_result, gap,
-            candidate_doc_ids=candidate_doc_ids,
-        )
-        if not supplement:
-            return None
+        current_results = list(retrieval_results)
+        prior_queries: List[str] = []
+        rounds_this_call = 0
 
-        merged = merge_supplement_results(retrieval_results, supplement)
-        if len(merged) == len(retrieval_results):
-            return None  # 无新增证据：边际收益为零（② 收敛条件 2）
-        reranked = retriever.rerank_candidates(
-            query=question,
-            candidate_results=merged,
-            documents_batch_size=self.final_reranking_batch_size,
-            top_n=self.retrieval_debug_top_n,
-            task_type=getattr(rewrite_result, "task_type", None),
-        )
-        state["rounds_used"] += 1
-        self._record_adaptive_trace(state, {
-            "question": question,
-            "company_name": company_name,
-            "trigger": gap.trigger,
-            "queries": list(gap.supplement_queries),
-            "new_hits": len(supplement),
-            "rounds": state["rounds_used"],
-            "atom_id": (getattr(rewrite_result, "metric_atom", None) or {}).get("atom_id"),
-        })
-        return reranked
+        while gap is not None:
+            if state["rounds_used"] >= adaptive_max_rounds():
+                break                                   # 收敛条件 3：预算耗尽
+            if gap.supplement_queries == prior_queries:
+                break                                   # 查询幂等停
+            prior_queries = list(gap.supplement_queries)
+
+            supplement = self._collect_supplement(
+                retriever, company_name, rewrite_result, gap,
+                candidate_doc_ids=candidate_doc_ids,
+            )
+
+            merged = merge_supplement_results(current_results, supplement)
+            if len(merged) == len(current_results):
+                break                                   # 收敛条件 2：无新增证据
+            current_results = merged
+
+            current_results = retriever.rerank_candidates(
+                query=question,
+                candidate_results=current_results,
+                documents_batch_size=self.final_reranking_batch_size,
+                top_n=self.retrieval_debug_top_n,
+                task_type=getattr(rewrite_result, "task_type", None),
+            )
+            state["rounds_used"] += 1
+            rounds_this_call += 1
+            self._record_adaptive_trace(state, {
+                "question": question,
+                "company_name": company_name,
+                "trigger": gap.trigger,
+                "queries": list(gap.supplement_queries),
+                "new_hits": len(supplement),
+                "rounds": state["rounds_used"],
+                "atom_id": (getattr(rewrite_result, "metric_atom", None) or {}).get("atom_id"),
+            })
+
+            gap = detect_gap(rewrite_result, current_results)   # 重判：收敛条件 1
+
+        return current_results if rounds_this_call else None
 
     @staticmethod
     def _record_adaptive_trace(state: Dict, entry: Optional[Dict] = None) -> None:

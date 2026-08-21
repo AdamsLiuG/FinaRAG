@@ -20,6 +20,7 @@ def _plan(metric_atom=None, playbook=None, task_type="single_metric_lookup"):
         metric_atom=metric_atom,
         playbook=playbook,
         task_type=task_type,
+        filters=None,
     )
 
 
@@ -256,3 +257,130 @@ def _targets_all_covered(results, plan):
 
     corpus = _result_texts(results)
     return any(t in corpus for t in ["扣非归母净利润", "扣除非经常性损益后的净利润", "合并利润表"])
+
+
+class _LoopFakeRetriever:
+    """② 循环测试用 fake：retrieve 按 round 返回可控结果；rerank 原样返回。"""
+
+    def __init__(self, supplement_pages_by_round):
+        self.supplement_pages_by_round = supplement_pages_by_round
+        self.retrieve_calls = 0
+
+    def retrieve_candidates_by_company_name(self, company_name, query, top_n=28,
+                                            parent_retrieval_mode="child", filters=None,
+                                            candidate_doc_ids=None, **kwargs):
+        self.retrieve_calls += 1
+        idx = min(self.retrieve_calls - 1, len(self.supplement_pages_by_round) - 1)
+        return list(self.supplement_pages_by_round[idx])
+
+    def rerank_candidates(self, query, candidate_results, documents_batch_size=2,
+                          top_n=6, llm_weight=0.7, task_type=None):
+        return list(candidate_results)[:top_n]
+
+
+def _bare_processor():
+    from src.questions_processing import QuestionsProcessor
+
+    processor = object.__new__(QuestionsProcessor)
+    processor.final_reranking_batch_size = 4
+    processor.retrieval_debug_top_n = 10
+    processor.llm_reranking_sample_size = 28
+    processor.parent_retrieval_mode = "child"
+    return processor
+
+
+def _pages(items):
+    """items: [(page, text)] → retrieval 结果形态。"""
+    return [
+        {"page": p, "text": t, "pdf_sha1": "doc_a",
+         "retrieval_sources": [], "matched_child_chunk_ids": [], "matched_tags": [],
+         "combined_score": 0.5}
+        for p, t in items
+    ]
+
+
+class TestConvergentLoop(unittest.TestCase):
+    """② 收敛驱动的多轮：三收敛条件 + 查询幂等 + 预算。"""
+
+    def setUp(self):
+        self.plan = _plan(metric_atom=_met001_payload())
+        self.base = _pages([(1, "归母净利润为 100 亿元")])
+        self.processor = _bare_processor()
+
+    def _run(self, fake_retriever, state=None):
+        return self.processor._run_adaptive_supplement(
+            retriever=fake_retriever,
+            company_name="公司",
+            question="扣非归母净利润是多少",
+            rewrite_result=self.plan,
+            retrieval_results=self.base,
+            state=state,
+        )
+
+    def test_c1_gap_closes_stops(self):
+        """收敛条件 1：补检覆盖 targets → 第二轮 detect_gap None → 停。"""
+        fake = _LoopFakeRetriever([
+            _pages([(7, "扣非归母净利润为 5 亿元，扣除非经常性损益后的净利润 4.8 亿")]),
+        ])
+        state = {"rounds_used": 0, "traces": []}
+        result = self._run(fake, state)
+        self.assertIsNotNone(result)
+        self.assertEqual(state["rounds_used"], 1)      # 一轮即闭合
+        texts = "\n".join(r.get("text") or "" for r in result)
+        self.assertIn("扣非归母净利润", texts)
+
+    def test_c2_no_new_evidence_stops(self):
+        """收敛条件 2：补检全重复（同 sha/page）→ 池长不变 → 停且不计轮。"""
+        fake = _LoopFakeRetriever([
+            _pages([(1, "归母净利润（重复内容）")]),   # 同 page=1 → 去重后无新增
+        ])
+        state = {"rounds_used": 0, "traces": []}
+        result = self._run(fake, state)
+        self.assertIsNone(result)                        # 无有效轮
+        self.assertEqual(state["rounds_used"], 0)
+
+    def test_c3_query_idempotent_stops(self):
+        """查询幂等停：gap.queries 两轮相同（patch detect_gap 恒返同 gap）。"""
+        from unittest.mock import patch
+
+        from src.adaptive_retrieval import RetrievalGap
+
+        fixed_gap = RetrievalGap(
+            trigger="evidence_gap",
+            supplement_queries=["扣非归母净利润"],
+            rationale="fixed",
+        )
+        fake = _LoopFakeRetriever([
+            _pages([(7, "扣非归母净利润内容"), (8, "更多新证据"), (9, "再新证据")]),
+        ])
+        state = {"rounds_used": 0, "traces": []}
+        with patch("src.adaptive_retrieval.detect_gap", return_value=fixed_gap):
+            # questions_processing 内 import 的是模块属性——patch 模块级即可
+            result = self._run(fake, state)
+        # 第二轮 queries 与第一轮相同 → 幂等停：恰好 1 轮
+        self.assertEqual(state["rounds_used"], 1)
+
+    def test_c4_budget_cap(self):
+        """收敛条件 3：预算耗尽——跨触发源接力（queries 逐轮变化，不触发
+        幂等停）+ 每轮新证据，恰 max_rounds 轮停。
+
+        注：同一触发源的持续 gap 其 queries 固定，会被幂等停先拦——预算
+        上限真正约束的是「不同触发源接力」的场景（本测试以变化 gap 模拟）。"""
+        from unittest.mock import patch
+
+        from src.adaptive_retrieval import RetrievalGap
+
+        gap_sequence = [
+            RetrievalGap(trigger="evidence_gap", supplement_queries=["扣非归母净利润"], rationale="r1"),
+            RetrievalGap(trigger="evidence_gap", supplement_queries=["扣除非经常性损益后的净利润"], rationale="r2"),
+            RetrievalGap(trigger="evidence_gap", supplement_queries=["合并利润表"], rationale="r3"),
+        ]
+        pages_sequence = [
+            _pages([(10 + i, f"第 {i} 轮新证据")]) for i in range(3)
+        ]
+        fake = _LoopFakeRetriever(pages_sequence)
+        state = {"rounds_used": 0, "traces": []}
+        with patch("src.adaptive_retrieval.adaptive_max_rounds", return_value=2), \
+                patch("src.adaptive_retrieval.detect_gap", side_effect=gap_sequence):
+            self._run(fake, state)
+        self.assertEqual(state["rounds_used"], 2)   # 第 3 轮被预算拦
