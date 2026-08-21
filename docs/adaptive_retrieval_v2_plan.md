@@ -709,3 +709,28 @@ echo '{"question":"国网信通扣非归母净利润是多少","schema":"number"
 **风险与回退**：最大风险是闭包缩进改造的机械错误——缓解：改造后立即跑
 test_questions_processing 相关全量；回退：ADAPTIVE_RETRIEVAL_ENABLED=0 回
 v1，单 commit revert 回 v1 代码。
+
+
+---
+
+## 6. 实施结果回填（2026-08-21 实测）
+
+四项全部完成（4 个功能 commit）：
+
+| commit | 内容 | 实测要点 |
+|---|---|---|
+| 55e45d7 | ① 闭包重入 + try-then-closed | 机械改造三类误伤被 458 测试当场炸出（no_context 早退 return 漏改/方法名误替换×3/kwarg 名误替换×3——占位符只保护了字段名漏了方法名与 kwarg 名）；闭环终止判定用二次校验新 flags（P5 测试暴露判定链语义） |
+| 3d7d381 | ② 多轮收敛 | 同触发源持续 gap 必被幂等停先拦——预算上限真正约束「跨触发源接力」场景（C4 以变化 gap 序列锁定）；方案 §2.2 结尾 trace 笔误修正（循环内已逐条入 state） |
+| 4c20f87 | ③ 策略多样化 | **S5 抓到方案控制流缺陷**：「无新增即停」（②）与「无新增切粒度」（③）矛盾——修正为 dense 无新增先切 parent 重试一轮（不消耗 rounds），parent 仍无新增才真收敛；幂等停升级「同查询同策略」；_choose_strategy 不以 round_index 强制首轮 dense（切粒度轮不耗 rounds 会永远卡 dense） |
+| （④） | trace 反哺 | 脚本 + 10 用例；空 trace 冒烟通过 |
+
+**最终状态**：全量 **487 tests**（v1 基线 458 → +29），失败维持 6 个历史
+环境依赖项，零回归。test_adaptive_retrieval 31 用例 + test_adaptive_trace_analysis 10 用例。
+
+**实施中共抓到 4 个方案缺陷/笔误**（测试驱动暴露）：闭包三类机械误伤、
+P5 判定链语义（新 flags 而非旧 flags）、C4 幂等与预算的交互、S5 收敛
+条件 2 与策略切换的矛盾——全部修正并写入对应 commit message。
+
+**v3 待办**：LLM 决策器（RetrievalGap 结构化字段接口已预留，卡 API key）；
+metadata_reroute 策略（设计已归档 §3.3）。端到端收益（拒救率/轮次分布/
+策略命中率）卡 API key 跑分。
