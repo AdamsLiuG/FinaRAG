@@ -9,6 +9,7 @@ from src.adaptive_retrieval import (
     adaptive_max_rounds,
     adaptive_retrieval_enabled,
     detect_gap,
+    detect_post_validate_gap,
     merge_supplement_results,
 )
 from src.metric_atoms import get_default_store
@@ -157,3 +158,101 @@ class TestSwitchAndBudget(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPostValidateGap(unittest.TestCase):
+    """① 校验后触发（try-then-closed 的感知层）：flags → RetrievalGap。"""
+
+    def test_p1_caliber_refused_triggers(self):
+        """口径门禁拒答 → 定向补本口径（含扣非 targets、不含归母易混名）。"""
+        plan = _plan(metric_atom=_met001_payload())
+        results = _results(["归母净利润为 100 亿元"])
+        gap = detect_post_validate_gap(["metric_caliber_conflict_refused"], plan, results)
+        self.assertIsNotNone(gap)
+        self.assertEqual(gap.trigger, "evidence_gap")
+        self.assertNotIn("归母净利润", gap.supplement_queries)
+        self.assertIn("扣除非经常性损益后的净利润", gap.supplement_queries)
+
+    def test_p2_evidence_mismatch_triggers(self):
+        plan = _plan(metric_atom=_met001_payload())
+        gap = detect_post_validate_gap(["metric_evidence_mismatch"], plan, _results(["无关文本"]))
+        self.assertIsNotNone(gap)
+        self.assertEqual(gap.trigger, "evidence_gap")
+
+    def test_p3_playbook_incomplete_triggers(self):
+        plan = _plan(playbook={"playbook_id": "PLB-002", "required_metrics": ["MET-005"]})
+        gap = detect_post_validate_gap(
+            ["implicit_intent_evidence_incomplete"], plan, _results(["现金流分析"])
+        )
+        self.assertIsNotNone(gap)
+        self.assertEqual(gap.trigger, "playbook_incomplete")
+        self.assertIn("货币资金", gap.supplement_queries)
+
+    def test_p4_unrelated_flags_no_trigger(self):
+        plan = _plan(metric_atom=_met001_payload())
+        self.assertIsNone(
+            detect_post_validate_gap(
+                ["numeric_grounding_weak", "missing_relevant_pages"], plan, _results(["x"])
+            )
+        )
+        self.assertIsNone(detect_post_validate_gap([], plan, _results(["x"])))
+        self.assertIsNone(detect_post_validate_gap(None, plan, _results(["x"])))
+
+    def test_p5_try_semantics_gap_closes_after_supplement(self):
+        """try 语义（判定链与主流程一致）：拒答 flags 触发 → 补检含本口径证据
+        → 二次校验的 conflict 解除（新 flags 为空）→ gap_closed 判定基础成立。
+
+        注意：闭环终止的判定输入是**二次校验的新 flags**（证据含本口径后
+        answer_validation 不再产生 conflict flag），而非旧 flags。"""
+        plan = _plan(metric_atom=_met001_payload())
+        base = _results(["归母净利润为 100 亿元"])
+        gap = detect_post_validate_gap(["metric_caliber_conflict_refused"], plan, base)
+        self.assertIsNotNone(gap)
+        supplement = [{
+            "page": 7, "pdf_sha1": "doc_a",
+            "text": "扣非归母净利润为 5 亿元，扣除非经常性损益后的净利润 4.8 亿",
+            "combined_score": 0.6,
+        }]
+        merged = merge_supplement_results(base, supplement)
+        # 模拟二次校验：证据已含本口径 → conflict 解除 → 新 flags 为空
+        new_flags = [] if _targets_all_covered(merged, plan) else ["metric_caliber_conflict_refused"]
+        self.assertEqual(new_flags, [])  # 前提确认：补检证据确实覆盖本口径
+        # gap_closed 判定（主流程同构）：新 flags 无可补救源 → 闭环终止
+        self.assertIsNone(detect_post_validate_gap(new_flags, plan, merged))
+
+    def test_p6_then_closed_semantics_gap_persists(self):
+        """then-closed 语义：补检仍只有易混口径证据 → 再判仍返回 gap
+        （refused_maintained 的判定基础）。"""
+        plan = _plan(metric_atom=_met001_payload())
+        base = _results(["归母净利润为 100 亿元"])
+        supplement = _results(["归属于母公司股东的净利润继续增长"])  # 还是易混口径
+        merged = merge_supplement_results(base, supplement)
+        gap = detect_post_validate_gap(["metric_caliber_conflict_refused"], plan, merged)
+        self.assertIsNotNone(gap)  # 缺口未闭合 → 维持拒答
+
+    def test_p7_no_atom_no_gap(self):
+        """flag 有触发源但原子未命中 → 不硬造 gap（不可补救的 flags 跳过）。"""
+        plan = _plan()  # 无 metric_atom
+        self.assertIsNone(
+            detect_post_validate_gap(["metric_caliber_conflict_refused"], plan, _results(["x"]))
+        )
+
+    def test_p8_first_remediable_flag_wins(self):
+        """多 flags 时首个可补救源生效（映射表序）。"""
+        plan = _plan(
+            metric_atom=_met001_payload(),
+            playbook={"playbook_id": "PLB-002", "required_metrics": ["MET-005"]},
+        )
+        gap = detect_post_validate_gap(
+            ["numeric_grounding_weak", "metric_evidence_mismatch", "implicit_intent_evidence_incomplete"],
+            plan, _results(["无关文本"]),
+        )
+        self.assertEqual(gap.trigger, "evidence_gap")
+
+
+def _targets_all_covered(results, plan):
+    """P5 辅助：MET-001 的任一目标词是否已出现在结果文本中。"""
+    from src.adaptive_retrieval import _result_texts
+
+    corpus = _result_texts(results)
+    return any(t in corpus for t in ["扣非归母净利润", "扣除非经常性损益后的净利润", "合并利润表"])

@@ -13,7 +13,11 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.analysis_playbooks import build_playbook_hint, get_default_playbook_store
-from src.adaptive_retrieval import adaptive_retrieval_enabled
+from src.adaptive_retrieval import (
+    adaptive_max_rounds,
+    adaptive_retrieval_enabled,
+    merge_supplement_results,
+)
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.chart_grounding import ChartGrounder
@@ -1002,6 +1006,40 @@ class QuestionsProcessor:
             candidate_doc_ids=candidate_doc_ids,
         )
 
+    def _collect_supplement(
+        self,
+        retriever,
+        company_name: str,
+        rewrite_result,
+        gap,
+        candidate_doc_ids: Optional[List[str]] = None,
+        parent_mode_override: Optional[str] = None,
+    ) -> List[Dict]:
+        """单轮补检收集：gap.supplement_queries 逐条走纯召回（hybrid 无 rerank）。
+
+        parent_mode_override：非 None 时覆盖 self.parent_retrieval_mode
+        （③ parent_recall 策略传 "page"；默认 None 走 processor 配置）。
+        """
+        supplement: List[Dict] = []
+        for supplement_query in gap.supplement_queries:
+            if parent_mode_override is not None:
+                results = retriever.retrieve_candidates_by_company_name(
+                    company_name=company_name,
+                    query=supplement_query,
+                    top_n=max(self.llm_reranking_sample_size, self.retrieval_debug_top_n),
+                    parent_retrieval_mode=parent_mode_override,
+                    filters=rewrite_result.filters,
+                    candidate_doc_ids=candidate_doc_ids,
+                )
+            else:
+                results = self._run_retrieval(
+                    retriever, "hybrid", company_name, supplement_query,
+                    rewrite_result.filters, candidate_doc_ids,
+                    task_type=getattr(rewrite_result, "task_type", None),
+                )
+            supplement.extend(results)
+        return supplement
+
     def _run_adaptive_supplement(
         self,
         retriever,
@@ -1010,18 +1048,17 @@ class QuestionsProcessor:
         rewrite_result,
         retrieval_results: List[Dict],
         candidate_doc_ids: Optional[List[str]] = None,
-    ) -> Optional[Dict]:
-        """Agentic 补检一轮：detect_gap → 原子/剧本驱动定向补检 → 合并 → 重排。
+        state: Optional[Dict] = None,
+    ) -> Optional[List[Dict]]:
+        """预检补检（v2 过渡版：单轮；② 多轮收敛循环在下一 commit 展开）。
 
-        补检走纯召回（hybrid，不带 rerank——重排在合并后统一做一次）；
-        trace 追加 logs/adaptive_trace.jsonl（question/trigger/queries/new_hits）。
-        返回 None 表示无缺口（零成本路径）；有缺口但补检无新命中也返回 None。
+        state 为预检与校验后闭环共享的预算池（局部 dict 传递，不进实例
+        属性——D1 教训：多线程共享 processor 下实例属性串状态）。
+        返回最终 retrieval_results（含补检合并）；未触发返回 None。
         """
-        from src.adaptive_retrieval import (
-            adaptive_max_rounds,
-            detect_gap,
-            merge_supplement_results,
-        )
+        from src.adaptive_retrieval import detect_gap, merge_supplement_results
+
+        state = state if state is not None else {"rounds_used": 0, "traces": []}
 
         top_score: Optional[float] = None
         for item in retrieval_results:
@@ -1034,25 +1071,16 @@ class QuestionsProcessor:
         if gap is None:
             return None
 
-        rounds = 0
-        supplement: List[Dict] = []
-        trigger = gap.trigger
-        queries_used: List[str] = []
-        while rounds < adaptive_max_rounds() and gap is not None:
-            rounds += 1
-            queries_used.extend(gap.supplement_queries)
-            for supplement_query in gap.supplement_queries:
-                supplement.extend(self._run_retrieval(
-                    retriever, "hybrid", company_name, supplement_query,
-                    rewrite_result.filters, candidate_doc_ids,
-                    task_type=getattr(rewrite_result, "task_type", None),
-                ))
-            gap = None  # v1 预检模式：单轮
-
+        supplement = self._collect_supplement(
+            retriever, company_name, rewrite_result, gap,
+            candidate_doc_ids=candidate_doc_ids,
+        )
         if not supplement:
             return None
 
         merged = merge_supplement_results(retrieval_results, supplement)
+        if len(merged) == len(retrieval_results):
+            return None  # 无新增证据：边际收益为零（② 收敛条件 2）
         reranked = retriever.rerank_candidates(
             query=question,
             candidate_results=merged,
@@ -1060,23 +1088,34 @@ class QuestionsProcessor:
             top_n=self.retrieval_debug_top_n,
             task_type=getattr(rewrite_result, "task_type", None),
         )
-        trace_entry = {
+        state["rounds_used"] += 1
+        self._record_adaptive_trace(state, {
             "question": question,
             "company_name": company_name,
-            "trigger": trigger,
-            "queries": queries_used,
+            "trigger": gap.trigger,
+            "queries": list(gap.supplement_queries),
             "new_hits": len(supplement),
-            "rounds": rounds,
-        }
-        self._append_adaptive_trace(trace_entry)
-        return {
-            "adaptive_retrieval": trace_entry,
-            "retrieval_results": reranked,
-        }
+            "rounds": state["rounds_used"],
+            "atom_id": (getattr(rewrite_result, "metric_atom", None) or {}).get("atom_id"),
+        })
+        return reranked
+
+    @staticmethod
+    def _record_adaptive_trace(state: Dict, entry: Optional[Dict] = None) -> None:
+        """trace 入 state（entry 非 None）或统一落盘（entry 为 None）。
+
+        一次请求一条聚合 trace：主流程收尾调 _record_adaptive_trace(state)
+        落盘；写入失败不阻断主流程（可观测性不得反噬可用性）。
+        """
+        if entry is not None:
+            state.setdefault("traces", []).append(entry)
+            return
+        for trace in state.get("traces", []):
+            QuestionsProcessor._append_adaptive_trace(trace)
 
     @staticmethod
     def _append_adaptive_trace(entry: Dict) -> None:
-        """补检 trace 追加 JSONL（D3 trace 体系前身；失败不阻断主流程）。"""
+        """补检 trace 追加 JSONL（v1 兼容保留；v2 走 _record_adaptive_trace）。"""
         try:
             from datetime import datetime
 
@@ -3105,161 +3144,222 @@ class QuestionsProcessor:
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
 
-        # Agentic v1 预检（检索后/生成前）：知识层驱动的证据缺口定向补检。
-        # 默认关闭（ADAPTIVE_RETRIEVAL_ENABLED=1 开启）；预算 max 1 轮防循环。
-        adaptive_debug = None
+        # ===== Agentic v2：预检（生成前）+ 校验后闭环（try-then-closed）=====
+        # 预算池与 trace 以局部 dict 传递（D1 教训：不进实例属性）
+        adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
         if adaptive_retrieval_enabled() and retrieval_results and mode != "full_context":
-            adaptive_debug = self._run_adaptive_supplement(
+            supplemented = self._run_adaptive_supplement(
                 retriever=retriever,
                 company_name=company_name,
                 question=question,
                 rewrite_result=rewrite_result,
                 retrieval_results=retrieval_results,
                 candidate_doc_ids=candidate_doc_ids,
+                state=adaptive_state,
             )
-            if adaptive_debug is not None:
-                retrieval_results = adaptive_debug.pop("retrieval_results")
+            if supplemented is not None:
+                retrieval_results = supplemented
 
-        grounding_result = None
-        chart_grounding_result = None
-        if schema == "number" and self.table_grounder is not None:
-            if self._is_revenue_metric_question(question) and allowed_grounding_doc_ids:
-                grounding_result = self._cached_revenue_grounding(
-                    company_name=company_name,
+        # ---- 闭包：生成→组装→校验（重入单元；捕获请求上下文只读变量）----
+        def _generate_and_validate(current_results: List[Dict]):
+            """补检后以新证据池重走 grounding→生成→校验全链（① try-then-closed）。
+
+            捕获变量（只读）：question/schema/company_name/rewrite_result/
+            route_info/route_mode/candidate_pool_size_before_rerank/
+            reranking_debug/hyde_debug/candidate_doc_ids/allowed_grounding_doc_ids。
+            """
+            grounding_result = None
+            chart_grounding_result = None
+            if schema == "number" and self.table_grounder is not None:
+                if self._is_revenue_metric_question(question) and allowed_grounding_doc_ids:
+                    grounding_result = self._cached_revenue_grounding(
+                        company_name=company_name,
+                        question=question,
+                        query_plan=rewrite_result,
+                        candidate_doc_ids=candidate_doc_ids,
+                        allowed_doc_ids=allowed_grounding_doc_ids,
+                        retrieval_results=current_results,
+                    )
+                if grounding_result is None:
+                    grounding_result = self.table_grounder.ground_number_query(
+                        question=question,
+                        retrieval_results=current_results,
+                        filters=rewrite_result.filters,
+                        candidate_doc_ids=candidate_doc_ids,
+                        allowed_doc_ids=allowed_grounding_doc_ids,
+                    )
+                if grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
+                    current_results = self._ensure_table_grounding_retrieval_result(current_results, grounding_result)
+                    current_results = self._ensure_table_support_retrieval_results(current_results, grounding_result)
+
+            if (
+                schema == "number"
+                and grounding_result is None
+                and self.chart_grounder is not None
+            ):
+                chart_grounding_result = self.chart_grounder.ground_number_query(
                     question=question,
-                    query_plan=rewrite_result,
-                    candidate_doc_ids=candidate_doc_ids,
-                    allowed_doc_ids=allowed_grounding_doc_ids,
-                    retrieval_results=retrieval_results,
-                )
-            if grounding_result is None:
-                grounding_result = self.table_grounder.ground_number_query(
-                    question=question,
-                    retrieval_results=retrieval_results,
+                    retrieval_results=current_results,
                     filters=rewrite_result.filters,
                     candidate_doc_ids=candidate_doc_ids,
                     allowed_doc_ids=allowed_grounding_doc_ids,
                 )
-            if grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
-                retrieval_results = self._ensure_table_grounding_retrieval_result(retrieval_results, grounding_result)
-                retrieval_results = self._ensure_table_support_retrieval_results(retrieval_results, grounding_result)
+                if chart_grounding_result is not None and self._grounded_number_value(chart_grounding_result) is not None:
+                    current_results = self._ensure_chart_grounding_retrieval_result(current_results, chart_grounding_result)
 
-        if (
-            schema == "number"
-            and grounding_result is None
-            and self.chart_grounder is not None
-        ):
-            chart_grounding_result = self.chart_grounder.ground_number_query(
-                question=question,
-                retrieval_results=retrieval_results,
-                filters=rewrite_result.filters,
-                candidate_doc_ids=candidate_doc_ids,
-                allowed_doc_ids=allowed_grounding_doc_ids,
-            )
-            if chart_grounding_result is not None and self._grounded_number_value(chart_grounding_result) is not None:
-                retrieval_results = self._ensure_chart_grounding_retrieval_result(retrieval_results, chart_grounding_result)
+            if not current_results:
+                self.response_data = {}
+                no_context_answer = {
+                    "final_answer": "N/A",
+                    "relevant_pages": [],
+                    "references": [],
+                    "citations": [],
+                    "confidence": "low",
+                    "confidence_reason": "未检索到可支撑回答的上下文。",
+                    "reasoning_summary": "检索阶段没有返回相关证据，因此拒答。",
+                    "step_by_step_analysis": "检索阶段没有返回相关证据，因此拒答。",
+                    "search_queries": rewrite_result.search_queries,
+                    "query_plan": rewrite_result.to_dict(),
+                    "route_info": route_info or {
+                        "route_mode": "explicit_company",
+                        "selected_company": company_name,
+                        "candidate_companies": [company_name] if company_name else [],
+                        "selection_reasons": ["company_argument"],
+                    },
+                    "candidate_pool_size_before_rerank": candidate_pool_size_before_rerank,
+                    "reranking_strategy": reranking_debug["reranking_strategy"],
+                    "initial_candidate_pool_size": reranking_debug["initial_candidate_pool_size"],
+                    "colbert_candidate_pool_size": reranking_debug["colbert_candidate_pool_size"],
+                    "colbert_top_n": reranking_debug["colbert_top_n"],
+                    "final_reranking_backend": reranking_debug["final_reranking_backend"],
+                    "hyde": hyde_debug,
+                    "retrieval_pages": [],
+                    "retrieval_results": [],
+                    "retrieval_report_groups": [],
+                    "response_data": self.response_data,
+                }
+                if not self.reasoning_debug_enabled:
+                    no_context_answer["step_by_step_analysis"] = ""
+                validated_answer = validate_answer(no_context_answer, [], rewrite_result)
+                # 闭包统一返回 ValidatedAnswer（主流程取 .answer；no_context 拒答也走闭环判定）
+                return validated_answer
 
-        if not retrieval_results:
-            self.response_data = {}
-            no_context_answer = {
-                "final_answer": "N/A",
-                "relevant_pages": [],
-                "references": [],
-                "citations": [],
-                "confidence": "low",
-                "confidence_reason": "未检索到可支撑回答的上下文。",
-                "reasoning_summary": "检索阶段没有返回相关证据，因此拒答。",
-                "step_by_step_analysis": "检索阶段没有返回相关证据，因此拒答。",
-                "search_queries": rewrite_result.search_queries,
-                "query_plan": rewrite_result.to_dict(),
-                "route_info": route_info or {
-                    "route_mode": "explicit_company",
-                    "selected_company": company_name,
-                    "candidate_companies": [company_name] if company_name else [],
-                    "selection_reasons": ["company_argument"],
-                },
-                "candidate_pool_size_before_rerank": candidate_pool_size_before_rerank,
-                "reranking_strategy": reranking_debug["reranking_strategy"],
-                "initial_candidate_pool_size": reranking_debug["initial_candidate_pool_size"],
-                "colbert_candidate_pool_size": reranking_debug["colbert_candidate_pool_size"],
-                "colbert_top_n": reranking_debug["colbert_top_n"],
-                "final_reranking_backend": reranking_debug["final_reranking_backend"],
-                "hyde": hyde_debug,
-                "retrieval_pages": [],
-                "retrieval_results": [],
-                "retrieval_report_groups": [],
-                "response_data": self.response_data,
-            }
-            if not self.reasoning_debug_enabled:
-                no_context_answer["step_by_step_analysis"] = ""
-            validated_answer = validate_answer(no_context_answer, [], rewrite_result)
-            return validated_answer.answer
+            if schema == "number" and grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
+                answer_dict = self._build_table_grounded_number_answer(grounding_result)
+                self.response_data = {}
+            elif (
+                schema == "number"
+                and chart_grounding_result is not None
+                and self._grounded_number_value(chart_grounding_result) is not None
+            ):
+                answer_dict = self._build_chart_grounded_number_answer(chart_grounding_result)
+                self.response_data = {}
+            else:
+                answer_context_results = current_results[: self.top_n_retrieval]
+                rag_context = self._format_retrieval_results(answer_context_results)
+                answer_dict = self.api_processor.get_answer_from_rag_context(
+                    question=question,
+                    rag_context=rag_context,
+                    schema=schema,
+                    model=self.answering_model,
+                    temperature=self.answer_temperature,
+                    metric_caliber_hint=self._build_metric_caliber_hint(rewrite_result),
+                )
+                self.response_data = dict(getattr(self.api_processor, "response_data", {}) or {})
 
-        if schema == "number" and grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
-            answer_dict = self._build_table_grounded_number_answer(grounding_result)
-            self.response_data = {}
-        elif (
-            schema == "number"
-            and chart_grounding_result is not None
-            and self._grounded_number_value(chart_grounding_result) is not None
-        ):
-            answer_dict = self._build_chart_grounded_number_answer(chart_grounding_result)
-            self.response_data = {}
-        else:
-            answer_context_results = retrieval_results[: self.top_n_retrieval]
-            rag_context = self._format_retrieval_results(answer_context_results)
-            answer_dict = self.api_processor.get_answer_from_rag_context(
-                question=question,
-                rag_context=rag_context,
-                schema=schema,
-                model=self.answering_model,
-                temperature=self.answer_temperature,
-                metric_caliber_hint=self._build_metric_caliber_hint(rewrite_result),
-            )
-            self.response_data = dict(getattr(self.api_processor, "response_data", {}) or {})
-
-        pages = answer_dict.get("relevant_pages", [])
-        validated_pages = self._validate_page_references(pages, retrieval_results)
-        selected_report = (route_info or {}).get("selected_report") or {}
-        answer_dict["relevant_pages"] = validated_pages
-        if route_mode == "document_catalog_multi":
-            answer_dict["references"] = self._extract_references_from_results(validated_pages, retrieval_results)
-        else:
-            answer_dict["references"] = self._extract_references(
+            pages = answer_dict.get("relevant_pages", [])
+            validated_pages = self._validate_page_references(pages, current_results)
+            selected_report = (route_info or {}).get("selected_report") or {}
+            answer_dict["relevant_pages"] = validated_pages
+            if route_mode == "document_catalog_multi":
+                answer_dict["references"] = self._extract_references_from_results(validated_pages, current_results)
+            else:
+                answer_dict["references"] = self._extract_references(
+                    validated_pages,
+                    company_name,
+                    pdf_sha1=selected_report.get("sha1"),
+                )
+            answer_dict["citations"] = build_citations(
+                current_results,
                 validated_pages,
-                company_name,
-                pdf_sha1=selected_report.get("sha1"),
+                table_grounding_result=answer_dict.get("table_grounding_result"),
+                table_support_results=self._table_support_results(answer_dict.get("table_grounding_result")),
+                chart_grounding_result=answer_dict.get("chart_grounding_result"),
             )
-        answer_dict["citations"] = build_citations(
-            retrieval_results,
-            validated_pages,
-            table_grounding_result=answer_dict.get("table_grounding_result"),
-            table_support_results=self._table_support_results(answer_dict.get("table_grounding_result")),
-            chart_grounding_result=answer_dict.get("chart_grounding_result"),
-        )
-        answer_dict["confidence"] = compute_confidence(answer_dict, retrieval_results)
-        answer_dict["search_queries"] = rewrite_result.search_queries
-        answer_dict["query_plan"] = rewrite_result.to_dict()
-        answer_dict["route_info"] = route_info or {
-            "route_mode": rewrite_result.route_mode,
-            "selected_company": company_name,
-            "candidate_companies": [company_name],
-        }
-        answer_dict["candidate_pool_size_before_rerank"] = candidate_pool_size_before_rerank
-        answer_dict["reranking_strategy"] = reranking_debug["reranking_strategy"]
-        answer_dict["initial_candidate_pool_size"] = reranking_debug["initial_candidate_pool_size"]
-        answer_dict["colbert_candidate_pool_size"] = reranking_debug["colbert_candidate_pool_size"]
-        answer_dict["colbert_top_n"] = reranking_debug["colbert_top_n"]
-        answer_dict["final_reranking_backend"] = reranking_debug["final_reranking_backend"]
-        answer_dict["hyde"] = hyde_debug
-        answer_dict["retrieval_pages"] = [result.get("page") for result in retrieval_results]
-        answer_dict["retrieval_results"] = [self._serialize_retrieval_result(result) for result in retrieval_results]
-        answer_dict["retrieval_report_groups"] = self._aggregate_retrieval_results_by_report(retrieval_results)
-        answer_dict["response_data"] = self.response_data
-        if not self.reasoning_debug_enabled:
-            answer_dict["step_by_step_analysis"] = ""
-        validated_answer = validate_answer(answer_dict, retrieval_results, rewrite_result)
-        return validated_answer.answer
+            answer_dict["confidence"] = compute_confidence(answer_dict, current_results)
+            answer_dict["search_queries"] = rewrite_result.search_queries
+            answer_dict["query_plan"] = rewrite_result.to_dict()
+            answer_dict["route_info"] = route_info or {
+                "route_mode": rewrite_result.route_mode,
+                "selected_company": company_name,
+                "candidate_companies": [company_name],
+            }
+            answer_dict["candidate_pool_size_before_rerank"] = candidate_pool_size_before_rerank
+            answer_dict["reranking_strategy"] = reranking_debug["reranking_strategy"]
+            answer_dict["initial_candidate_pool_size"] = reranking_debug["initial_candidate_pool_size"]
+            answer_dict["colbert_candidate_pool_size"] = reranking_debug["colbert_candidate_pool_size"]
+            answer_dict["colbert_top_n"] = reranking_debug["colbert_top_n"]
+            answer_dict["final_reranking_backend"] = reranking_debug["final_reranking_backend"]
+            answer_dict["hyde"] = hyde_debug
+            answer_dict["retrieval_pages"] = [result.get("page") for result in current_results]
+            answer_dict["retrieval_results"] = [self._serialize_retrieval_result(result) for result in current_results]
+            answer_dict["retrieval_report_groups"] = self._aggregate_retrieval_results_by_report(current_results)
+            answer_dict["response_data"] = self.response_data
+            if not self.reasoning_debug_enabled:
+                answer_dict["step_by_step_analysis"] = ""
+            validated_answer = validate_answer(answer_dict, current_results, rewrite_result)
+            return validated_answer
+        # ---- 首轮生成 + 校验后闭环（try-then-closed）----
+        validated = _generate_and_validate(retrieval_results)
+        if (
+            adaptive_retrieval_enabled()
+            and mode != "full_context"
+            and adaptive_state["rounds_used"] < adaptive_max_rounds()
+        ):
+            from src.adaptive_retrieval import detect_post_validate_gap
+
+            post_gap = detect_post_validate_gap(
+                validated.validation_flags, rewrite_result, retrieval_results
+            )
+            if post_gap is not None:
+                supplement = self._collect_supplement(
+                    retriever=retriever,
+                    company_name=company_name,
+                    rewrite_result=rewrite_result,
+                    gap=post_gap,
+                    candidate_doc_ids=candidate_doc_ids,
+                )
+                if supplement:
+                    retrieval_results = merge_supplement_results(retrieval_results, supplement)
+                    retrieval_results = retriever.rerank_candidates(
+                        query=question,
+                        candidate_results=retrieval_results,
+                        documents_batch_size=self.final_reranking_batch_size,
+                        top_n=self.retrieval_debug_top_n,
+                        task_type=getattr(rewrite_result, "task_type", None),
+                    )
+                    adaptive_state["rounds_used"] += 1
+                    # try：以新证据池重走 grounding→生成→校验
+                    validated = _generate_and_validate(retrieval_results)
+                    self._record_adaptive_trace(adaptive_state, {
+                        "question": question,
+                        "company_name": company_name,
+                        "trigger": post_gap.trigger,
+                        "queries": list(post_gap.supplement_queries),
+                        "new_hits": len(supplement),
+                        "rounds": adaptive_state["rounds_used"],
+                        "outcome": (
+                            "supplement_succeeded"
+                            if "metric_caliber_conflict_refused" not in validated.validation_flags
+                            else "refused_maintained"
+                        ),
+                        "atom_id": (getattr(rewrite_result, "metric_atom", None) or {}).get("atom_id"),
+                        "gap_closed": detect_post_validate_gap(
+                            validated.validation_flags, rewrite_result, retrieval_results
+                        ) is None,
+                    })
+        self._record_adaptive_trace(adaptive_state)   # 聚合落盘（无 trace 空操作）
+        return validated.answer
 
     def _extract_companies_from_subset(self, question_text: str) -> List[str]:
         if self.report_catalog is not None:

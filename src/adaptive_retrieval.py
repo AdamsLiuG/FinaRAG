@@ -138,6 +138,70 @@ def detect_gap(
     return None
 
 
+POST_VALIDATE_TRIGGERS = {
+    # 校验 flag → gap trigger（产生点：answer_validation.py L254/L262/L269）
+    "metric_caliber_conflict_refused": TRIGGER_EVIDENCE_GAP,      # 口径门禁拒答
+    "metric_evidence_mismatch": TRIGGER_EVIDENCE_GAP,
+    "implicit_intent_evidence_incomplete": TRIGGER_PLAYBOOK_INCOMPLETE,
+}
+
+
+def detect_post_validate_gap(
+    validation_flags: List[str],
+    query_plan,
+    retrieval_results: List[Dict],
+    atom_store: Optional[MetricAtomStore] = None,
+) -> Optional[RetrievalGap]:
+    """校验后触发：flags 中首个可补救触发源 → RetrievalGap。
+
+    构造逻辑复用预检：evidence_gap 走 _atom_supplement_queries（排除易混
+    口径标准名——补的是本口径证据，caliber_conflict 场景即「定向补本口径」）；
+    playbook_incomplete 走 payload.required_metrics 逐指标判定。
+    与预检的差异：触发源是校验层判定（语义更准），构造逻辑完全同源。
+    """
+    if atom_store is None:
+        from src.metric_atoms import get_default_store
+        atom_store = get_default_store()
+
+    for flag in validation_flags or []:
+        trigger = POST_VALIDATE_TRIGGERS.get(flag)
+        if trigger is None:
+            continue
+        metric_atom_payload = getattr(query_plan, "metric_atom", None) or {}
+        if trigger == TRIGGER_EVIDENCE_GAP:
+            atom = atom_store.get(metric_atom_payload.get("atom_id") or "")
+            if atom is None:
+                continue  # 无原子命中：flags 不可由补检补救，不硬造 gap
+            queries = _atom_supplement_queries(atom, ADAPTIVE_MAX_SUPPLEMENT_QUERIES)
+            confusable = set(metric_atom_payload.get("confusable_names") or [])
+            queries = [q for q in queries if q not in confusable]
+            if not queries:
+                continue
+            return RetrievalGap(
+                trigger=trigger,
+                supplement_queries=queries,
+                rationale=f"校验 flag={flag}；本口径证据定向补检",
+            )
+        # TRIGGER_PLAYBOOK_INCOMPLETE
+        playbook_payload = getattr(query_plan, "playbook", None) or {}
+        corpus_text = _result_texts(retrieval_results)
+        missing: List[str] = []
+        for metric_atom_id in list(playbook_payload.get("required_metrics") or []):
+            metric = atom_store.get(metric_atom_id)
+            if metric is None:
+                continue
+            targets = [metric.standard_name] + metric.evidence_targets
+            if len(_targets_covered(targets, corpus_text)) == len(targets):
+                missing.append(metric.standard_name)
+        if missing:
+            return RetrievalGap(
+                trigger=trigger,
+                supplement_queries=missing[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES + 1],
+                rationale=f"校验 flag={flag}；剧本必需指标缺证据：{missing}",
+            )
+    return None
+
+
 def merge_supplement_results(
     base: List[Dict], supplement: List[Dict]
 ) -> List[Dict]:
