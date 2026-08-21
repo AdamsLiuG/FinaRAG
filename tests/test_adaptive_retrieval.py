@@ -384,3 +384,94 @@ class TestConvergentLoop(unittest.TestCase):
                 patch("src.adaptive_retrieval.detect_gap", side_effect=gap_sequence):
             self._run(fake, state)
         self.assertEqual(state["rounds_used"], 2)   # 第 3 轮被预算拦
+
+
+class TestStrategySelection(unittest.TestCase):
+    """③ 行动策略多样化：选择逻辑 / merge 键 scope / 粒度覆盖端到端。"""
+
+    def test_s1_first_round_dense(self):
+        """首轮 dense 由 state 默认 gain=True 保证（非 round_index 强制——
+        切粒度重试轮不消耗 rounds，按轮数判会永远卡 dense）。"""
+        from src.adaptive_retrieval import _choose_strategy
+
+        self.assertEqual(_choose_strategy(0, True), "dense_recall")
+        self.assertEqual(_choose_strategy(5, True), "dense_recall")
+        self.assertEqual(_choose_strategy(0, False), "parent_recall")  # 无新增即切粒度
+
+    def test_s2_switch_to_parent_on_no_gain(self):
+        from src.adaptive_retrieval import _choose_strategy
+
+        self.assertEqual(_choose_strategy(1, prior_evidence_gain=False), "parent_recall")
+
+    def test_s3_keep_dense_on_gain(self):
+        from src.adaptive_retrieval import _choose_strategy
+
+        self.assertEqual(_choose_strategy(1, prior_evidence_gain=True), "dense_recall")
+
+    def test_s4_merge_key_scope_dimension(self):
+        """merge 键含粒度：child(p1) 与 parent(p1) 共存；同 scope 同页去重。"""
+        base = [{"pdf_sha1": "doc_a", "page": 1, "result_scope": "child",
+                 "retrieval_sources": ["vector"]}]
+        supplement = [
+            {"pdf_sha1": "doc_a", "page": 1, "result_scope": "parent",
+             "retrieval_sources": ["vector"]},   # 同页不同粒度 → 保留
+            {"pdf_sha1": "doc_a", "page": 1, "result_scope": "child",
+             "retrieval_sources": ["bm25"]},     # 同页同粒度 → 去重
+        ]
+        merged = merge_supplement_results(base, supplement)
+        self.assertEqual(len(merged), 2)
+        scopes = [item.get("result_scope") for item in merged]
+        self.assertEqual(scopes, ["child", "parent"])
+        self.assertIn("adaptive", merged[1]["retrieval_sources"])
+
+    def test_s4b_merge_key_defaults_child(self):
+        """无 result_scope 字段时默认 child（与 retrieval.py 语义一致）。"""
+        base = [{"pdf_sha1": "doc_a", "page": 1}]
+        supplement = [{"pdf_sha1": "doc_a", "page": 1, "result_scope": "parent"}]
+        merged = merge_supplement_results(base, supplement)
+        self.assertEqual(len(merged), 2)   # 默认 child ≠ parent
+
+    def test_s5_parent_override_end_to_end(self):
+        """端到端：上轮无新增 → 第二轮补检收到 parent_retrieval_mode='page'。"""
+        from unittest.mock import patch
+
+        from src.adaptive_retrieval import RetrievalGap
+
+        received_modes = []
+
+        class _ModeCaptureRetriever(_LoopFakeRetriever):
+            def retrieve_candidates_by_company_name(self, company_name, query, top_n=28,
+                                                    parent_retrieval_mode="child", filters=None,
+                                                    candidate_doc_ids=None, **kwargs):
+                received_modes.append(parent_retrieval_mode)
+                return super().retrieve_candidates_by_company_name(
+                    company_name, query, top_n=top_n,
+                    parent_retrieval_mode=parent_retrieval_mode,
+                    filters=filters, candidate_doc_ids=candidate_doc_ids, **kwargs)
+
+        # 场景：dense 首轮补检全重复（无新增）→ 切 parent 粒度重试 → 有新增
+        gap_sequence = [
+            RetrievalGap(trigger="evidence_gap", supplement_queries=["q1"], rationale="r1"),
+            RetrievalGap(trigger="evidence_gap", supplement_queries=["q2"], rationale="r2"),
+        ]
+        base_results = _pages([(1, "归母净利润")])
+        fake = _ModeCaptureRetriever([
+            _pages([(1, "重复内容（无新增）")]),   # dense 轮：同 page=1 → 无新增
+            _pages([(11, "parent 粒度新证据")]),   # parent 轮：新页
+        ])
+        state = {"rounds_used": 0, "traces": []}
+        with patch("src.adaptive_retrieval.detect_gap", side_effect=gap_sequence):
+            self.processor = _bare_processor()
+            self.processor._run_adaptive_supplement(
+                retriever=fake, company_name="公司", question="q",
+                rewrite_result=_plan(metric_atom=_met001_payload()),
+                retrieval_results=base_results,
+                state=state,
+            )
+        # dense 轮无新增 → parent 轮收到 parent_retrieval_mode="page"
+        self.assertEqual(received_modes, ["child", "page"])
+
+    def test_s6_retrieval_gap_default_strategy(self):
+        """RetrievalGap 默认 strategy=dense_recall（向后兼容）。"""
+        gap = RetrievalGap(trigger="evidence_gap", supplement_queries=["q"])
+        self.assertEqual(gap.strategy, "dense_recall")

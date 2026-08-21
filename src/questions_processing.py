@@ -1083,23 +1083,42 @@ class QuestionsProcessor:
 
         current_results = list(retrieval_results)
         prior_queries: List[str] = []
+        prior_strategy: Optional[str] = None
         rounds_this_call = 0
 
         while gap is not None:
             if state["rounds_used"] >= adaptive_max_rounds():
                 break                                   # 收敛条件 3：预算耗尽
-            if gap.supplement_queries == prior_queries:
-                break                                   # 查询幂等停
-            prior_queries = list(gap.supplement_queries)
+            # 查询幂等停（同查询**同策略**才停——允许同查询换粒度重试）
+            from src.adaptive_retrieval import _choose_strategy
 
+            strategy = _choose_strategy(
+                round_index=state["rounds_used"],
+                prior_evidence_gain=state.get("last_evidence_gain", True),
+            )
+            if gap.supplement_queries == prior_queries and strategy == prior_strategy:
+                break                                   # 幂等：同查询同策略
+            prior_queries = list(gap.supplement_queries)
+            prior_strategy = strategy
+
+            # ③ 策略选择：上轮有新增维持 dense；无新增切父粒度（低置信第二手段）
+            parent_override = "page" if strategy == "parent_recall" else None
             supplement = self._collect_supplement(
                 retriever, company_name, rewrite_result, gap,
                 candidate_doc_ids=candidate_doc_ids,
+                parent_mode_override=parent_override,
             )
 
             merged = merge_supplement_results(current_results, supplement)
             if len(merged) == len(current_results):
-                break                                   # 收敛条件 2：无新增证据
+                # 当前策略无新增：dense 未试过 parent → 切粒度重试一轮
+                # （child 检索不到的页级证据可能存在于 parent 粒度）；
+                # 已试过 parent 仍无新增 → 真收敛（条件 2）
+                if strategy != "parent_recall" and not state.get("parent_tried"):
+                    state["parent_tried"] = True
+                    state["last_evidence_gain"] = False   # 驱动下轮选 parent
+                    continue
+                break
             current_results = merged
 
             current_results = retriever.rerank_candidates(
@@ -1111,10 +1130,12 @@ class QuestionsProcessor:
             )
             state["rounds_used"] += 1
             rounds_this_call += 1
+            state["last_evidence_gain"] = True   # 本轮有新增（无新增已 break）
             self._record_adaptive_trace(state, {
                 "question": question,
                 "company_name": company_name,
                 "trigger": gap.trigger,
+                "strategy": strategy,
                 "queries": list(gap.supplement_queries),
                 "new_hits": len(supplement),
                 "rounds": state["rounds_used"],

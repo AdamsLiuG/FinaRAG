@@ -24,17 +24,37 @@ TRIGGER_EVIDENCE_GAP = "evidence_gap"
 TRIGGER_PLAYBOOK_INCOMPLETE = "playbook_incomplete"
 TRIGGER_LOW_CONFIDENCE = "low_confidence"
 
+STRATEGY_DENSE_RECALL = "dense_recall"
+STRATEGY_PARENT_RECALL = "parent_recall"
+
 ADAPTIVE_MIN_TOP_SCORE = float(os.getenv("ADAPTIVE_MIN_TOP_SCORE", "0.15"))
 ADAPTIVE_MAX_SUPPLEMENT_QUERIES = 3
 
 
 @dataclass(frozen=True)
 class RetrievalGap:
-    """一次补检的决策产物：触发原因 + 定向补检查询 + 依据（进 trace）。"""
+    """一次补检的决策产物：触发原因 + 定向补检查询 + 依据 + 行动策略。"""
 
     trigger: str
     supplement_queries: List[str] = field(default_factory=list)
     rationale: str = ""
+    strategy: str = STRATEGY_DENSE_RECALL
+
+
+def _choose_strategy(round_index: int, prior_evidence_gain: bool) -> str:
+    """③ 策略选择（规则版决策器；v3 换 LLM 时接口不变）。
+
+    prior_evidence_gain=True（含初始默认——首次尝试视为有效假设）→ dense；
+    False（上轮无新增）→ parent_recall（粒度切换是低置信的第二手段——
+    child chunk 证据不全时回溯 page 级上下文）。
+
+    注：不按 round_index 强制首轮 dense——切粒度重试轮不消耗 rounds_used
+    （无新增不计轮），若按轮数判首轮会永远卡在 dense（S5 测试抓到）。
+    round_index 参数保留给 v3 LLM 决策器。
+    """
+    if prior_evidence_gain:
+        return STRATEGY_DENSE_RECALL
+    return STRATEGY_PARENT_RECALL
 
 
 def _result_texts(retrieval_results: List[Dict]) -> str:
@@ -202,17 +222,25 @@ def detect_post_validate_gap(
     return None
 
 
+def _merge_key(item: Dict) -> Tuple[str, object, str]:
+    """去重键含粒度维度：child/parent 同页共存（parent 页级证据与 child
+    chunk 证据不是重复信息）。scope 判定复用 retrieval.py 的 result_scope 语义。"""
+    scope = (
+        item.get("result_scope")
+        or (item.get("metadata") or {}).get("node_type")
+        or "child"
+    )
+    return (str(item.get("pdf_sha1") or ""), item.get("page"), str(scope))
+
+
 def merge_supplement_results(
     base: List[Dict], supplement: List[Dict]
 ) -> List[Dict]:
-    """补检结果合并进候选池：按 (pdf_sha1, page) 去重，新结果标记 adaptive 来源。"""
-    seen = set()
-    for item in base or []:
-        key = (str(item.get("pdf_sha1") or ""), item.get("page"))
-        seen.add(key)
+    """补检结果合并进候选池：按 (pdf_sha1, page, scope) 去重，新结果标记 adaptive。"""
+    seen = {_merge_key(item) for item in base or []}
     merged = list(base or [])
     for item in supplement or []:
-        key = (str(item.get("pdf_sha1") or ""), item.get("page"))
+        key = _merge_key(item)
         if key in seen:
             continue
         seen.add(key)
