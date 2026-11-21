@@ -146,6 +146,7 @@ def make_retrieve_rerank_node(processor: Any):
 
         adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
         tree_nav_hits = 0
+        kg_hits = 0
         if (
             os.getenv("FINARAG_TREE_NAV_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
             and effective_mode != "full_context"
@@ -207,6 +208,61 @@ def make_retrieve_rerank_node(processor: Any):
                 print(f"Warning: PageIndex tree navigation skipped: {exc}")
 
         if (
+            os.getenv("FINARAG_KG_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            and effective_mode != "full_context"
+        ):
+            try:
+                from src.knowledge_graph.kg_builder import FinancialKGStore
+                from src.knowledge_graph.lightrag_retriever import (
+                    LightRAGRetriever,
+                    fuse_kg_and_hybrid_results,
+                    should_trigger_kg_retrieval,
+                )
+
+                if should_trigger_kg_retrieval(rewrite_result, question):
+                    kg_db = Path(
+                        os.getenv("FINARAG_KG_DB")
+                        or str(Path(processor.documents_dir).parent / "finarag_kg.sqlite")
+                    )
+                    if kg_db.exists():
+                        kg_store = FinancialKGStore(kg_db)
+                        payload_cache: Dict[str, Dict[int, Dict[str, Any]]] = {}
+
+                        def _fetch_kg_page(did: str, pno: int) -> Optional[Dict[str, Any]]:
+                            if did not in payload_cache:
+                                payload = (
+                                    processor._load_document_payload(did)
+                                    if hasattr(processor, "_load_document_payload")
+                                    else None
+                                )
+                                cname = str(((payload or {}).get("metainfo") or {}).get("company_name") or company_name or "")
+                                payload_cache[did] = {
+                                    int(p["page"]): {**p, "company_name": cname}
+                                    for p in ((payload or {}).get("content") or {}).get("pages") or []
+                                    if isinstance(p, dict) and p.get("page") is not None
+                                }
+                            return payload_cache[did].get(int(pno))
+
+                        try:
+                            kg_out = LightRAGRetriever(kg_store).retrieve(
+                                question,
+                                company_name=company_name or None,
+                                page_fetcher=_fetch_kg_page,
+                            )
+                        finally:
+                            kg_store.close()
+                        kg_results = kg_out.get("results") or []
+                        if kg_results:
+                            kg_hits = len(kg_results)
+                            retrieval_results = fuse_kg_and_hybrid_results(
+                                retrieval_results,
+                                kg_results,
+                                top_n=max(len(retrieval_results), getattr(processor, "retrieval_debug_top_n", 10)),
+                            )
+            except Exception as exc:
+                print(f"Warning: KG LightRAG retrieval skipped: {exc}")
+
+        if (
             adaptive_retrieval_enabled()
             and retrieval_results
             and effective_mode != "full_context"
@@ -239,6 +295,7 @@ def make_retrieve_rerank_node(processor: Any):
                     "mode": effective_mode,
                     "n_results": len(retrieval_results),
                     "tree_nav_hits": tree_nav_hits,
+                    "kg_hits": kg_hits,
                     "pre_adaptive_rounds": int(adaptive_state.get("rounds_used") or 0),
                     "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),

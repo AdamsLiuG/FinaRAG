@@ -262,6 +262,45 @@ def make_ground_generate_node(processor: Any):
             except Exception:
                 pass
 
+        # Optional P3 Claim-Level Grounding Verifier on long/text answers
+        claim_contradicted = 0
+        if (
+            os.getenv("FINARAG_CLAIM_VERIFY_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            and schema in {"text", "long_text"}
+            and isinstance(final_dict.get("final_answer"), str)
+            and final_dict["final_answer"].strip() not in {"", "N/A"}
+        ):
+            try:
+                from src.answer_validation import _downgrade_confidence
+                from src.claim_verifier import ClaimVerifier
+
+                verifier = ClaimVerifier(
+                    sql_store=getattr(processor, "sql_store", None),
+                    nli_scorer_fn=getattr(processor, "claim_nli_scorer", None),
+                )
+                q_filters = getattr(rewrite_result, "filters", None)
+                audit = verifier.verify(
+                    final_dict["final_answer"],
+                    citations=final_dict.get("citations") or [],
+                    retrieval_results=current_results,
+                    company_name=company_name or getattr(q_filters, "company_name", None),
+                    report_year=getattr(q_filters, "year", None),
+                )
+                final_dict["claim_audit"] = audit.to_dict()
+                claim_contradicted = audit.contradicted_count
+                if audit.contradicted_count > 0:
+                    if "claim_contradicted" not in final_flags:
+                        final_flags.append("claim_contradicted")
+                    final_dict["validation_flags"] = final_flags
+                    final_dict["confidence"] = "low"
+                elif audit.total_claims >= 2 and audit.unsupported_claim_rate > 0.5:
+                    if "claim_high_unverified_rate" not in final_flags:
+                        final_flags.append("claim_high_unverified_rate")
+                    final_dict["validation_flags"] = final_flags
+                    final_dict["confidence"] = _downgrade_confidence(final_dict.get("confidence"))
+            except Exception:
+                pass
+
         return {
             "retrieval_results": current_results,
             "validated_flags": final_flags,
@@ -270,7 +309,8 @@ def make_ground_generate_node(processor: Any):
                 {
                     "stage": "ground_generate",
                     "flags": final_flags,
-                    "confidence": validated_answer.confidence,
+                    "confidence": final_dict.get("confidence", validated_answer.confidence),
+                    "claim_contradicted": claim_contradicted,
                     "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),
                 }

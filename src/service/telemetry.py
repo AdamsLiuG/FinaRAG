@@ -22,7 +22,12 @@ SPAN_ID_VAR: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("fin
 PARENT_SPAN_ID_VAR: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("finarag_parent_span_id", default=None)
 
 _TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
-_LOW_CONFIDENCE_FLAGS = {"metric_evidence_mismatch", "metric_caliber_conflict_refused"}
+_LOW_CONFIDENCE_FLAGS = {
+    "metric_evidence_mismatch",
+    "metric_caliber_conflict_refused",
+    "implicit_intent_evidence_mismatch",
+    "claim_contradicted",
+}
 
 try:
     from opentelemetry import trace as _otel_trace  # type: ignore
@@ -260,15 +265,29 @@ class TelemetryManager:
             self.requests_recorded += 1
 
         if (_LOW_CONFIDENCE_FLAGS & set(flags)) or confidence == "low":
+            qplan = answer_dict.get("query_plan") if isinstance(answer_dict.get("query_plan"), dict) else {}
+            atom_payload = qplan.get("metric_atom") if isinstance(qplan.get("metric_atom"), dict) else {}
+            matched_flag = next((f for f in flags if f in _LOW_CONFIDENCE_FLAGS), None)
+            claim_audit = answer_dict.get("claim_audit") if isinstance(answer_dict.get("claim_audit"), dict) else {}
             feedback_entry = {
+                "source": "online_telemetry",
                 "timestamp": entry["timestamp"],
                 "trace_id": trace_id,
                 "question": question,
                 "schema": schema,
                 "confidence": confidence,
                 "validation_flags": flags,
+                "trigger": matched_flag or (flags[0] if flags else "low_confidence"),
+                "atom_id": atom_payload.get("atom_id"),
+                "metric": qplan.get("metric") or atom_payload.get("standard_name"),
+                "queries": list(qplan.get("search_queries") or answer_dict.get("search_queries") or []),
+                "new_hits": 0,
+                "rounds": 0,
+                "gap_closed": False,
+                "outcome": "telemetry_flagged",
+                "claim_contradicted_count": int(claim_audit.get("contradicted_count") or 0),
                 "route_mode": entry["route_mode"],
-                "query_plan": answer_dict.get("query_plan") or {},
+                "query_plan": qplan,
             }
             self._append_jsonl("adaptive_trace.jsonl", feedback_entry)
             with self._stats_lock:

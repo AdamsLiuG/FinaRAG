@@ -15,12 +15,14 @@ import argparse
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import sys
 
 if __package__ in {None, ""} or __package__ == "scripts":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from src.knowledge_loop import cluster_candidate_atoms, normalize_trace_entry
 
 MIN_HIT_RATE_FOR_ALIAS = 0.8
 MIN_SAMPLES_FOR_SUGGESTION = 3
@@ -45,7 +47,8 @@ def load_trace(path: Path) -> Tuple[List[Dict], int]:
 def _query_stats(entries: List[Dict]) -> Dict[str, Dict]:
     """query → {hits, total}：new_hits>0 记一次命中。"""
     stats: Dict[str, Dict] = defaultdict(lambda: {"hits": 0, "total": 0})
-    for entry in entries:
+    for raw in entries:
+        entry = normalize_trace_entry(raw)
         queries = entry.get("queries") or []
         hit = (entry.get("new_hits") or 0) > 0
         for query in queries:
@@ -58,7 +61,8 @@ def _query_stats(entries: List[Dict]) -> Dict[str, Dict]:
 def per_atom_stats(entries: List[Dict]) -> List[Dict]:
     rows = []
     by_atom: Dict[str, List[Dict]] = defaultdict(list)
-    for entry in entries:
+    for raw in entries:
+        entry = normalize_trace_entry(raw)
         by_atom[entry.get("atom_id") or "-"].append(entry)
     for atom_id, atom_entries in sorted(by_atom.items()):
         n = len(atom_entries)
@@ -77,9 +81,10 @@ def per_atom_stats(entries: List[Dict]) -> List[Dict]:
 
 def alias_expansion_suggestions(entries: List[Dict], store) -> List[Dict]:
     """R1/R2（R3 无操作）。建议含 evidence 计数，供人工裁决。"""
+    norm_entries = [normalize_trace_entry(e) for e in entries]
     suggestions = []
-    query_stats = _query_stats(entries)
-    atom_ids = {e.get("atom_id") for e in entries if e.get("atom_id")}
+    query_stats = _query_stats(norm_entries)
+    atom_ids = {e.get("atom_id") for e in norm_entries if e.get("atom_id")}
     for atom_id in sorted(atom_ids):
         atom = store.get(atom_id)
         if atom is None:
@@ -105,7 +110,13 @@ def alias_expansion_suggestions(entries: List[Dict], store) -> List[Dict]:
     return suggestions
 
 
-def render_report(rows: List[Dict], suggestions: List[Dict], skipped: int) -> str:
+def render_report(
+    rows: List[Dict],
+    suggestions: List[Dict],
+    skipped: int,
+    candidate_suggestions: Optional[List[Dict]] = None,
+) -> str:
+    all_suggestions = [*suggestions, *(candidate_suggestions or [])]
     lines = ["# Adaptive Trace 分析报告", "",
              f"- trace 条数：{sum(r['triggers'] for r in rows)}",
              f"- 脏行跳过：{skipped}", "", "## 每原子统计", "",
@@ -114,9 +125,9 @@ def render_report(rows: List[Dict], suggestions: List[Dict], skipped: int) -> st
         lines.append(f"| {row['atom_id']} | {row['triggers']} | "
                      f"{row['gap_closed_rate']} | {row['outcome_dist']} |")
     lines += ["", "## 建议（人工确认后入库）", ""]
-    if not suggestions:
+    if not all_suggestions:
         lines.append("（无——样本不足或知识已覆盖）")
-    for suggestion in suggestions:
+    for suggestion in all_suggestions:
         lines.append(f"- **{suggestion['rule']}** {suggestion['atom_id']}: "
                      f"`{suggestion['term']}` —— {suggestion['evidence']}")
     lines += ["", "> 入库流程：人工确认 → 编辑 config/metric_atoms.yaml → "
@@ -128,14 +139,26 @@ def main():
     parser = argparse.ArgumentParser(description="adaptive trace → 知识进化建议")
     parser.add_argument("--trace", type=Path, default=Path("logs/adaptive_trace.jsonl"))
     parser.add_argument("--output", type=Path, default=Path("eval/reports/adaptive_analysis.md"))
+    parser.add_argument("--draft-output", type=Path, default=None, help="可选候选新原子草稿 YAML 输出路径")
     args = parser.parse_args()
     entries, skipped = load_trace(args.trace)
     rows = per_atom_stats(entries)
     from src.metric_atoms import get_default_store
-    suggestions = alias_expansion_suggestions(entries, get_default_store())
+
+    store = get_default_store()
+    suggestions = alias_expansion_suggestions(entries, store)
+    clustered = cluster_candidate_atoms(entries, store, min_samples=MIN_SAMPLES_FOR_SUGGESTION)
+    cand_suggestions = clustered["suggestions"]
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render_report(rows, suggestions, skipped), encoding="utf-8")
-    print(f"报告已写入 {args.output}（{len(entries)} 条 trace，{len(suggestions)} 条建议）")
+    args.output.write_text(
+        render_report(rows, suggestions, skipped, candidate_suggestions=cand_suggestions),
+        encoding="utf-8",
+    )
+    if args.draft_output and clustered["draft_yaml"]:
+        args.draft_output.parent.mkdir(parents=True, exist_ok=True)
+        args.draft_output.write_text(clustered["draft_yaml"], encoding="utf-8")
+    total_suggestions = len(suggestions) + len(cand_suggestions)
+    print(f"报告已写入 {args.output}（{len(entries)} 条 trace，{total_suggestions} 条建议）")
 
 
 if __name__ == "__main__":

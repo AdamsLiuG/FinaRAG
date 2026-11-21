@@ -28,6 +28,8 @@ _VALIDATION_FLAG_LABELS = {
     "implicit_intent_evidence_incomplete": "隐含意图必需指标证据不足",
     "metric_evidence_mismatch": "指标证据与问题不匹配",
     "metric_atom_expired": "指标口径定义已过有效期",
+    "claim_contradicted": "句级核验发现与证据冲突的断言",
+    "claim_high_unverified_rate": "长文本未支撑断言比例较高",
     "topk_result_count_mismatch": "top-k 返回数量不足",
     "no_retrieval_results": "未返回检索证据",
     "processing_error": "处理流程报错",

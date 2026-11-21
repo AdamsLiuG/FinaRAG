@@ -25,6 +25,7 @@ TRIGGER_PLAYBOOK_INCOMPLETE = "playbook_incomplete"
 TRIGGER_LOW_CONFIDENCE = "low_confidence"
 TRIGGER_PERIOD_MISMATCH = "period_mismatch"
 TRIGGER_CALIBER_MISMATCH = "caliber_mismatch"
+TRIGGER_CLAIM_CONTRADICTED = "claim_contradicted"
 
 STRATEGY_DENSE_RECALL = "dense_recall"
 STRATEGY_PARENT_RECALL = "parent_recall"
@@ -161,7 +162,7 @@ def detect_gap(
 
 
 POST_VALIDATE_TRIGGERS = {
-    # 校验 flag → gap trigger（产生点：answer_validation.py L254/L262/L269）
+    # 校验 flag → gap trigger（产生点：answer_validation.py / ground_generate.py）
     "metric_caliber_conflict_refused": TRIGGER_EVIDENCE_GAP,      # 口径门禁拒答
     "metric_evidence_mismatch": TRIGGER_EVIDENCE_GAP,
     "implicit_intent_evidence_incomplete": TRIGGER_PLAYBOOK_INCOMPLETE,
@@ -169,6 +170,7 @@ POST_VALIDATE_TRIGGERS = {
     "numeric_grounding_period_mismatch": TRIGGER_PERIOD_MISMATCH,
     "currency_mismatch": TRIGGER_CALIBER_MISMATCH,
     "numeric_grounding_currency_mismatch": TRIGGER_CALIBER_MISMATCH,
+    "claim_contradicted": TRIGGER_CLAIM_CONTRADICTED,
 }
 
 
@@ -245,6 +247,16 @@ def detect_post_validate_gap(
                     trigger=trigger,
                     supplement_queries=queries[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES],
                     rationale=f"校验 flag={flag}；币种/口径不一致，切换父粒度定向补检",
+                    strategy=STRATEGY_PARENT_RECALL,
+                )
+            continue
+        if trigger == TRIGGER_CLAIM_CONTRADICTED:
+            queries = [q for q in (metric_name, base_query, "主要财务指标") if q]
+            if queries:
+                return RetrievalGap(
+                    trigger=trigger,
+                    supplement_queries=queries[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES],
+                    rationale=f"校验 flag={flag}；句级核验检测到断言冲突，切换父粒度补充原始上下文",
                     strategy=STRATEGY_PARENT_RECALL,
                 )
             continue
