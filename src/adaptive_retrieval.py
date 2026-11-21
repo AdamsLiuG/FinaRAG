@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from src.metric_atoms import MetricAtom, MetricAtomStore
 
@@ -23,6 +23,8 @@ from src.metric_atoms import MetricAtom, MetricAtomStore
 TRIGGER_EVIDENCE_GAP = "evidence_gap"
 TRIGGER_PLAYBOOK_INCOMPLETE = "playbook_incomplete"
 TRIGGER_LOW_CONFIDENCE = "low_confidence"
+TRIGGER_PERIOD_MISMATCH = "period_mismatch"
+TRIGGER_CALIBER_MISMATCH = "caliber_mismatch"
 
 STRATEGY_DENSE_RECALL = "dense_recall"
 STRATEGY_PARENT_RECALL = "parent_recall"
@@ -163,6 +165,10 @@ POST_VALIDATE_TRIGGERS = {
     "metric_caliber_conflict_refused": TRIGGER_EVIDENCE_GAP,      # 口径门禁拒答
     "metric_evidence_mismatch": TRIGGER_EVIDENCE_GAP,
     "implicit_intent_evidence_incomplete": TRIGGER_PLAYBOOK_INCOMPLETE,
+    "report_year_mismatch": TRIGGER_PERIOD_MISMATCH,
+    "numeric_grounding_period_mismatch": TRIGGER_PERIOD_MISMATCH,
+    "currency_mismatch": TRIGGER_CALIBER_MISMATCH,
+    "numeric_grounding_currency_mismatch": TRIGGER_CALIBER_MISMATCH,
 }
 
 
@@ -171,23 +177,29 @@ def detect_post_validate_gap(
     query_plan,
     retrieval_results: List[Dict],
     atom_store: Optional[MetricAtomStore] = None,
+    critic_fn: Optional[Callable[[List[str], object, List[Dict]], Optional[RetrievalGap]]] = None,
 ) -> Optional[RetrievalGap]:
     """校验后触发：flags 中首个可补救触发源 → RetrievalGap。
 
     构造逻辑复用预检：evidence_gap 走 _atom_supplement_queries（排除易混
     口径标准名——补的是本口径证据，caliber_conflict 场景即「定向补本口径」）；
-    playbook_incomplete 走 payload.required_metrics 逐指标判定。
-    与预检的差异：触发源是校验层判定（语义更准），构造逻辑完全同源。
+    playbook_incomplete 走 payload.required_metrics 逐指标判定；
+    period_mismatch / caliber_mismatch 走父粒度（parent_recall）重检；
+    未命中规则时支持可选 v3 critic_fn 决策器扩展。
     """
     if atom_store is None:
         from src.metric_atoms import get_default_store
         atom_store = get_default_store()
 
+    filters = getattr(query_plan, "filters", None)
+    metric_atom_payload = getattr(query_plan, "metric_atom", None) or {}
+    metric_name = getattr(query_plan, "metric", None) or metric_atom_payload.get("standard_name") or ""
+    base_query = getattr(query_plan, "normalized_query", None) or getattr(query_plan, "original_query", None) or ""
+
     for flag in validation_flags or []:
         trigger = POST_VALIDATE_TRIGGERS.get(flag)
         if trigger is None:
             continue
-        metric_atom_payload = getattr(query_plan, "metric_atom", None) or {}
         if trigger == TRIGGER_EVIDENCE_GAP:
             atom = atom_store.get(metric_atom_payload.get("atom_id") or "")
             if atom is None:
@@ -202,6 +214,40 @@ def detect_post_validate_gap(
                 supplement_queries=queries,
                 rationale=f"校验 flag={flag}；本口径证据定向补检",
             )
+        if trigger == TRIGGER_PERIOD_MISMATCH:
+            year = getattr(filters, "year", None)
+            period = getattr(filters, "period", None)
+            period_tokens = [str(tok) for tok in (period, f"{year}年" if year else None, str(year) if year else None) if tok]
+            queries: List[str] = []
+            for p_tok in period_tokens:
+                candidate = " ".join(part for part in (p_tok, metric_name or base_query) if part).strip()
+                if candidate and candidate not in queries:
+                    queries.append(candidate)
+            if queries:
+                return RetrievalGap(
+                    trigger=trigger,
+                    supplement_queries=queries[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES],
+                    rationale=f"校验 flag={flag}；期间/年份不一致，切换父粒度定向补检",
+                    strategy=STRATEGY_PARENT_RECALL,
+                )
+            continue
+        if trigger == TRIGGER_CALIBER_MISMATCH:
+            currency = getattr(filters, "currency", None) or "人民币"
+            queries = []
+            for anchor in (metric_name, base_query, "财务报表"):
+                if not anchor:
+                    continue
+                candidate = f"{currency} {anchor}".strip()
+                if candidate not in queries:
+                    queries.append(candidate)
+            if queries:
+                return RetrievalGap(
+                    trigger=trigger,
+                    supplement_queries=queries[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES],
+                    rationale=f"校验 flag={flag}；币种/口径不一致，切换父粒度定向补检",
+                    strategy=STRATEGY_PARENT_RECALL,
+                )
+            continue
         # TRIGGER_PLAYBOOK_INCOMPLETE
         playbook_payload = getattr(query_plan, "playbook", None) or {}
         corpus_text = _result_texts(retrieval_results)
@@ -219,6 +265,9 @@ def detect_post_validate_gap(
                 supplement_queries=missing[:ADAPTIVE_MAX_SUPPLEMENT_QUERIES + 1],
                 rationale=f"校验 flag={flag}；剧本必需指标缺证据：{missing}",
             )
+
+    if critic_fn is not None:
+        return critic_fn(validation_flags, query_plan, retrieval_results)
     return None
 
 

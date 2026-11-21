@@ -31,6 +31,21 @@ from src.retrieval import BM25Retriever, BGEM3SparseRetriever, HybridRetriever, 
 from src.retrieval_filters import build_result_metadata
 from src.table_grounding import TableGrounder
 from src.text_normalization import normalize_text, parse_numeric_value
+from src.graph.builder import (
+    build_comparative_graph,
+    build_single_company_graph,
+    run_finarag_graph,
+)
+from src.graph.legacy_runner import (
+    run_legacy_comparative,
+    run_legacy_question,
+    run_legacy_single_company,
+)
+from src.graph.plugins import cash_dividend as _cash_dividend_plugin
+from src.graph.plugins import legal_rep as _legal_rep_plugin
+from src.graph.plugins import metadata_agg as _metadata_agg_plugin
+from src.structured.query_router import StructuredQueryRouter
+from src.structured.sql_store import FinancialSQLStore
 
 
 def _result_score(result: Dict) -> float:
@@ -51,23 +66,13 @@ def _result_merge_key(result: Dict) -> tuple:
 
 
 def _legal_rep_event():
-    """法代识别知识自 EVT-001 事件原子获取（原 _LEGAL_REP_* 常量已迁 config/event_atoms.yaml）。"""
-    from src.event_atoms import get_default_event_store
+    """法代识别知识自 EVT-001 事件原子获取（委托至 graph.plugins.legal_rep）。"""
+    return _legal_rep_plugin.legal_rep_event()
 
-    event = get_default_event_store().find_event("EVT-001")
-    if event is None:
-        raise RuntimeError("EVT-001（现任法定代表人识别）事件原子缺失，请检查知识层编译")
-    return event
+
 def _dividend_mention_terms() -> tuple:
-    """分红事实表述词表——唯一真源是 PLB-001 剧本（cash_dividend_mentions）。
-
-    语义边界：预案话题词（利润分配预案/股份回购）住 evidence_keywords 服务检索，
-    不在本词表——「董事会审议利润分配预案」不是分红发生的证据。
-    """
-    playbook = get_default_playbook_store().get("PLB-001")
-    if playbook is None:
-        return ()
-    return tuple(playbook.cash_dividend_mentions)
+    """分红事实表述词表——唯一真源是 PLB-001 剧本（委托至 graph.plugins.cash_dividend）。"""
+    return _cash_dividend_plugin.dividend_mention_terms()
 
 class QuestionsProcessor:
     def __init__(
@@ -122,6 +127,8 @@ class QuestionsProcessor:
         final_reranking_model: Optional[str] = None,
         final_reranking_batch_size: int = 2,
         chart_confidence_threshold: float = 0.70,
+        structured_db_path: Optional[Union[str, Path]] = None,
+        graph_engine: Optional[str] = None,
     ):
         self.questions = self._load_questions(questions_file_path)
         self.documents_dir = Path(documents_dir)
@@ -215,6 +222,27 @@ class QuestionsProcessor:
             if self.hyde_enabled
             else None
         )
+        resolved_engine = (graph_engine or os.getenv("FINARAG_GRAPH_ENGINE", "langgraph")).strip().lower() or "langgraph"
+        if resolved_engine not in {"langgraph", "legacy"}:
+            raise ValueError("graph_engine must be either 'langgraph' or 'legacy'.")
+        self.graph_engine = resolved_engine
+
+        self.structured_router: Optional[StructuredQueryRouter] = None
+        self._structured_sql_explicit = False
+        if structured_db_path is not None:
+            db_path = Path(structured_db_path)
+            if db_path.exists():
+                self.structured_router = StructuredQueryRouter(FinancialSQLStore(db_path))
+                self._structured_sql_explicit = True
+        elif os.getenv("FINARAG_STRUCTURED_SQL_ENABLED", "0").strip().lower() in {"1", "true", "yes"}:
+            env_db = os.getenv("FINARAG_STRUCTURED_DB_PATH")
+            candidate_db = Path(env_db) if env_db else (self.documents_dir.parent / "finarag_facts.sqlite")
+            if candidate_db.exists():
+                self.structured_router = StructuredQueryRouter(FinancialSQLStore(candidate_db))
+
+    def _resolved_graph_engine(self) -> str:
+        engine = (getattr(self, "graph_engine", None) or os.getenv("FINARAG_GRAPH_ENGINE", "langgraph")).strip().lower()
+        return engine if engine in {"langgraph", "legacy"} else "langgraph"
 
     def _load_questions(self, questions_file_path: Optional[Union[str, Path]]) -> List[Dict[str, str]]:
         if questions_file_path is None:
@@ -529,66 +557,14 @@ class QuestionsProcessor:
 
     @staticmethod
     def _clean_person_name(raw_value: str) -> Optional[str]:
-        value = re.sub(r"^[\s|:：,，。；;]+|[\s|:：,，。；;]+$", "", str(raw_value or ""))
-        value = re.split(r"[|、,，。；;\s]+", value, maxsplit=1)[0]
-        value = value.strip("为系：:")
-        match = re.match(r"[\u4e00-\u9fff·]{2,8}", value)
-        if not match:
-            return None
-        name = re.sub(
-            r"(先生|女士|博士|教授|董事长|副董事长|行长|董事|总经理|负责人)$",
-            "",
-            match.group(0),
-        )
-        if any(term in name for term in ("公司", "负责人", "法定", "代表人")):
-            return None
-        if len(name) < 2:
-            return None
-        return name
+        return _legal_rep_plugin.clean_person_name(raw_value)
 
     @staticmethod
     def _legal_page_priority(page: int, text: str) -> float:
-        score = 0.0
-        if page <= 20:
-            score += 18.0
-        normalized = normalize_text(text)
-        if any(term in normalized for term in ("公司简介", "公司基本情况", "公司信息", "主要财务指标")):
-            score += 14.0
-        if "财务报告" in normalized and "公司负责人" in normalized:
-            score += 8.0
-        return score
+        return _legal_rep_plugin.legal_page_priority(page, text)
 
     def _find_legal_representative(self, document: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        best_match: Optional[Dict[str, Any]] = None
-        best_score = 0.0
-        for page, page_text in self._document_pages(document):
-            page_score = self._legal_page_priority(page, page_text)
-            event = _legal_rep_event()
-            for line in page_text.splitlines():
-                normalized_line = normalize_text(line).replace(" ", "").replace("⼈", "人")
-                if not any(term in normalized_line for term in event.trigger_terms):
-                    continue
-                if any(term in normalized_line for term in event.negative_terms):
-                    continue
-                for detection in event.detection_patterns:
-                    match = detection.regex.search(normalized_line)
-                    if not match:
-                        continue
-                    base_score, match_type = detection.score, detection.match_type
-                    name = self._clean_person_name(match.group(1))
-                    if not name:
-                        continue
-                    score = base_score + page_score
-                    if score > best_score:
-                        best_score = score
-                        best_match = {
-                            "name": name,
-                            "page": page,
-                            "snippet": line.strip()[:500],
-                            "match_type": match_type,
-                            "score": round(score, 4),
-                        }
-        return best_match
+        return _legal_rep_plugin.find_legal_representative(self, document)
 
     def _answer_legal_representative_question(
         self,
@@ -599,73 +575,21 @@ class QuestionsProcessor:
         query_plan: QueryPlan,
         route_info: Optional[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
-        if (schema or "").lower() != "name" or "法定代表人" not in (question or ""):
-            return None
-        doc_id = self._selected_doc_id(company_name, route_info, query_plan)
-        document = self._load_document_payload(doc_id)
-        if not document:
-            return None
-        match = self._find_legal_representative(document)
-        if not match:
-            return None
-
-        evidence = self._document_page_result(
-            document=document,
-            page=match["page"],
-            text=match["snippet"],
-            chunk_type="legal_representative_rule",
-            source="legal_representative_rule",
-            score=1.0,
-        )
-        reasoning = (
-            f"法定代表人规则在第 {match['page']} 页命中 {match['match_type']} 证据，"
-            f"抽取姓名为 {match['name']}。"
-        )
-        return self._build_rule_answer(
-            final_answer=match["name"],
+        return _legal_rep_plugin.answer_legal_representative_question(
+            self,
             question=question,
             schema=schema,
+            company_name=company_name,
             query_plan=query_plan,
             route_info=route_info,
-            retrieval_results=[evidence],
-            relevant_pages=[match["page"]],
-            rule_name="legal_representative_rule",
-            reasoning=reasoning,
-            extra_debug=match,
         )
 
     @staticmethod
     def _is_cash_dividend_mention_question(question: str, schema: str) -> bool:
-        if (schema or "").lower() != "boolean":
-            return False
-        question = question or ""
-        if not any(term in question for term in _dividend_mention_terms()):
-            return False
-        return any(term in question for term in ("是否提到", "是否提及", "年度利润分配预案", "利润分配预案", "重要事项"))
+        return _cash_dividend_plugin.is_cash_dividend_mention_question(question, schema)
 
     def _find_cash_dividend_mention(self, document: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        best_match: Optional[Dict[str, Any]] = None
-        best_score = 0.0
-        for page, page_text in self._document_pages(document):
-            matched_term = next((term for term in _dividend_mention_terms() if term in page_text), None)
-            if not matched_term:
-                continue
-            score = 50.0
-            if page <= 5:
-                score += 20.0
-            if any(term in page_text for term in ("利润分配预案", "利润分配", "重要提示", "重要事项")):
-                score += 10.0
-            lines = [line.strip() for line in page_text.splitlines() if matched_term in line]
-            snippet = (lines[0] if lines else page_text)[:500]
-            if score > best_score:
-                best_score = score
-                best_match = {
-                    "page": page,
-                    "term": matched_term,
-                    "snippet": snippet,
-                    "score": round(score, 4),
-                }
-        return best_match
+        return _cash_dividend_plugin.find_cash_dividend_mention(self, document)
 
     def _answer_cash_dividend_mention_question(
         self,
@@ -676,36 +600,13 @@ class QuestionsProcessor:
         query_plan: QueryPlan,
         route_info: Optional[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
-        if not self._is_cash_dividend_mention_question(question, schema):
-            return None
-        doc_id = self._selected_doc_id(company_name, route_info, query_plan)
-        document = self._load_document_payload(doc_id)
-        if not document:
-            return None
-        match = self._find_cash_dividend_mention(document)
-        if not match:
-            return None
-
-        evidence = self._document_page_result(
-            document=document,
-            page=match["page"],
-            text=match["snippet"],
-            chunk_type="cash_dividend_rule",
-            source="cash_dividend_rule",
-            score=1.0,
-        )
-        reasoning = f"现金分红 mention 规则在第 {match['page']} 页命中“{match['term']}”，因此文本已提到现金分红。"
-        return self._build_rule_answer(
-            final_answer=True,
+        return _cash_dividend_plugin.answer_cash_dividend_mention_question(
+            self,
             question=question,
             schema=schema,
+            company_name=company_name,
             query_plan=query_plan,
             route_info=route_info,
-            retrieval_results=[evidence],
-            relevant_pages=[match["page"]],
-            rule_name="cash_dividend_rule",
-            reasoning=reasoning,
-            extra_debug=match,
         )
 
     def _build_query_plan(
@@ -1544,56 +1445,18 @@ class QuestionsProcessor:
 
     @staticmethod
     def _is_metadata_membership_question(question: str, schema: str) -> bool:
-        if (schema or "").lower() != "boolean":
-            return False
-        question = question or ""
-        return "名单" in question and any(token in question for token in ("是否属于", "是否在", "是不是", "是否为", "是否入选"))
+        return _metadata_agg_plugin.is_metadata_membership_question(question, schema)
 
     def _membership_report_from_route(self, company_name: str, route_info: Optional[Dict]) -> Optional[Any]:
-        if self.report_catalog is None:
-            return None
-
-        selected_report = (route_info or {}).get("selected_report") or {}
-        for key in ("sha1", "doc_id"):
-            if selected_report.get(key):
-                report = self.report_catalog.get_report_by_doc_id(str(selected_report[key]))
-                if report is not None:
-                    return report
-
-        if company_name:
-            return self.report_catalog.get_report_by_company_name(company_name)
-        return None
+        return _metadata_agg_plugin.membership_report_from_route(self, company_name, route_info)
 
     @staticmethod
     def _membership_reference_pages(evidence_rows: List[Dict[str, Any]]) -> List[int]:
-        pages: List[int] = []
-        for row in evidence_rows:
-            page = row.get("evidence_page")
-            if page is None:
-                continue
-            try:
-                page_number = int(page)
-            except (TypeError, ValueError):
-                continue
-            if page_number not in pages:
-                pages.append(page_number)
-        return pages
+        return _metadata_agg_plugin.membership_reference_pages(evidence_rows)
 
     @staticmethod
     def _metadata_scoring_page(evidence_rows: List[Dict[str, Any]]) -> int:
-        """Return the benchmark-facing metadata page for company label evidence."""
-        front_pages: List[int] = []
-        for row in evidence_rows:
-            page = row.get("evidence_page")
-            try:
-                page_number = int(page)
-            except (TypeError, ValueError):
-                continue
-            if 1 <= page_number <= 3:
-                front_pages.append(page_number)
-        if front_pages:
-            return sorted(front_pages)[0]
-        return 2
+        return _metadata_agg_plugin.metadata_scoring_page(evidence_rows)
 
     def _metadata_membership_citations(
         self,
@@ -1602,195 +1465,35 @@ class QuestionsProcessor:
         evidence_rows: List[Dict[str, Any]],
         matched: bool,
     ) -> List[Dict[str, Any]]:
-        row = evidence_rows[0] if evidence_rows else {}
-        labels = self._metadata_label_terms(query_plan.original_query, query_plan)
-        matched_tags = [row.get("label")] if row.get("label") else list(labels)
-        page = self._metadata_scoring_page(evidence_rows)
-        actual_page = row.get("evidence_page")
-        chunk_type = "company_label_evidence" if evidence_rows else "company_metadata"
-        evidence_type = chunk_type
-        if row.get("evidence_snippet"):
-            snippet = row["evidence_snippet"]
-        else:
-            snippet = f"{report.company_name} 公司级标签：{', '.join(matched_tags) if matched_tags else 'metadata'}"
-        metadata = self.report_catalog.get_report_filter_metadata(report) if self.report_catalog is not None else {}
-        filter_summary = {
-            "board": metadata.get("board"),
-            "industry_l1": metadata.get("industry_l1"),
-            "strategy_tags": metadata.get("strategy_tags") or [],
-            "doc_source_type": metadata.get("doc_source_type"),
-            "report_year": metadata.get("report_year") or metadata.get("fiscal_year"),
-        }
-        if not snippet:
-            snippet = json.dumps(filter_summary, ensure_ascii=False)
-        return [
-            {
-                "page": page,
-                "chunk_id": None,
-                "chunk_type": chunk_type,
-                "node_type": "metadata",
-                "parent_chunk_id": None,
-                "matched_child_chunk_ids": [],
-                "matched_tags": matched_tags,
-                "section_title": None,
-                "section_name": None,
-                "report_section": None,
-                "source": report.sha1,
-                "company_name": report.company_name,
-                "security_code": report.security_code,
-                "stock_code": report.security_code,
-                "currency": report.currency,
-                "report_year": report.report_year,
-                "report_type": report.report_type,
-                "doc_source_type": report.doc_source_type,
-                "major_industry": report.major_industry,
-                "topic_flags": [],
-                "table_id": None,
-                "row_idx": None,
-                "col_idx": None,
-                "matched_row_headers": [],
-                "matched_col_headers": [],
-                "unit": None,
-                "footnote_refs": [],
-                "parent_block_id": None,
-                "evidence_type": evidence_type,
-                "has_table_context": False,
-                "retrieval_sources": [chunk_type],
-                "evidence_snippet": snippet,
-                "score": 1.0 if matched else 0.8,
-                "metadata_filter_summary": filter_summary,
-                "metadata_actual_evidence_page": actual_page,
-                "metadata_page_strategy": "front_page_company_label",
-            }
-        ]
+        return _metadata_agg_plugin.metadata_membership_citations(self, report, query_plan, evidence_rows, matched)
 
     @staticmethod
     def _metadata_label_terms(question: str, query_plan: QueryPlan) -> List[str]:
-        if (query_plan.route_hints or {}).get("metadata_expected_filters_active"):
-            return list(query_plan.filters.strategy_tags or [])
-        labels: List[str] = []
-        for value in query_plan.filters.strategy_tags or []:
-            if value and value not in labels:
-                labels.append(value)
-        for quoted in re.findall(r"[“\"']([^”\"']{2,30})[”\"']", question or ""):
-            if quoted and quoted not in labels:
-                labels.append(quoted)
-        for keyword in ("国产替代", "数字化转型", "绿色转型", "人工智能", "智能制造", "出海"):
-            if keyword in (question or "") and keyword not in labels:
-                labels.append(keyword)
-        return labels
+        return _metadata_agg_plugin.metadata_label_terms(question, query_plan)
 
     def _report_matches_strategy_labels(
         self,
         report,
         labels: List[str],
     ) -> Tuple[bool, List[Dict[str, Any]], List[str]]:
-        if self.report_catalog is None or not labels:
-            return False, [], []
-        evidence_rows = self.report_catalog.get_company_label_evidence(
-            report.sha1,
-            label_field="strategy_tags",
-            labels=labels,
-        )
-        metadata = self.report_catalog.get_report_filter_metadata(report)
-        observed_tags = {
-            normalize_text(str(tag))
-            for tag in metadata.get("strategy_tags") or []
-            if tag not in (None, "")
-        }
-        expected_tags = [normalize_text(str(label)) for label in labels if label not in (None, "")]
-        matched_labels = [
-            label
-            for label in labels
-            if normalize_text(str(label)) in observed_tags
-            or any(normalize_text(str(label)) in normalize_text(str(row.get("label") or "")) for row in evidence_rows)
-        ]
-        return bool(matched_labels or evidence_rows), evidence_rows, matched_labels
+        return _metadata_agg_plugin.report_matches_strategy_labels(self, report, labels)
 
     @staticmethod
     def _is_metadata_count_question(question: str, schema: str) -> bool:
-        if (schema or "").lower() != "number":
-            return False
-        question = question or ""
-        if not any(term in question for term in ("共有几家", "多少家", "几家公司", "数量", "公司数")):
-            return False
-        if not any(term in question for term in ("提到", "提及", "涉及", "包含")):
-            return False
-        return any(term in question for term in ("国产替代", "数字化转型", "绿色转型", "人工智能", "智能制造", "出海"))
+        return _metadata_agg_plugin.is_metadata_count_question(question, schema)
 
     def _metadata_collection_query_plan(self, query_plan: QueryPlan) -> QueryPlan:
-        filters = replace(
-            query_plan.filters,
-            company_name=None,
-            security_code=None,
-            candidate_doc_ids=None,
-        )
-        return replace(
-            query_plan,
-            filters=filters,
-            route_mode="document_catalog_multi",
-            mentioned_companies=[],
-        )
+        return _metadata_agg_plugin.metadata_collection_query_plan(query_plan)
 
     @staticmethod
     def _metadata_reference(report, page: int) -> Dict[str, Any]:
-        return {"pdf_sha1": report.sha1, "page": int(page)}
+        return _metadata_agg_plugin.metadata_reference(report, page)
 
     def _metadata_retrieval_result_from_citation(self, citation: Dict[str, Any]) -> Dict[str, Any]:
-        metadata = {
-            "sha1_name": citation.get("source"),
-            "company_name": citation.get("company_name"),
-            "security_code": citation.get("security_code"),
-            "stock_code": citation.get("stock_code"),
-            "currency": citation.get("currency"),
-            "major_industry": citation.get("major_industry"),
-            "report_year": citation.get("report_year"),
-            "report_type": citation.get("report_type"),
-            "doc_source_type": citation.get("doc_source_type"),
-            "chunk_id": citation.get("chunk_id"),
-            "chunk_type": citation.get("chunk_type"),
-            "node_type": citation.get("node_type"),
-            "section_title": citation.get("section_title"),
-            "section_name": citation.get("section_name"),
-            "report_section": citation.get("report_section"),
-            "evidence_type": citation.get("evidence_type"),
-            "has_table_context": False,
-            "topic_flags": citation.get("topic_flags") or [],
-            "strategy_tags": citation.get("matched_tags") or [],
-            "page_start": citation.get("page"),
-            "page_end": citation.get("page"),
-        }
-        score = float(citation.get("score") or 1.0)
-        return {
-            "distance": score,
-            "combined_score": score,
-            "ranking_score": score,
-            "page": citation.get("page"),
-            "text": citation.get("evidence_snippet") or "",
-            "metadata": {key: value for key, value in metadata.items() if value is not None},
-            "chunk_id": citation.get("chunk_id"),
-            "chunk_type": citation.get("chunk_type"),
-            "section_title": citation.get("section_title"),
-            "retrieval_sources": citation.get("retrieval_sources") or ["company_label_evidence"],
-            "matched_child_chunk_ids": citation.get("matched_child_chunk_ids") or [],
-            "matched_tags": citation.get("matched_tags") or [],
-            "result_scope": "metadata",
-        }
+        return _metadata_agg_plugin.metadata_retrieval_result_from_citation(citation)
 
     def _metadata_retrieval_results_from_citations(self, citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        seen = set()
-        for citation in citations:
-            page = citation.get("page")
-            source = citation.get("source")
-            if not isinstance(page, int) or not source:
-                continue
-            key = (source, page, citation.get("chunk_type"))
-            if key in seen:
-                continue
-            seen.add(key)
-            results.append(self._metadata_retrieval_result_from_citation(citation))
-        return results
+        return _metadata_agg_plugin.metadata_retrieval_results_from_citations(self, citations)
 
     def _resolve_metadata_label_reports(
         self,
@@ -1799,75 +1502,12 @@ class QuestionsProcessor:
         query_plan: QueryPlan,
         route_info: Optional[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
-        if self.report_catalog is None:
-            return None
-
-        labels = self._metadata_label_terms(question, query_plan)
-        if not labels:
-            return None
-
-        collection_plan = self._metadata_collection_query_plan(query_plan)
-        resolved = self.report_catalog.resolve_candidate_reports(collection_plan)
-        candidate_doc_ids = list(resolved.get("candidate_doc_ids") or [])
-
-        matched_reports: List[Tuple[Any, List[Dict[str, Any]], List[str]]] = []
-        for doc_id in candidate_doc_ids:
-            report = self.report_catalog.get_report_by_doc_id(str(doc_id))
-            if report is None:
-                continue
-            matched, evidence_rows, matched_labels = self._report_matches_strategy_labels(report, labels)
-            if matched:
-                matched_reports.append((report, evidence_rows, matched_labels))
-
-        matched_reports.sort(key=lambda item: (str(item[0].security_code or item[0].sha1), item[0].company_name))
-        matched_doc_ids = [report.sha1 for report, _, _ in matched_reports]
-        collection_plan.filters.candidate_doc_ids = matched_doc_ids
-
-        citations: List[Dict[str, Any]] = []
-        references: List[Dict[str, Any]] = []
-        for report, evidence_rows, _ in matched_reports:
-            report_citations = self._metadata_membership_citations(report, collection_plan, evidence_rows, True)
-            citations.extend(report_citations)
-            for citation in report_citations:
-                page = citation.get("page")
-                if isinstance(page, int):
-                    references.append(self._metadata_reference(report, page))
-
-        citations = dedupe_citations(citations)
-        references = dedupe_references(references)
-        retrieval_results = self._metadata_retrieval_results_from_citations(citations)
-        pages = list(dict.fromkeys(result.get("page") for result in retrieval_results if isinstance(result.get("page"), int)))
-        answers = [report.company_name for report, _, _ in matched_reports]
-
-        metadata_route_info = dict(route_info or {})
-        metadata_route_info.update(resolved)
-        metadata_route_info.update(
-            {
-                "route_mode": "metadata_label_collection",
-                "selected_company": None,
-                "candidate_companies": answers,
-                "candidate_doc_ids": matched_doc_ids,
-                "metadata_label_collection": {
-                    "labels": labels,
-                    "matched_count": len(matched_reports),
-                    "matched_companies": answers,
-                    "matched_doc_ids": matched_doc_ids,
-                    "candidate_doc_count": len(candidate_doc_ids),
-                },
-            }
+        return _metadata_agg_plugin.resolve_metadata_label_reports(
+            self,
+            question=question,
+            query_plan=query_plan,
+            route_info=route_info,
         )
-        return {
-            "labels": labels,
-            "query_plan": collection_plan,
-            "route_info": metadata_route_info,
-            "matched_reports": matched_reports,
-            "matched_companies": answers,
-            "matched_doc_ids": matched_doc_ids,
-            "citations": citations,
-            "references": references,
-            "retrieval_results": retrieval_results,
-            "relevant_pages": pages,
-        }
 
     def _metadata_answer_payload(
         self,
@@ -1879,39 +1519,19 @@ class QuestionsProcessor:
         confidence_reason: str,
         reasoning: str,
     ) -> Dict[str, Any]:
-        retrieval_results = list(resolution.get("retrieval_results") or [])
-        return {
-            "final_answer": final_answer,
-            "relevant_pages": list(resolution.get("relevant_pages") or []),
-            "references": list(resolution.get("references") or []),
-            "citations": list(resolution.get("citations") or []),
-            "confidence": "high" if retrieval_results else "medium",
-            "confidence_reason": confidence_reason,
-            "reasoning_summary": reasoning,
-            "step_by_step_analysis": reasoning if self.reasoning_debug_enabled else "",
-            "search_queries": query_plan.search_queries,
-            "query_plan": query_plan.to_dict(),
-            "route_info": route_info,
-            "candidate_pool_size_before_rerank": None,
-            "reranking_strategy": self.reranking_strategy,
-            "initial_candidate_pool_size": None,
-            "colbert_candidate_pool_size": None,
-            "colbert_top_n": self.colbert_top_n if self.reranking_strategy == "cascade" else None,
-            "final_reranking_backend": self.final_reranking_backend or os.getenv("RERANKING_BACKEND", "llm_prompt").lower(),
-            "hyde": self._build_hyde_debug_payload(retrieval_results=retrieval_results, candidate_pool_size_before_rerank=None),
-            "retrieval_pages": [result.get("page") for result in retrieval_results],
-            "retrieval_results": [self._serialize_retrieval_result(result) for result in retrieval_results],
-            "retrieval_report_groups": self._aggregate_retrieval_results_by_report(retrieval_results),
-            "response_data": {},
-            "validation_flags": [],
-        }
+        return _metadata_agg_plugin.metadata_answer_payload(
+            self,
+            final_answer=final_answer,
+            query_plan=query_plan,
+            route_info=route_info,
+            resolution=resolution,
+            confidence_reason=confidence_reason,
+            reasoning=reasoning,
+        )
 
     @staticmethod
     def _is_metadata_names_question(question: str, schema: str) -> bool:
-        if (schema or "").lower() != "names":
-            return False
-        question = question or ""
-        return "哪些公司" in question and any(term in question for term in ("提到", "提及", "涉及", "包含"))
+        return _metadata_agg_plugin.is_metadata_names_question(question, schema)
 
     def _answer_metadata_names_question(
         self,
@@ -1920,45 +1540,11 @@ class QuestionsProcessor:
         schema: str,
         route_decision: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        if self.report_catalog is None or not self._is_metadata_names_question(question, schema):
-            return None
-
-        query_plan: QueryPlan = route_decision["query_plan"]
-        resolution = self._resolve_metadata_label_reports(
+        return _metadata_agg_plugin.answer_metadata_names_question(
+            self,
             question=question,
-            query_plan=query_plan,
-            route_info=route_decision.get("route_info"),
-        )
-        if resolution is None:
-            return None
-
-        if not resolution["matched_reports"]:
-            return None
-
-        labels = resolution["labels"]
-        answers = resolution["matched_companies"]
-        route_info = dict(resolution["route_info"])
-        route_info.update(
-            {
-                "route_mode": "metadata_names_list",
-                "selected_company": None,
-                "candidate_companies": answers,
-                "candidate_doc_ids": resolution["matched_doc_ids"],
-                "metadata_names_list": {
-                    "labels": labels,
-                    "matched_count": len(answers),
-                    "matched_companies": answers,
-                },
-            }
-        )
-        reasoning = f"公司列表题已直接用 company-label metadata/evidence 匹配主题标签 {labels}，返回匹配公司简称。"
-        return self._metadata_answer_payload(
-            final_answer=answers,
-            query_plan=resolution["query_plan"],
-            route_info=route_info,
-            resolution=resolution,
-            confidence_reason="names 列表题已绕过正文生成，直接依据公司级标签和 evidence 生成。",
-            reasoning=reasoning,
+            schema=schema,
+            route_decision=route_decision,
         )
 
     @staticmethod
@@ -2051,149 +1637,35 @@ class QuestionsProcessor:
         route_decision: Dict[str, Any],
         question_meta: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        if self.report_catalog is None or not self._is_metadata_count_question(question, schema):
-            return None
-
-        query_plan: QueryPlan = route_decision["query_plan"]
-        resolution, count_debug, selected_strategy = self._resolve_metadata_count_reports(
+        return _metadata_agg_plugin.answer_metadata_count_question(
+            self,
             question=question,
-            query_plan=query_plan,
-            route_info=route_decision.get("route_info"),
-            question_meta=question_meta or {},
-        )
-        if resolution is None:
-            return None
-
-        labels = resolution["labels"]
-        matched_count = len(resolution["matched_reports"])
-        route_info = dict(resolution["route_info"])
-        route_info.update(
-            {
-                "route_mode": "metadata_names_count",
-                "metadata_names_count": {
-                    "labels": labels,
-                    "matched_count": matched_count,
-                    "matched_companies": resolution["matched_companies"],
-                    "matched_doc_ids": resolution["matched_doc_ids"],
-                    "count_resolution_strategy": selected_strategy,
-                    **count_debug,
-                },
-            }
-        )
-        reasoning = f"公司数量题复用 metadata names list 逻辑，主题标签 {labels} 命中 {matched_count} 家公司。"
-        return self._metadata_answer_payload(
-            final_answer=matched_count,
-            query_plan=resolution["query_plan"],
-            route_info=route_info,
-            resolution=resolution,
-            confidence_reason="count 题已复用公司级 metadata 名单结果并直接返回匹配公司数。",
-            reasoning=reasoning,
+            schema=schema,
+            route_decision=route_decision,
+            question_meta=question_meta,
         )
 
     @staticmethod
     def _clean_industry_filter(value: Optional[str]) -> Optional[str]:
-        if not value:
-            return value
-        cleaned = str(value).strip()
-        cleaned = re.sub(r"^(?:在|于|属于|的)+", "", cleaned)
-        return cleaned or None
+        return _metadata_agg_plugin.clean_industry_filter(value)
 
     @staticmethod
     def _metadata_count_allows_expected_filters(question_meta: Dict[str, Any]) -> bool:
-        if not question_meta:
-            return False
-        if question_meta.get("capability") == "metadata_count_aggregation":
-            return True
-        metadata = question_meta.get("metadata") or {}
-        return bool(metadata.get("parent_question_id") or question_meta.get("parent_question_id"))
+        return _metadata_agg_plugin.metadata_count_allows_expected_filters(question_meta)
 
     @staticmethod
     def _normalize_expected_report_filters(expected_filters: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-        report_type = expected_filters.get("report_type")
-        doc_source_type = expected_filters.get("doc_source_type")
-        if report_type == "annual_report":
-            return "annual", doc_source_type or "annual_report"
-        if report_type == "interim_report":
-            return "interim", doc_source_type or "interim_report"
-        if report_type == "quarterly_report":
-            return "quarterly", doc_source_type or "interim_report"
-        return report_type, doc_source_type
+        return _metadata_agg_plugin.normalize_expected_report_filters(expected_filters)
 
     def _expected_metadata_count_query_plan(
         self,
         query_plan: QueryPlan,
         question_meta: Dict[str, Any],
     ) -> Optional[QueryPlan]:
-        if not self._metadata_count_allows_expected_filters(question_meta):
-            return None
-        expected_filters = question_meta.get("expected_filters") or {}
-        if not isinstance(expected_filters, dict) or not expected_filters:
-            return None
-
-        report_type, doc_source_type = self._normalize_expected_report_filters(expected_filters)
-        year = expected_filters.get("report_year", expected_filters.get("year", query_plan.filters.year))
-        try:
-            year = int(year) if year is not None else None
-        except (TypeError, ValueError):
-            year = query_plan.filters.year
-
-        strategy_tags = expected_filters.get("strategy_tags")
-        if isinstance(strategy_tags, str):
-            strategy_tags = [strategy_tags]
-        if strategy_tags is None:
-            strategy_tags = query_plan.filters.strategy_tags
-
-        filters = replace(
-            query_plan.filters,
-            company_name=None,
-            security_code=None,
-            candidate_doc_ids=None,
-            year=year,
-            report_type=report_type or query_plan.filters.report_type,
-            doc_source_type=doc_source_type or query_plan.filters.doc_source_type,
-            industry_l1=self._clean_industry_filter(expected_filters.get("industry_l1") or query_plan.filters.industry_l1),
-            strategy_tags=list(strategy_tags or []),
-            board=None,
-            exchange=None,
-            market_type=None,
-            listing_tags=None,
-        )
-        route_hints = dict(query_plan.route_hints or {})
-        route_hints["metadata_expected_filters_active"] = True
-        route_hints["metadata_expected_filters"] = {
-            key: expected_filters.get(key)
-            for key in ("industry_l1", "strategy_tags", "report_year", "year", "report_type", "doc_source_type")
-            if key in expected_filters
-        }
-        return replace(
-            query_plan,
-            filters=filters,
-            route_mode="document_catalog_multi",
-            mentioned_companies=[],
-            route_hints=route_hints,
-        )
+        return _metadata_agg_plugin.expected_metadata_count_query_plan(self, query_plan, question_meta)
 
     def _relaxed_metadata_count_query_plan(self, query_plan: QueryPlan) -> QueryPlan:
-        filters = replace(
-            query_plan.filters,
-            company_name=None,
-            security_code=None,
-            candidate_doc_ids=None,
-            industry_l1=self._clean_industry_filter(query_plan.filters.industry_l1),
-            board=None,
-            exchange=None,
-            market_type=None,
-            listing_tags=None,
-        )
-        route_hints = dict(query_plan.route_hints or {})
-        route_hints["metadata_count_relaxed_filters"] = True
-        return replace(
-            query_plan,
-            filters=filters,
-            route_mode="document_catalog_multi",
-            mentioned_companies=[],
-            route_hints=route_hints,
-        )
+        return _metadata_agg_plugin.relaxed_metadata_count_query_plan(self, query_plan)
 
     def _resolve_metadata_count_reports(
         self,
@@ -2203,38 +1675,13 @@ class QuestionsProcessor:
         route_info: Optional[Dict[str, Any]],
         question_meta: Dict[str, Any],
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], str]:
-        attempts: List[Tuple[str, QueryPlan]] = []
-        expected_plan = self._expected_metadata_count_query_plan(query_plan, question_meta)
-        if expected_plan is not None:
-            attempts.append(("expected_filters", expected_plan))
-        attempts.append(("strict", query_plan))
-        attempts.append(("relaxed", self._relaxed_metadata_count_query_plan(query_plan)))
-
-        count_debug: Dict[str, Any] = {}
-        fallback_resolution: Optional[Dict[str, Any]] = None
-        fallback_strategy = attempts[0][0] if attempts else "strict"
-        selected_resolution: Optional[Dict[str, Any]] = None
-        selected_strategy: Optional[str] = None
-        for strategy, attempt_plan in attempts:
-            resolution = self._resolve_metadata_label_reports(
-                question=question,
-                query_plan=attempt_plan,
-                route_info=route_info,
-            )
-            matched_count = len((resolution or {}).get("matched_reports") or [])
-            debug_key = "expected_filter" if strategy == "expected_filters" else strategy
-            count_debug[f"{debug_key}_count"] = matched_count
-            count_debug[f"{debug_key}_matched_companies"] = list((resolution or {}).get("matched_companies") or [])
-            if fallback_resolution is None and resolution is not None:
-                fallback_resolution = resolution
-                fallback_strategy = strategy
-            if selected_resolution is None and resolution is not None and matched_count > 0:
-                selected_resolution = resolution
-                selected_strategy = strategy
-
-        if selected_resolution is not None:
-            return selected_resolution, count_debug, selected_strategy or fallback_strategy
-        return fallback_resolution, count_debug, fallback_strategy
+        return _metadata_agg_plugin.resolve_metadata_count_reports(
+            self,
+            question=question,
+            query_plan=query_plan,
+            route_info=route_info,
+            question_meta=question_meta,
+        )
 
     def _answer_metadata_membership_question(
         self,
@@ -2243,103 +1690,11 @@ class QuestionsProcessor:
         schema: str,
         route_decision: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        if self.report_catalog is None or not self._is_metadata_membership_question(question, schema):
-            return None
-
-        query_plan: QueryPlan = route_decision["query_plan"]
-        route_info = dict(route_decision.get("route_info") or {})
-        company_name = route_decision.get("company_name") or ""
-        report = self._membership_report_from_route(company_name, route_info)
-        if report is None:
-            return None
-
-        collection_resolution = self._resolve_metadata_label_reports(
+        return _metadata_agg_plugin.answer_metadata_membership_question(
+            self,
             question=question,
-            query_plan=query_plan,
-            route_info=route_info,
-        )
-        evidence_rows = self.report_catalog.get_company_label_evidence(
-            report.sha1,
-            label_field="strategy_tags",
-            labels=query_plan.filters.strategy_tags,
-        )
-        base_matched, base_reasons = self.report_catalog.report_matches_query_filters(report, query_plan)
-        label_terms = self._metadata_label_terms(question, query_plan)
-        label_matched, _, matched_labels = self._report_matches_strategy_labels(report, label_terms)
-        if label_terms:
-            matched = label_matched
-            reasons = [f"strategy_label:{label}" for label in matched_labels] or (
-                ["strategy_evidence_match"] if evidence_rows else []
-            )
-            for reason in base_reasons:
-                if reason not in reasons:
-                    reasons.append(reason)
-        else:
-            matched = base_matched
-            reasons = base_reasons
-        if collection_resolution is not None and collection_resolution.get("retrieval_results"):
-            citations = list(collection_resolution.get("citations") or [])
-            references = list(collection_resolution.get("references") or [])
-            pages = list(collection_resolution.get("relevant_pages") or [])
-            retrieval_results = list(collection_resolution.get("retrieval_results") or [])
-            matched_doc_ids = list(collection_resolution.get("matched_doc_ids") or [])
-            matched_companies = list(collection_resolution.get("matched_companies") or [])
-            metadata_query_plan = collection_resolution.get("query_plan") or query_plan
-        else:
-            if matched:
-                citations = self._metadata_membership_citations(report, query_plan, evidence_rows, matched)
-                retrieval_results = self._metadata_retrieval_results_from_citations(citations)
-                pages = list(dict.fromkeys(result.get("page") for result in retrieval_results if isinstance(result.get("page"), int)))
-                references = [
-                    self._metadata_reference(report, page)
-                    for page in pages
-                    if isinstance(page, int)
-                ]
-            else:
-                citations = []
-                retrieval_results = []
-                pages = []
-                references = []
-            matched_doc_ids = [report.sha1] if matched else []
-            matched_companies = [report.company_name] if matched else []
-            metadata_query_plan = query_plan
-
-        route_info.update(
-            {
-                "route_mode": "metadata_membership",
-                "selected_company": report.company_name,
-                "candidate_companies": [report.company_name],
-                "candidate_doc_ids": [report.sha1],
-                "metadata_membership": {
-                    "matched": bool(matched),
-                    "evaluated_doc_id": report.sha1,
-                    "matched_reasons": reasons,
-                    "strict_filter_match": bool(base_matched),
-                    "strategy_evidence_count": len(evidence_rows),
-                    "collection_matched_doc_ids": matched_doc_ids,
-                    "collection_matched_companies": matched_companies,
-                },
-            }
-        )
-
-        status_text = "满足" if matched else "不满足"
-        reasoning = (
-            f"已直接用公司级 metadata 判断名单归属：{report.company_name} {status_text} 问题中的主题标签条件；"
-            "板块和行业条件仅作为路由说明，不作为显式公司 membership 的硬拒绝条件。"
-        )
-        resolution = {
-            "relevant_pages": pages,
-            "references": dedupe_references(references),
-            "citations": dedupe_citations(citations),
-            "retrieval_results": retrieval_results,
-        }
-        return self._metadata_answer_payload(
-            final_answer=bool(matched),
-            query_plan=metadata_query_plan,
-            route_info=route_info,
-            resolution=resolution,
-            confidence_reason="名单归属类问题已绕过正文检索，直接依据公司级 metadata 与 company-label evidence 判断。",
-            reasoning=reasoning,
+            schema=schema,
+            route_decision=route_decision,
         )
 
     @staticmethod
@@ -3047,365 +2402,26 @@ class QuestionsProcessor:
         query_plan: Optional[QueryPlan] = None,
         route_info: Optional[Dict] = None,
     ) -> Dict:
-        if not self.use_vector_dbs and not self.use_bm25_db and not self.use_sparse_lexical_db and not self.use_tag_db:
-            raise ValueError("At least one retrieval backend must be enabled.")
-
-        rewrite_result = query_plan or self._build_query_plan(
-            question,
-            schema=schema,
-            company_name=company_name,
-            mentioned_companies=[company_name],
-            route_mode="explicit_company",
-        )
-        route_mode = (route_info or {}).get("route_mode") or rewrite_result.route_mode
-        if route_mode == "document_catalog_multi":
-            rewrite_result.filters.company_name = None
-        else:
-            rewrite_result.filters.company_name = company_name
-        candidate_doc_ids = list((route_info or {}).get("candidate_doc_ids") or rewrite_result.filters.candidate_doc_ids or [])
-        if candidate_doc_ids:
-            rewrite_result.filters.candidate_doc_ids = candidate_doc_ids
-        selected_doc_id = self._selected_doc_id(company_name, route_info, rewrite_result)
-        allowed_grounding_doc_ids = (
-            [selected_doc_id]
-            if selected_doc_id and route_mode != "document_catalog_multi"
-            else list(candidate_doc_ids)
-        )
-
-        legal_rule_answer = self._answer_legal_representative_question(
-            question=question,
-            schema=schema,
-            company_name=company_name,
-            query_plan=rewrite_result,
-            route_info=route_info,
-        )
-        if legal_rule_answer is not None:
-            return legal_rule_answer
-
-        dividend_rule_answer = self._answer_cash_dividend_mention_question(
-            question=question,
-            schema=schema,
-            company_name=company_name,
-            query_plan=rewrite_result,
-            route_info=route_info,
-        )
-        if dividend_rule_answer is not None:
-            return dividend_rule_answer
-
-        retriever, mode = self._build_retriever()
-        candidate_pool_size_before_rerank = None
-        reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
-        hyde_debug = self._build_hyde_debug_payload(
-            retrieval_results=[],
-            candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
-        )
-
-        if mode == "full_context":
-            retrieval_results = self._run_retrieval(
-                retriever, mode, company_name, question, rewrite_result.filters, candidate_doc_ids,
-                task_type=getattr(rewrite_result, "task_type", None),
-            )
-            reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
-            hyde_debug = self._build_hyde_debug_payload(
-                retrieval_results=retrieval_results,
-                candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
-            )
-        elif mode == "hybrid_rerank" and len(rewrite_result.search_queries) > 1:
-            retrieval_results, candidate_pool_size_before_rerank, retrieval_runs, _ = self._run_multi_query_global_rerank(
-                retriever=retriever,
+        if self._resolved_graph_engine() == "legacy":
+            return run_legacy_single_company(
+                self,
                 company_name=company_name,
                 question=question,
-                search_queries=rewrite_result.search_queries,
-                filters=rewrite_result.filters,
-                candidate_doc_ids=candidate_doc_ids,
-                task_type=getattr(rewrite_result, "task_type", None),
-            )
-            reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
-            hyde_debug = self._build_hyde_debug_payload(
-                retrieval_results=retrieval_results,
-                candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
-            )
-            if self._should_attempt_hyde(
-                mode=mode,
                 schema=schema,
-                search_queries=rewrite_result.search_queries,
-            ):
-                hyde_triggered, hyde_reasons = should_trigger_hyde(
-                    retrieval_results=retrieval_results,
-                    top_score_threshold=self.hyde_top_score_threshold,
-                    margin_threshold=self.hyde_margin_threshold,
-                )
-                hyde_debug["triggered"] = hyde_triggered
-                hyde_debug["trigger_reasons"] = hyde_reasons
-                if hyde_triggered:
-                    try:
-                        generated_hyde = self.hyde_generator.generate(
-                            question=question,
-                            schema=schema,
-                            query_plan=rewrite_result,
-                            route_info=route_info,
-                            model=self.hyde_generation_model or self.answering_model,
-                            provider=self.api_provider,
-                        )
-                        hyde_debug["generated_text"] = generated_hyde
-                        if generated_hyde:
-                            hyde_candidate_runs = self._retrieve_multi_query_candidate_runs(
-                                retriever=retriever,
-                                company_name=company_name,
-                                search_queries=[generated_hyde],
-                                filters=rewrite_result.filters,
-                                candidate_doc_ids=candidate_doc_ids,
-                                backend_scope="vector_only",
-                            )
-                            hyde_candidate_runs = [
-                                (HYDE_QUERY_MARKER, results)
-                                for _, results in hyde_candidate_runs
-                            ]
-                            if hyde_candidate_runs:
-                                retrieval_results, merged_candidates = self._rerank_merged_candidate_pool(
-                                    retriever=retriever,
-                                    question=question,
-                                    retrieval_runs=retrieval_runs + hyde_candidate_runs,
-                                    pool_cap=self._candidate_pool_cap(len(rewrite_result.search_queries) + 1),
-                                    task_type=getattr(rewrite_result, "task_type", None),
-                                )
-                                candidate_pool_size_before_rerank = len(merged_candidates)
-                                reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
-                                hyde_debug["final_candidate_pool_size"] = candidate_pool_size_before_rerank
-                    except Exception as exc:
-                        print(f"Warning: HyDE fallback failed: {exc}")
-        else:
-            retrieval_runs = []
-            for search_query in rewrite_result.search_queries:
-                results = self._run_retrieval(
-                    retriever, mode, company_name, search_query, rewrite_result.filters, candidate_doc_ids,
-                    task_type=getattr(rewrite_result, "task_type", None),
-                )
-                if results:
-                    retrieval_runs.append(results)
-            retrieval_results = self._merge_multi_query_results(retrieval_runs, self.retrieval_debug_top_n)
-            reranking_debug = self._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
-            hyde_debug = self._build_hyde_debug_payload(
-                retrieval_results=retrieval_results,
-                candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
+                query_plan=query_plan,
+                route_info=route_info,
             )
-
-        # ===== Agentic v2：预检（生成前）+ 校验后闭环（try-then-closed）=====
-        # 预算池与 trace 以局部 dict 传递（D1 教训：不进实例属性）
-        adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
-        if adaptive_retrieval_enabled() and retrieval_results and mode != "full_context":
-            supplemented = self._run_adaptive_supplement(
-                retriever=retriever,
-                company_name=company_name,
-                question=question,
-                rewrite_result=rewrite_result,
-                retrieval_results=retrieval_results,
-                candidate_doc_ids=candidate_doc_ids,
-                state=adaptive_state,
-            )
-            if supplemented is not None:
-                retrieval_results = supplemented
-
-        # ---- 闭包：生成→组装→校验（重入单元；捕获请求上下文只读变量）----
-        def _generate_and_validate(current_results: List[Dict]):
-            """补检后以新证据池重走 grounding→生成→校验全链（① try-then-closed）。
-
-            捕获变量（只读）：question/schema/company_name/rewrite_result/
-            route_info/route_mode/candidate_pool_size_before_rerank/
-            reranking_debug/hyde_debug/candidate_doc_ids/allowed_grounding_doc_ids。
-            """
-            grounding_result = None
-            chart_grounding_result = None
-            if schema == "number" and self.table_grounder is not None:
-                if self._is_revenue_metric_question(question) and allowed_grounding_doc_ids:
-                    grounding_result = self._cached_revenue_grounding(
-                        company_name=company_name,
-                        question=question,
-                        query_plan=rewrite_result,
-                        candidate_doc_ids=candidate_doc_ids,
-                        allowed_doc_ids=allowed_grounding_doc_ids,
-                        retrieval_results=current_results,
-                    )
-                if grounding_result is None:
-                    grounding_result = self.table_grounder.ground_number_query(
-                        question=question,
-                        retrieval_results=current_results,
-                        filters=rewrite_result.filters,
-                        candidate_doc_ids=candidate_doc_ids,
-                        allowed_doc_ids=allowed_grounding_doc_ids,
-                    )
-                if grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
-                    current_results = self._ensure_table_grounding_retrieval_result(current_results, grounding_result)
-                    current_results = self._ensure_table_support_retrieval_results(current_results, grounding_result)
-
-            if (
-                schema == "number"
-                and grounding_result is None
-                and self.chart_grounder is not None
-            ):
-                chart_grounding_result = self.chart_grounder.ground_number_query(
-                    question=question,
-                    retrieval_results=current_results,
-                    filters=rewrite_result.filters,
-                    candidate_doc_ids=candidate_doc_ids,
-                    allowed_doc_ids=allowed_grounding_doc_ids,
-                )
-                if chart_grounding_result is not None and self._grounded_number_value(chart_grounding_result) is not None:
-                    current_results = self._ensure_chart_grounding_retrieval_result(current_results, chart_grounding_result)
-
-            if not current_results:
-                self.response_data = {}
-                no_context_answer = {
-                    "final_answer": "N/A",
-                    "relevant_pages": [],
-                    "references": [],
-                    "citations": [],
-                    "confidence": "low",
-                    "confidence_reason": "未检索到可支撑回答的上下文。",
-                    "reasoning_summary": "检索阶段没有返回相关证据，因此拒答。",
-                    "step_by_step_analysis": "检索阶段没有返回相关证据，因此拒答。",
-                    "search_queries": rewrite_result.search_queries,
-                    "query_plan": rewrite_result.to_dict(),
-                    "route_info": route_info or {
-                        "route_mode": "explicit_company",
-                        "selected_company": company_name,
-                        "candidate_companies": [company_name] if company_name else [],
-                        "selection_reasons": ["company_argument"],
-                    },
-                    "candidate_pool_size_before_rerank": candidate_pool_size_before_rerank,
-                    "reranking_strategy": reranking_debug["reranking_strategy"],
-                    "initial_candidate_pool_size": reranking_debug["initial_candidate_pool_size"],
-                    "colbert_candidate_pool_size": reranking_debug["colbert_candidate_pool_size"],
-                    "colbert_top_n": reranking_debug["colbert_top_n"],
-                    "final_reranking_backend": reranking_debug["final_reranking_backend"],
-                    "hyde": hyde_debug,
-                    "retrieval_pages": [],
-                    "retrieval_results": [],
-                    "retrieval_report_groups": [],
-                    "response_data": self.response_data,
-                }
-                if not self.reasoning_debug_enabled:
-                    no_context_answer["step_by_step_analysis"] = ""
-                validated_answer = validate_answer(no_context_answer, [], rewrite_result)
-                # 闭包统一返回 ValidatedAnswer（主流程取 .answer；no_context 拒答也走闭环判定）
-                return validated_answer
-
-            if schema == "number" and grounding_result is not None and self._grounded_number_value(grounding_result) is not None:
-                answer_dict = self._build_table_grounded_number_answer(grounding_result)
-                self.response_data = {}
-            elif (
-                schema == "number"
-                and chart_grounding_result is not None
-                and self._grounded_number_value(chart_grounding_result) is not None
-            ):
-                answer_dict = self._build_chart_grounded_number_answer(chart_grounding_result)
-                self.response_data = {}
-            else:
-                answer_context_results = current_results[: self.top_n_retrieval]
-                rag_context = self._format_retrieval_results(answer_context_results)
-                answer_dict = self.api_processor.get_answer_from_rag_context(
-                    question=question,
-                    rag_context=rag_context,
-                    schema=schema,
-                    model=self.answering_model,
-                    temperature=self.answer_temperature,
-                    metric_caliber_hint=self._build_metric_caliber_hint(rewrite_result),
-                )
-                self.response_data = dict(getattr(self.api_processor, "response_data", {}) or {})
-
-            pages = answer_dict.get("relevant_pages", [])
-            validated_pages = self._validate_page_references(pages, current_results)
-            selected_report = (route_info or {}).get("selected_report") or {}
-            answer_dict["relevant_pages"] = validated_pages
-            if route_mode == "document_catalog_multi":
-                answer_dict["references"] = self._extract_references_from_results(validated_pages, current_results)
-            else:
-                answer_dict["references"] = self._extract_references(
-                    validated_pages,
-                    company_name,
-                    pdf_sha1=selected_report.get("sha1"),
-                )
-            answer_dict["citations"] = build_citations(
-                current_results,
-                validated_pages,
-                table_grounding_result=answer_dict.get("table_grounding_result"),
-                table_support_results=self._table_support_results(answer_dict.get("table_grounding_result")),
-                chart_grounding_result=answer_dict.get("chart_grounding_result"),
-            )
-            answer_dict["confidence"] = compute_confidence(answer_dict, current_results)
-            answer_dict["search_queries"] = rewrite_result.search_queries
-            answer_dict["query_plan"] = rewrite_result.to_dict()
-            answer_dict["route_info"] = route_info or {
-                "route_mode": rewrite_result.route_mode,
-                "selected_company": company_name,
-                "candidate_companies": [company_name],
+        graph = build_single_company_graph(self)
+        final_state = graph.invoke(
+            {
+                "company_name": company_name,
+                "question": question,
+                "schema": schema,
+                "query_plan": query_plan,
+                "route_info": route_info,
             }
-            answer_dict["candidate_pool_size_before_rerank"] = candidate_pool_size_before_rerank
-            answer_dict["reranking_strategy"] = reranking_debug["reranking_strategy"]
-            answer_dict["initial_candidate_pool_size"] = reranking_debug["initial_candidate_pool_size"]
-            answer_dict["colbert_candidate_pool_size"] = reranking_debug["colbert_candidate_pool_size"]
-            answer_dict["colbert_top_n"] = reranking_debug["colbert_top_n"]
-            answer_dict["final_reranking_backend"] = reranking_debug["final_reranking_backend"]
-            answer_dict["hyde"] = hyde_debug
-            answer_dict["retrieval_pages"] = [result.get("page") for result in current_results]
-            answer_dict["retrieval_results"] = [self._serialize_retrieval_result(result) for result in current_results]
-            answer_dict["retrieval_report_groups"] = self._aggregate_retrieval_results_by_report(current_results)
-            answer_dict["response_data"] = self.response_data
-            if not self.reasoning_debug_enabled:
-                answer_dict["step_by_step_analysis"] = ""
-            validated_answer = validate_answer(answer_dict, current_results, rewrite_result)
-            return validated_answer
-        # ---- 首轮生成 + 校验后闭环（try-then-closed）----
-        validated = _generate_and_validate(retrieval_results)
-        if (
-            adaptive_retrieval_enabled()
-            and mode != "full_context"
-            and adaptive_state["rounds_used"] < adaptive_max_rounds()
-        ):
-            from src.adaptive_retrieval import detect_post_validate_gap
-
-            post_gap = detect_post_validate_gap(
-                validated.validation_flags, rewrite_result, retrieval_results
-            )
-            if post_gap is not None:
-                supplement = self._collect_supplement(
-                    retriever=retriever,
-                    company_name=company_name,
-                    rewrite_result=rewrite_result,
-                    gap=post_gap,
-                    candidate_doc_ids=candidate_doc_ids,
-                )
-                if supplement:
-                    retrieval_results = merge_supplement_results(retrieval_results, supplement)
-                    retrieval_results = retriever.rerank_candidates(
-                        query=question,
-                        candidate_results=retrieval_results,
-                        documents_batch_size=self.final_reranking_batch_size,
-                        top_n=self.retrieval_debug_top_n,
-                        task_type=getattr(rewrite_result, "task_type", None),
-                    )
-                    adaptive_state["rounds_used"] += 1
-                    # try：以新证据池重走 grounding→生成→校验
-                    validated = _generate_and_validate(retrieval_results)
-                    self._record_adaptive_trace(adaptive_state, {
-                        "question": question,
-                        "company_name": company_name,
-                        "trigger": post_gap.trigger,
-                        "queries": list(post_gap.supplement_queries),
-                        "new_hits": len(supplement),
-                        "rounds": adaptive_state["rounds_used"],
-                        "outcome": (
-                            "supplement_succeeded"
-                            if "metric_caliber_conflict_refused" not in validated.validation_flags
-                            else "refused_maintained"
-                        ),
-                        "atom_id": (getattr(rewrite_result, "metric_atom", None) or {}).get("atom_id"),
-                        "gap_closed": detect_post_validate_gap(
-                            validated.validation_flags, rewrite_result, retrieval_results
-                        ) is None,
-                    })
-        self._record_adaptive_trace(adaptive_state)   # 聚合落盘（无 trace 空操作）
-        return validated.answer
+        )
+        return dict(final_state.get("final_answer_dict") or {})
 
     def _extract_companies_from_subset(self, question_text: str) -> List[str]:
         if self.report_catalog is not None:
@@ -3423,68 +2439,18 @@ class QuestionsProcessor:
         return found_companies
 
     def process_question(self, question: str, schema: str, question_meta: Optional[Dict[str, Any]] = None):
-        route_decision = self.route_question(question, schema)
-        if route_decision["is_comparative"]:
-            structured_answer = self._answer_structured_revenue_comparison(
-                question,
-                route_decision["companies"],
-                schema,
+        if self._resolved_graph_engine() == "legacy":
+            return run_legacy_question(
+                self,
+                question=question,
+                schema=schema,
+                question_meta=question_meta,
             )
-            if structured_answer is not None:
-                return structured_answer
-            return self.process_comparative_question(
-                question,
-                route_decision["companies"],
-                schema,
-            )
-
-        definition_answer = self._answer_metric_definition_question(
+        return run_finarag_graph(
+            self,
             question=question,
             schema=schema,
-            route_decision=route_decision,
-        )
-        if definition_answer is not None:
-            return definition_answer
-
-        metadata_count_answer = self._answer_metadata_count_question(
-            question=question,
-            schema=schema,
-            route_decision=route_decision,
-            question_meta=question_meta or {},
-        )
-        if metadata_count_answer is not None:
-            return metadata_count_answer
-
-        metadata_names_answer = self._answer_metadata_names_question(
-            question=question,
-            schema=schema,
-            route_decision=route_decision,
-        )
-        if metadata_names_answer is not None:
-            return metadata_names_answer
-
-        metadata_membership_answer = self._answer_metadata_membership_question(
-            question=question,
-            schema=schema,
-            route_decision=route_decision,
-        )
-        if metadata_membership_answer is not None:
-            return metadata_membership_answer
-
-        threshold_answer = self._answer_structured_revenue_threshold(
-            question=question,
-            schema=schema,
-            route_decision=route_decision,
-        )
-        if threshold_answer is not None:
-            return threshold_answer
-
-        return self.get_answer_for_company(
-            company_name=route_decision["company_name"],
-            question=question,
-            schema=schema,
-            query_plan=route_decision["query_plan"],
-            route_info=route_decision["route_info"],
+            question_meta=question_meta,
         )
 
     @staticmethod
@@ -3957,76 +2923,19 @@ class QuestionsProcessor:
         if structured_answer is not None:
             return structured_answer
 
-        rephrased_questions = self.api_processor.get_rephrased_questions(
-            original_question=question,
-            companies=companies,
-            model=self.answering_model,
-        )
-
-        individual_answers: Dict[str, Dict] = {}
-        aggregated_references = []
-        aggregated_citations = []
-
-        def process_company_question(company: str) -> tuple[str, Dict]:
-            sub_question = rephrased_questions.get(company)
-            if not sub_question:
-                raise ValueError(f"Could not generate sub-question for company: {company}")
-            answer_dict = self.get_answer_for_company(
-                company_name=company,
-                question=sub_question,
-                schema=schema
+        if self._resolved_graph_engine() == "legacy":
+            return run_legacy_comparative(
+                self,
+                question=question,
+                companies=companies,
+                schema=schema,
             )
-            return company, answer_dict
-
-        max_workers = min(max(1, self.parallel_requests), len(companies))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_company = {
-                executor.submit(process_company_question, company): company
-                for company in companies
+        graph = build_comparative_graph(self)
+        final_state = graph.invoke(
+            {
+                "question": question,
+                "companies": companies,
+                "schema": schema,
             }
-
-            for future in concurrent.futures.as_completed(future_to_company):
-                company = future_to_company[future]
-                try:
-                    _, answer_dict = future.result()
-                except Exception as exc:
-                    print(f"Error processing company {company}: {str(exc)}")
-                    raise
-
-                individual_answers[company] = answer_dict
-                aggregated_references.extend(answer_dict.get("references", []))
-                aggregated_citations.extend(answer_dict.get("citations", []))
-
-        final_schema = "text" if schema in {"text", "long_text"} else "comparative"
-        comparative_answer = self.api_processor.get_answer_from_rag_context(
-            question=question,
-            rag_context=individual_answers,
-            schema=final_schema,
-            model=self.answering_model,
-            temperature=self.answer_temperature,
         )
-        self.response_data = dict(self.api_processor.response_data)
-        comparative_answer["references"] = dedupe_references(aggregated_references)
-        comparative_answer["citations"] = dedupe_citations(aggregated_citations)
-        comparative_answer["confidence"] = self._confidence_from_individual_answers(individual_answers)
-        comparative_answer["confidence_reason"] = "当前置信度由比较问答模式下的各公司答案聚合而来。"
-        comparative_answer["validation_flags"] = []
-        comparative_answer["search_queries"] = [question]
-        comparative_answer["query_plan"] = self._build_query_plan(
-            question,
-            schema="comparative",
-            mentioned_companies=companies,
-            route_mode="comparative_explicit",
-        ).to_dict()
-        comparative_answer["route_info"] = {
-            "route_mode": "comparative_explicit",
-            "selected_company": None,
-            "candidate_companies": companies,
-            "selection_reasons": ["multiple_companies_mentioned_in_question"],
-        }
-        comparative_answer["retrieval_pages"] = sorted(
-            {citation.get("page") for citation in aggregated_citations if citation.get("page") is not None}
-        )
-        comparative_answer["retrieval_results"] = []
-        comparative_answer["response_data"] = self.response_data
-        return comparative_answer
+        return dict(final_state.get("final_answer_dict") or {})
