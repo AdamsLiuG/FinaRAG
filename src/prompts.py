@@ -1,7 +1,25 @@
 from pydantic import BaseModel, Field
-from typing import Literal, List, Union
+from typing import Literal, List, Union, Optional, Tuple
 import inspect
 import re
+
+PROMPT_TEMPLATE_VERSION = "2026.11.p1"
+
+
+def build_prefix_cached_messages(
+    *,
+    system_prompt: str,
+    user_prompt_template: str,
+    rag_context: str,
+    question: str,
+    metric_caliber_hint: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Assemble [Static System+Schema] -> [Metric Caliber Hint] -> [Context] -> [Question] for KV prefix reuse."""
+    base_sys = (system_prompt or "").strip()
+    hint = (metric_caliber_hint or "").strip()
+    canonical_system = f"{base_sys}\n{hint}" if hint else base_sys
+    canonical_user = user_prompt_template.format(context=rag_context, question=question)
+    return canonical_system, canonical_user
 
 
 def build_system_prompt(instruction: str="", example: str="", pydantic_schema: str="") -> str:

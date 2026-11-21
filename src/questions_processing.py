@@ -382,6 +382,18 @@ class QuestionsProcessor:
             if cached is not None:
                 return cached
 
+            try:
+                from src.document_store import get_sqlite_doc_repository
+
+                sqlite_repo = get_sqlite_doc_repository(self.documents_dir)
+                if sqlite_repo is not None:
+                    payload = sqlite_repo.get_document_payload(doc_id)
+                    if payload is not None:
+                        self._document_cache[doc_id] = payload
+                        return payload
+            except Exception:
+                pass
+
             candidate_paths = []
             if doc_id.endswith(".json"):
                 candidate_paths.append(self.documents_dir / doc_id)
@@ -758,10 +770,67 @@ class QuestionsProcessor:
 
         return validated_pages
 
+    def _build_unified_retriever_bundle(self, storage_backend: str):
+        from src.document_store import resolve_doc_sqlite_path
+        from src.storage.qdrant_store import QdrantHybridStore, UnifiedHybridRetriever
+        from src.storage.sqlite_doc_store import SqliteDocumentRepository
+
+        doc_sqlite = resolve_doc_sqlite_path(self.documents_dir)
+        if doc_sqlite is None:
+            candidate = self.documents_dir.parent / "finarag_docs.sqlite"
+            if candidate.exists():
+                doc_sqlite = candidate
+        if doc_sqlite is None:
+            raise FileNotFoundError("finarag_docs.sqlite not found for unified retrieval backend")
+
+        doc_repo = SqliteDocumentRepository(doc_sqlite)
+        if storage_backend == "qdrant" and os.getenv("QDRANT_URL", "").strip():
+            store = QdrantHybridStore(mode="http", qdrant_url=os.getenv("QDRANT_URL"))
+        else:
+            store_dir = Path(
+                os.getenv("FINARAG_UNIFIED_STORE_DIR", str(self.documents_dir.parent / "unified_store"))
+            )
+            store = QdrantHybridStore(mode="embedded", store_dir=store_dir)
+
+        reranker = None
+        if self.llm_reranking:
+            temp_hybrid = HybridRetriever.__new__(HybridRetriever)
+            temp_hybrid.reranking_strategy = self.reranking_strategy
+            temp_hybrid.cascade_candidate_pool_cap = self.cascade_candidate_pool_cap
+            temp_hybrid.colbert_top_n = self.colbert_top_n
+            temp_hybrid.final_reranking_backend = self.final_reranking_backend or os.getenv("RERANKING_BACKEND", "llm_prompt").lower()
+            reranker = temp_hybrid._build_reranker(
+                provider=self.api_provider,
+                model=self.answering_model,
+                colbert_model=self.colbert_model,
+                colbert_device=self.colbert_device,
+                colbert_batch_size=self.colbert_batch_size,
+                colbert_query_max_length=self.colbert_query_max_length,
+                colbert_passage_max_length=self.colbert_passage_max_length,
+            )
+
+        retriever = UnifiedHybridRetriever(
+            store=store,
+            doc_repo=doc_repo,
+            reranker=reranker,
+            reranking_strategy=self.reranking_strategy,
+            final_reranking_backend=self.final_reranking_backend or "llm_prompt",
+            lazy_load_encoders=self.use_vector_dbs or self.use_sparse_lexical_db,
+        )
+        mode = "full_context" if self.full_context else ("hybrid_rerank" if self.llm_reranking else "hybrid")
+        return retriever, mode
+
     def _build_retriever(self):
         cached_bundle = getattr(self._retriever_cache, "bundle", None) if self.retriever_cache_enabled else None
         if cached_bundle is not None:
             return cached_bundle
+
+        storage_backend = os.getenv("RETRIEVAL_STORAGE_BACKEND", "file").strip().lower()
+        if storage_backend in {"qdrant", "embedded"}:
+            bundle = self._build_unified_retriever_bundle(storage_backend)
+            if self.retriever_cache_enabled:
+                self._retriever_cache.bundle = bundle
+            return bundle
 
         if self.full_context:
             bundle = (

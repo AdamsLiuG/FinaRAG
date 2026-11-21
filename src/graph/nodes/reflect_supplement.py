@@ -15,6 +15,9 @@ from src.adaptive_retrieval import (
 
 def decide_reflection_edge(state: Dict[str, Any]) -> str:
     """Conditional edge after ground_generate: decide whether to supplement & re-run or finalize."""
+    budget_ctx = state.get("budget_context")
+    if budget_ctx is not None and not budget_ctx.allow_adaptive_supplement:
+        return "finalize"
     if not adaptive_retrieval_enabled():
         return "finalize"
     if state.get("retrieval_mode") == "full_context":

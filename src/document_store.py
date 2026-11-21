@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 _log = logging.getLogger(__name__)
 
@@ -22,6 +23,47 @@ class ChunkedDocumentStore:
 
 def _normalize_documents_dir(documents_dir: Path | str) -> Path:
     return Path(documents_dir).expanduser().resolve(strict=False)
+
+
+def resolve_doc_sqlite_path(documents_dir: Path | str) -> Optional[Path]:
+    explicit = os.getenv("FINARAG_DOC_SQLITE_PATH", "").strip()
+    if explicit:
+        p = Path(explicit).expanduser().resolve(strict=False)
+        return p if p.exists() else None
+    norm = _normalize_documents_dir(documents_dir)
+    candidate = norm.parent / "finarag_docs.sqlite"
+    if candidate.exists():
+        return candidate
+    return None
+
+
+@lru_cache(maxsize=4)
+def _load_sqlite_repo_cached(db_path_str: str, _mtime_ns: int):
+    from src.storage.sqlite_doc_store import SqliteDocumentRepository
+
+    return SqliteDocumentRepository(Path(db_path_str))
+
+
+def get_sqlite_doc_repository(documents_dir: Path | str):
+    backend = os.getenv("DOCUMENT_STORE_BACKEND", "memory").strip().lower()
+    if backend != "sqlite":
+        return None
+    db_path = resolve_doc_sqlite_path(documents_dir)
+    if db_path is None:
+        return None
+    try:
+        mtime_ns = db_path.stat().st_mtime_ns
+    except OSError:
+        return None
+    return _load_sqlite_repo_cached(str(db_path), mtime_ns)
+
+
+@lru_cache(maxsize=4)
+def _load_sqlite_document_store(documents_dir_str: str, db_path_str: str, _mtime_ns: int):
+    from src.storage.sqlite_doc_store import SqliteChunkedDocumentStore
+
+    repo = _load_sqlite_repo_cached(db_path_str, _mtime_ns)
+    return SqliteChunkedDocumentStore(Path(documents_dir_str), repo)
 
 
 def _document_store_cache_key(documents_dir: Path | str) -> Tuple[str, Tuple[str, ...], int, int]:
@@ -43,12 +85,26 @@ def _document_store_cache_key(documents_dir: Path | str) -> Tuple[str, Tuple[str
     return str(normalized_dir), tuple(sorted(names)), latest_mtime_ns, total_size
 
 
-def get_document_store(documents_dir: Path | str) -> ChunkedDocumentStore:
+def get_document_store(documents_dir: Path | str):
+    if os.getenv("DOCUMENT_STORE_BACKEND", "memory").strip().lower() == "sqlite":
+        db_path = resolve_doc_sqlite_path(documents_dir)
+        if db_path is not None:
+            try:
+                mtime_ns = db_path.stat().st_mtime_ns
+                return _load_sqlite_document_store(
+                    str(_normalize_documents_dir(documents_dir)),
+                    str(db_path),
+                    mtime_ns,
+                )
+            except Exception as exc:
+                _log.warning("Falling back to memory document store: %s", exc)
     return _load_document_store(*_document_store_cache_key(documents_dir))
 
 
 def clear_document_store_cache() -> None:
     _load_document_store.cache_clear()
+    _load_sqlite_document_store.cache_clear()
+    _load_sqlite_repo_cached.cache_clear()
 
 
 @lru_cache(maxsize=2)

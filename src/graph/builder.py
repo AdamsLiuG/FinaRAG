@@ -136,6 +136,7 @@ def run_finarag_graph(
     question_meta: Optional[Dict[str, Any]] = None,
     *,
     config: Optional[Dict[str, Any]] = None,
+    budget_context: Any = None,
 ) -> Dict[str, Any]:
     graph = build_finarag_graph(processor)
     initial: FinaRAGState = {
@@ -143,10 +144,15 @@ def run_finarag_graph(
         "schema": schema,
         "question_meta": question_meta or {},
     }
+    if budget_context is not None:
+        initial["budget_context"] = budget_context
     final_state = graph.invoke(initial, config=config)
     answer = dict(final_state.get("final_answer_dict") or {})
     if final_state.get("stage_events"):
         answer.setdefault("graph_stage_events", list(final_state["stage_events"]))
+    if budget_context is not None and "budget_summary" not in answer:
+        answer["budget_summary"] = budget_context.summary()
+        answer["degraded_level"] = budget_context.degradation_level
     return answer
 
 
@@ -157,6 +163,7 @@ def stream_finarag_events(
     question_meta: Optional[Dict[str, Any]] = None,
     *,
     config: Optional[Dict[str, Any]] = None,
+    budget_context: Any = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield incremental stage events as each LangGraph node completes."""
     graph = build_finarag_graph(processor)
@@ -165,6 +172,8 @@ def stream_finarag_events(
         "schema": schema,
         "question_meta": question_meta or {},
     }
+    if budget_context is not None:
+        initial["budget_context"] = budget_context
     last_answer: Optional[Dict[str, Any]] = None
     for update in graph.stream(initial, config=config, stream_mode="updates"):
         for node_name, node_payload in update.items():

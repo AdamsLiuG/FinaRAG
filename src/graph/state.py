@@ -47,6 +47,7 @@ class FinaRAGState(TypedDict, total=False):
     validated_flags: List[str]
     final_answer_dict: Dict[str, Any]
     stage_events: Annotated[List[Dict[str, Any]], operator.add]
+    budget_context: Any
 
 
 class CompanyBranchState(TypedDict):

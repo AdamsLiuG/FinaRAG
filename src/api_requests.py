@@ -1351,17 +1351,21 @@ class APIProcessor:
 
     def get_answer_from_rag_context(self, question, rag_context, schema, model, temperature: float = 0, metric_caliber_hint: Optional[str] = None):
         system_prompt, response_format, user_prompt = self._build_rag_context_prompts(schema)
-        if metric_caliber_hint:
-            # FinaWiki 口径注入：命中指标原子时把口径定义与易混淆提示拼入 system prompt
-            system_prompt = f"{system_prompt}\n{metric_caliber_hint}"
         if not isinstance(rag_context, str):
             rag_context = json.dumps(rag_context, ensure_ascii=False, indent=2)
-        
+        canonical_system, canonical_user = prompts.build_prefix_cached_messages(
+            system_prompt=system_prompt,
+            user_prompt_template=user_prompt,
+            rag_context=rag_context,
+            question=question,
+            metric_caliber_hint=metric_caliber_hint,
+        )
+
         answer_dict = self.processor.send_message(
             model=model,
             temperature=temperature,
-            system_content=system_prompt,
-            human_content=user_prompt.format(context=rag_context, question=question),
+            system_content=canonical_system,
+            human_content=canonical_user,
             is_structured=True,
             response_format=response_format
         )

@@ -18,8 +18,16 @@ def make_retrieve_rerank_node(processor: Any):
         rewrite_result = state["query_plan"]
         route_info = state.get("route_info")
         candidate_doc_ids = list(state.get("candidate_doc_ids") or [])
+        budget_ctx = state.get("budget_context")
+        if budget_ctx is not None:
+            budget_ctx.should_use_fast_path(rewrite_result)
 
         retriever, mode = processor._build_retriever()
+        effective_mode = "hybrid" if (
+            mode == "hybrid_rerank"
+            and budget_ctx is not None
+            and budget_ctx.skip_second_stage_rerank
+        ) else mode
         candidate_pool_size_before_rerank = None
         reranking_debug = processor._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
         hyde_debug = processor._build_hyde_debug_payload(
@@ -27,10 +35,10 @@ def make_retrieve_rerank_node(processor: Any):
             candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
         )
 
-        if mode == "full_context":
+        if effective_mode == "full_context":
             retrieval_results = processor._run_retrieval(
                 retriever,
-                mode,
+                effective_mode,
                 company_name,
                 question,
                 rewrite_result.filters,
@@ -42,7 +50,7 @@ def make_retrieve_rerank_node(processor: Any):
                 retrieval_results=retrieval_results,
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
-        elif mode == "hybrid_rerank" and len(rewrite_result.search_queries) > 1:
+        elif effective_mode == "hybrid_rerank" and len(rewrite_result.search_queries) > 1:
             retrieval_results, candidate_pool_size_before_rerank, retrieval_runs, _ = processor._run_multi_query_global_rerank(
                 retriever=retriever,
                 company_name=company_name,
@@ -57,10 +65,13 @@ def make_retrieve_rerank_node(processor: Any):
                 retrieval_results=retrieval_results,
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
-            if processor._should_attempt_hyde(
-                mode=mode,
-                schema=schema,
-                search_queries=rewrite_result.search_queries,
+            if (
+                (budget_ctx is None or budget_ctx.allow_hyde)
+                and processor._should_attempt_hyde(
+                    mode=effective_mode,
+                    schema=schema,
+                    search_queries=rewrite_result.search_queries,
+                )
             ):
                 hyde_triggered, hyde_reasons = should_trigger_hyde(
                     retrieval_results=retrieval_results,
@@ -113,7 +124,7 @@ def make_retrieve_rerank_node(processor: Any):
             for search_query in rewrite_result.search_queries:
                 results = processor._run_retrieval(
                     retriever,
-                    mode,
+                    effective_mode,
                     company_name,
                     search_query,
                     rewrite_result.filters,
@@ -124,13 +135,20 @@ def make_retrieve_rerank_node(processor: Any):
                     retrieval_runs.append(results)
             retrieval_results = processor._merge_multi_query_results(retrieval_runs, processor.retrieval_debug_top_n)
             reranking_debug = processor._build_reranking_debug_payload(retriever, candidate_pool_size_before_rerank)
+            if effective_mode != mode:
+                reranking_debug["final_reranking_backend"] = "skipped_budget"
             hyde_debug = processor._build_hyde_debug_payload(
                 retrieval_results=retrieval_results,
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
 
         adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
-        if adaptive_retrieval_enabled() and retrieval_results and mode != "full_context":
+        if (
+            adaptive_retrieval_enabled()
+            and retrieval_results
+            and effective_mode != "full_context"
+            and (budget_ctx is None or budget_ctx.allow_adaptive_supplement)
+        ):
             supplemented = processor._run_adaptive_supplement(
                 retriever=retriever,
                 company_name=company_name,
@@ -144,7 +162,7 @@ def make_retrieve_rerank_node(processor: Any):
                 retrieval_results = supplemented
 
         return {
-            "retrieval_mode": mode,
+            "retrieval_mode": effective_mode,
             "retriever_ref": retriever,
             "retrieval_results": retrieval_results,
             "candidate_pool_size_before_rerank": candidate_pool_size_before_rerank,
@@ -155,9 +173,10 @@ def make_retrieve_rerank_node(processor: Any):
             "stage_events": [
                 {
                     "stage": "retrieve_rerank",
-                    "mode": mode,
+                    "mode": effective_mode,
                     "n_results": len(retrieval_results),
                     "pre_adaptive_rounds": int(adaptive_state.get("rounds_used") or 0),
+                    "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),
                 }
             ],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Dict, List
 
@@ -111,6 +112,7 @@ def make_ground_generate_node(processor: Any):
             }
 
         local_response_data: Dict[str, Any] = {}
+        budget_ctx = state.get("budget_context")
         if schema == "number" and grounding_result is not None and processor._grounded_number_value(grounding_result) is not None:
             answer_dict = processor._build_table_grounded_number_answer(grounding_result)
             local_response_data = {}
@@ -120,18 +122,34 @@ def make_ground_generate_node(processor: Any):
             local_response_data = {}
             processor.response_data = local_response_data
         else:
-            answer_context_results = current_results[: processor.top_n_retrieval]
+            if budget_ctx is not None:
+                effective_top_n = budget_ctx.effective_top_n(processor.top_n_retrieval)
+                answer_context_results = budget_ctx.compress_results(current_results[:effective_top_n])
+                target_model = (
+                    os.getenv("FAST_ANSWERING_MODEL", "").strip() or processor.answering_model
+                    if budget_ctx.degradation_level >= 3
+                    else processor.answering_model
+                )
+            else:
+                answer_context_results = current_results[: processor.top_n_retrieval]
+                target_model = processor.answering_model
             rag_context = processor._format_retrieval_results(answer_context_results)
             answer_dict = processor.api_processor.get_answer_from_rag_context(
                 question=question,
                 rag_context=rag_context,
                 schema=schema,
-                model=processor.answering_model,
+                model=target_model,
                 temperature=processor.answer_temperature,
                 metric_caliber_hint=processor._build_metric_caliber_hint(rewrite_result),
             )
             local_response_data = dict(getattr(processor.api_processor, "response_data", {}) or {})
             processor.response_data = local_response_data
+            if budget_ctx is not None:
+                usage = local_response_data.get("usage") or {}
+                budget_ctx.record_usage(
+                    prompt_tokens=int(usage.get("prompt_tokens") or local_response_data.get("input_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or local_response_data.get("output_tokens") or 0),
+                )
 
             # Optional PoT deterministic evaluation when LLM emits structured pot_calculation
             if isinstance(answer_dict, dict) and answer_dict.get("pot_calculation"):
@@ -186,6 +204,9 @@ def make_ground_generate_node(processor: Any):
         answer_dict["retrieval_results"] = [processor._serialize_retrieval_result(result) for result in current_results]
         answer_dict["retrieval_report_groups"] = processor._aggregate_retrieval_results_by_report(current_results)
         answer_dict["response_data"] = local_response_data
+        if budget_ctx is not None:
+            answer_dict["degraded_level"] = budget_ctx.degradation_level
+            answer_dict["budget_summary"] = budget_ctx.summary()
         if not processor.reasoning_debug_enabled:
             answer_dict["step_by_step_analysis"] = ""
 
@@ -199,6 +220,7 @@ def make_ground_generate_node(processor: Any):
                     "stage": "ground_generate",
                     "flags": list(validated_answer.validation_flags or []),
                     "confidence": validated_answer.confidence,
+                    "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),
                 }
             ],
