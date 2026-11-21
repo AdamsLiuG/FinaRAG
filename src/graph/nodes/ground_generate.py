@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import time
+from pathlib import Path
 from typing import Any, Dict, List
 
 from src.answer_validation import validate_answer
@@ -211,14 +213,63 @@ def make_ground_generate_node(processor: Any):
             answer_dict["step_by_step_analysis"] = ""
 
         validated_answer = validate_answer(answer_dict, current_results, rewrite_result)
+        final_flags = list(validated_answer.validation_flags or [])
+        final_dict = dict(validated_answer.answer)
+
+        # Optional P2 VLM visual verification on chart low-confidence or numeric grounding conflicts
+        vlm_reader = getattr(processor, "vlm_page_reader", None)
+        needs_vlm = (
+            "chart_grounding_low_confidence" in final_flags
+            or any("grounding" in f and "mismatch" in f for f in final_flags)
+            or (chart_grounding_result is not None and float(chart_grounding_result.get("confidence") or 1.0) < 0.7)
+        )
+        if (
+            vlm_reader is not None
+            and needs_vlm
+            and os.getenv("FINARAG_VLM_VERIFY_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+        ):
+            try:
+                from src.multimodal_nav.visual_index import render_pdf_pages
+
+                target_page = (
+                    (validated_pages[0] if validated_pages else None)
+                    or (chart_grounding_result or grounding_result or {}).get("page")
+                    or (current_results[0].get("page") if current_results else None)
+                )
+                doc_id = (
+                    (selected_report or {}).get("sha1")
+                    or (current_results[0].get("pdf_sha1") if current_results else None)
+                )
+                pdf_dir = getattr(processor, "pdf_reports_dir", None)
+                if pdf_dir is None and hasattr(processor, "documents_dir"):
+                    candidate_pdf_dir = Path(processor.documents_dir).parent.parent / "pdf_reports"
+                    if candidate_pdf_dir.exists():
+                        pdf_dir = candidate_pdf_dir
+                if target_page and doc_id and pdf_dir is not None:
+                    pdf_file = Path(pdf_dir) / f"{doc_id}.pdf"
+                    if pdf_file.exists():
+                        with tempfile.TemporaryDirectory() as vlm_tmp:
+                            rendered = render_pdf_pages(pdf_file, [int(target_page)], vlm_tmp, dpi=150)
+                            if int(target_page) in rendered:
+                                vlm_res = vlm_reader.verify_grounding_with_vlm(
+                                    rendered[int(target_page)],
+                                    question=question,
+                                    candidate_answer=final_dict.get("final_answer"),
+                                    page=int(target_page),
+                                    allowed_base_dir=vlm_tmp,
+                                )
+                                final_dict["vlm_verification"] = vlm_res.to_dict()
+            except Exception:
+                pass
+
         return {
             "retrieval_results": current_results,
-            "validated_flags": list(validated_answer.validation_flags or []),
-            "final_answer_dict": validated_answer.answer,
+            "validated_flags": final_flags,
+            "final_answer_dict": final_dict,
             "stage_events": [
                 {
                     "stage": "ground_generate",
-                    "flags": list(validated_answer.validation_flags or []),
+                    "flags": final_flags,
                     "confidence": validated_answer.confidence,
                     "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),

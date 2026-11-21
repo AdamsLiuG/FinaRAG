@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -458,6 +459,10 @@ class TextSplitter():
             payload[field] = self._coerce_list(source_chunk.get(field) or report_meta.get(field))
         payload["embedding_text"] = self._build_embedding_text(payload)
         payload["search_text"] = self._build_search_text(payload)
+        if os.getenv("FINARAG_CONTEXTUAL_ENRICH_ENABLED", "0").strip().lower() in {"1", "true", "yes"}:
+            from src.multimodal_nav.contextual_enricher import ContextualEnricher
+
+            payload = ContextualEnricher().enrich_chunk(payload, report_meta)
         if node_type == "parent":
             payload["child_chunk_ids"] = []
         return payload

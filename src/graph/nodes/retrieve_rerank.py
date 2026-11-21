@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 from typing import Any, Dict
 
 from src.adaptive_retrieval import adaptive_retrieval_enabled
@@ -143,6 +145,67 @@ def make_retrieve_rerank_node(processor: Any):
             )
 
         adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
+        tree_nav_hits = 0
+        if (
+            os.getenv("FINARAG_TREE_NAV_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            and effective_mode != "full_context"
+        ):
+            try:
+                from src.multimodal_nav.tree_navigator import (
+                    TocTreeNavigator,
+                    fuse_tree_and_hybrid_results,
+                    should_trigger_tree_navigation,
+                )
+                from src.multimodal_nav.toc_tree_builder import TocTreeStore
+
+                if should_trigger_tree_navigation(rewrite_result, question):
+                    toc_db = Path(
+                        os.getenv("FINARAG_TOC_TREE_DB")
+                        or str(Path(processor.documents_dir).parent / "finarag_toc_trees.sqlite")
+                    )
+                    if toc_db.exists():
+                        selected_doc_id = state.get("selected_doc_id")
+                        toc_store = TocTreeStore(toc_db)
+                        try:
+                            tree = (
+                                toc_store.get_tree(str(selected_doc_id))
+                                if selected_doc_id
+                                else None
+                            )
+                            if tree is None and company_name:
+                                tree = toc_store.get_tree_by_company(company_name)
+                        finally:
+                            toc_store.close()
+                        if tree is not None:
+                            doc_payload = processor._load_document_payload(tree.doc_id) if hasattr(processor, "_load_document_payload") else None
+                            pages_map = {
+                                int(p["page"]): p
+                                for p in ((doc_payload or {}).get("content") or {}).get("pages") or []
+                                if isinstance(p, dict) and p.get("page") is not None
+                            }
+                            doc_meta = (doc_payload or {}).get("metainfo") or {
+                                "sha1_name": tree.doc_id,
+                                "doc_id": tree.doc_id,
+                                "company_name": tree.company_name,
+                                "report_year": tree.report_year,
+                            }
+                            nav = TocTreeNavigator()
+                            tree_results = nav.retrieve_section_pages(
+                                tree,
+                                question,
+                                lambda pno: pages_map.get(int(pno)),
+                                doc_metainfo=doc_meta,
+                            )
+                            if tree_results:
+                                tree_nav_hits = len(tree_results)
+                                retrieval_results = fuse_tree_and_hybrid_results(
+                                    retrieval_results,
+                                    tree_results,
+                                    top_n=max(len(retrieval_results), getattr(processor, "retrieval_debug_top_n", 10)),
+                                )
+            except Exception as exc:
+                print(f"Warning: PageIndex tree navigation skipped: {exc}")
+
         if (
             adaptive_retrieval_enabled()
             and retrieval_results
@@ -175,6 +238,7 @@ def make_retrieve_rerank_node(processor: Any):
                     "stage": "retrieve_rerank",
                     "mode": effective_mode,
                     "n_results": len(retrieval_results),
+                    "tree_nav_hits": tree_nav_hits,
                     "pre_adaptive_rounds": int(adaptive_state.get("rounds_used") or 0),
                     "degraded_level": budget_ctx.degradation_level if budget_ctx is not None else 0,
                     "ms": round((time.perf_counter() - started) * 1000, 2),
