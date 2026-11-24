@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finarag://schemas/config",
+  "title": "Public FinaRAG configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+){1,2}$", "maxLength": 16},
+    "mcp_enabled": {"type": "boolean", "default": false},
+    "a2a_enabled": {"type": "boolean", "default": false},
+    "checkpoint_enabled": {"type": "boolean", "default": false},
+    "hitl_enabled": {"type": "boolean", "default": false},
+    "deep_research_enabled": {"type": "boolean", "default": false},
+    "harness_enabled": {"type": "boolean", "default": false}
+  }
+}

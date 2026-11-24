@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finarag://schemas/report",
+  "title": "FinaRAG report metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "company_name"],
+  "properties": {
+    "doc_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "company_name": {"type": "string", "minLength": 1, "maxLength": 160},
+    "stock_code": {"type": ["string", "null"], "maxLength": 32},
+    "report_year": {"type": ["integer", "null"], "minimum": 1000, "maximum": 9999},
+    "currency": {"type": ["string", "null"], "maxLength": 16},
+    "doc_source_type": {"type": ["string", "null"], "maxLength": 64},
+    "pages_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 100000}
+  }
+}

@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import contextvars
 import hmac
+import inspect
 import json
 import logging
 import os
@@ -101,9 +102,15 @@ def _execute_qa_sync(
     schema: str,
     budget_ctx: BudgetContext,
     spans: List[Dict[str, Any]],
+    *,
+    protocol_execution: bool = False,
 ) -> Dict[str, Any]:
     with TelemetrySpan("qa_sync_execution", attributes={"schema": schema}, collector=spans):
         is_full = hasattr(processor, "_resolve_question_route") and hasattr(processor, "_build_query_plan")
+        if protocol_execution and all(callable(getattr(processor, name, None)) for name in (
+            "route_question", "_build_query_plan", "_resolved_graph_engine",
+        )):
+            is_full = processor._resolved_graph_engine() == "langgraph"
         if is_full:
             return run_finarag_graph(processor, question, schema, budget_context=budget_ctx)
         try:
@@ -150,6 +157,36 @@ class _TraceAndSecurityHeadersMiddleware:
             reset_trace_context(tokens)
 
 
+class _ProtocolHolder:
+    def __init__(self, factory):
+        self._factory = factory
+        self._lock = threading.Lock()
+        self._instance = None
+        self._admitting = True
+
+    def get(self):
+        with self._lock:
+            if not self._admitting:
+                raise RuntimeError("Protocol unavailable")
+            if self._instance is None:
+                self._instance = self._factory()
+            return self._instance
+
+    def take_for_shutdown(self):
+        with self._lock:
+            self._admitting = False
+            instance, self._instance = self._instance, None
+            return instance
+
+    def start(self):
+        with self._lock:
+            self._admitting = True
+
+
+def _protocol_enabled(name: str) -> bool:
+    return os.getenv(name, "0").strip().lower() in {"1", "true", "yes"}
+
+
 def create_fastapi_app(
     processor: Any = None,
     *,
@@ -158,6 +195,9 @@ def create_fastapi_app(
     llm_client: Optional[AsyncLLMClient] = None,
     default_token_budget: Optional[int] = None,
     default_latency_budget_ms: Optional[float] = None,
+    mcp_server_provider=None,
+    a2a_store_provider=None,
+    protocol_principal_resolver=None,
 ) -> FastAPI:
     holder = _ProcessorHolder(processor)
     semantic_cache = cache or SemanticCache()
@@ -167,6 +207,7 @@ def create_fastapi_app(
     latency_budget_default = (
         default_latency_budget_ms if default_latency_budget_ms is not None else _DEFAULT_LATENCY_BUDGET_MS
     )
+    mcp_holder = a2a_holder = None
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
@@ -174,12 +215,27 @@ def create_fastapi_app(
         app.state.semantic_cache = semantic_cache
         app.state.telemetry = telemetry_mgr
         app.state.llm_client = llm_client or AsyncLLMClient()
+        for binding in (mcp_holder, a2a_holder):
+            if binding is not None:
+                binding.start()
         try:
             yield
         finally:
-            if owns_llm_client and getattr(app.state, "llm_client", None) is not None:
-                await app.state.llm_client.aclose()
-            shutdown_cpu_executor()
+            try:
+                if mcp_holder is not None:
+                    server = await asyncio.to_thread(mcp_holder.take_for_shutdown)
+                    if server is not None:
+                        await asyncio.to_thread(server.close)
+            finally:
+                try:
+                    if a2a_holder is not None:
+                        store = await asyncio.to_thread(a2a_holder.take_for_shutdown)
+                        if store is not None:
+                            await store.aclose()
+                finally:
+                    if owns_llm_client and getattr(app.state, "llm_client", None) is not None:
+                        await app.state.llm_client.aclose()
+                    shutdown_cpu_executor()
 
     app = FastAPI(title="FinaRAG Async Service", version="1.0.0", lifespan=_lifespan)
     app.add_middleware(_TraceAndSecurityHeadersMiddleware)
@@ -351,6 +407,75 @@ def create_fastapi_app(
             },
         )
 
+    async def protocol_auth(request: Request):
+        from src.protocols.tool_registry import ToolPrincipal, valid_principal
+
+        if not os.getenv("SERVICE_API_KEY", "").strip():
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        try:
+            await _verify_api_key(request)
+        except TypeError:
+            raise HTTPException(status_code=401, detail="Unauthorized") from None
+        if protocol_principal_resolver is None:
+            return ToolPrincipal("finarag-service", frozenset({"read"}))
+        try:
+            principal = protocol_principal_resolver(request)
+            if inspect.isawaitable(principal):
+                principal = await principal
+        except Exception:
+            raise HTTPException(status_code=403, detail="Access denied") from None
+        if not valid_principal(principal):
+            raise HTTPException(status_code=403, detail="Access denied")
+        return principal
+
+    if _protocol_enabled("FINARAG_MCP_ENABLED"):
+        from src.protocols.mcp_server import MCPServer, RESOURCES_ROOT, mount_mcp_routes
+        from src.protocols.tool_registry import build_financial_tool_registry, default_policy
+
+        def build_mcp_server():
+            configured = os.getenv("FINARAG_PROTOCOL_CORPUS_ROOT")
+            root = configured if configured is not None else Path(holder.get().documents_dir).parent
+            registry = build_financial_tool_registry(root, policy=default_policy)
+            try:
+                return MCPServer(registry, resources_root=RESOURCES_ROOT)
+            except Exception:
+                registry.close()
+                raise
+
+        origins = [origin.strip() for origin in os.getenv("FINARAG_MCP_ALLOWED_ORIGINS", "").split(",")
+                   if origin.strip()]
+        mcp_holder = _ProtocolHolder(mcp_server_provider or build_mcp_server)
+        mount_mcp_routes(app, mcp_holder.get, auth=protocol_auth, allowed_origins=origins)
+
+    if _protocol_enabled("FINARAG_A2A_ENABLED"):
+        from src.protocols.a2a_server import A2ATaskStore, mount_a2a_routes
+
+        def run_a2a_question(question, schema):
+            started = time.perf_counter()
+            budget = BudgetContext(max_tokens=token_budget_default, max_latency_ms=latency_budget_default)
+            spans = []
+            answer = _execute_qa_sync(holder.get(), question, schema, budget, spans, protocol_execution=True)
+            usage = token_usage_of(answer)
+            if budget.spent_tokens == 0 and (usage["prompt_tokens"] or usage["completion_tokens"]):
+                budget.record_usage(usage["prompt_tokens"], usage["completion_tokens"])
+            telemetry_mgr.record_request(
+                trace_id=current_trace_id() or "",
+                question=question,
+                schema=schema,
+                answer_dict=answer,
+                spans=spans,
+                latency_ms=round((time.perf_counter() - started) * 1000.0, 2),
+                cache_hit=False,
+                degraded_level=budget.degradation_level,
+            )
+            return answer
+
+        a2a_holder = _ProtocolHolder(a2a_store_provider or (lambda: A2ATaskStore(run_question=run_a2a_question)))
+        mount_a2a_routes(
+            app, a2a_holder.get, auth=protocol_auth,
+            public_url=os.getenv("FINARAG_A2A_PUBLIC_URL", "http://127.0.0.1:8300"),
+        )
+
     return app
 
 
@@ -363,11 +488,14 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8300)
     parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
+    workers = max(1, args.workers)
+    if _protocol_enabled("FINARAG_A2A_ENABLED") and workers != 1:
+        parser.error("A2A tasks require one service worker")
     uvicorn.run(
         "src.service.fastapi_app:app",
         host=args.host,
         port=args.port,
-        workers=max(1, int(args.workers)),
+        workers=workers,
     )
 
 
