@@ -3,8 +3,41 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 from typing_extensions import TypedDict
+
+
+from src.service.budget_controller import BudgetContext
+
+
+@dataclass
+class FinaRAGRunContext:
+    """Worker-local dependencies and policy for a durable invocation."""
+
+    budget_context: BudgetContext | None = None
+    turn_id: str = ""
+    approval_enabled: bool = False
+    working_context: Dict[str, Any] | None = None
+    on_event: Callable[[Dict[str, Any]], None] | None = None
+    reviewer: str | None = None
+
+    @staticmethod
+    def restore_budget(snapshot: Dict[str, Any]) -> BudgetContext:
+        if not snapshot:
+            return BudgetContext()
+        latency = snapshot["max_latency_ms"]
+        elapsed = min(max(snapshot["elapsed_ms"], 0), latency if latency > 0 else 120000)
+        return BudgetContext(
+            max_tokens=snapshot["max_tokens"],
+            max_latency_ms=latency,
+            spent_tokens=snapshot["spent_tokens"],
+            start_ts=time.monotonic() - elapsed / 1000,
+            fast_path=snapshot["fast_path"],
+            degraded_events=list(snapshot["degraded_events"]),
+        )
 
 
 class FinaRAGState(TypedDict, total=False):
@@ -12,6 +45,16 @@ class FinaRAGState(TypedDict, total=False):
     question: str
     schema: str
     question_meta: Dict[str, Any]
+
+    # Durable session inputs and review outcome
+    thread_id: str
+    turn_id: str
+    working_context: Dict[str, Any]
+    budget_snapshot: Dict[str, Any]
+    approval_reasons: List[str]
+    approval_status: Literal["not_required", "pending", "approved", "rejected"]
+    reviewed_candidate: Dict[str, Any] | None
+    approval_decision: Dict[str, Any] | None
 
     # Routing outputs
     route_decision: Dict[str, Any]

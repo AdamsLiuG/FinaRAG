@@ -5,6 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Tuple
 
+from langgraph.runtime import Runtime
+
+from src.graph.state import FinaRAGRunContext
 from src.adaptive_retrieval import (
     adaptive_max_rounds,
     adaptive_retrieval_enabled,
@@ -13,9 +16,10 @@ from src.adaptive_retrieval import (
 )
 
 
-def decide_reflection_edge(state: Dict[str, Any]) -> str:
+def decide_reflection_edge(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> str:
     """Conditional edge after ground_generate: decide whether to supplement & re-run or finalize."""
-    budget_ctx = state.get("budget_context")
+    context = runtime.context if runtime is not None else None
+    budget_ctx = context.budget_context if context else state.get("budget_context")
     if budget_ctx is not None and not budget_ctx.allow_adaptive_supplement:
         return "finalize"
     if not adaptive_retrieval_enabled():
@@ -42,12 +46,12 @@ def decide_reflection_edge(state: Dict[str, Any]) -> str:
 
 
 def make_reflect_supplement_node(processor: Any):
-    def reflect_supplement_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    def reflect_supplement_node(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> Dict[str, Any]:
+        context = runtime.context if runtime is not None else None
         started = time.perf_counter()
         question = state["question"]
         company_name = state.get("company_name") or ""
         rewrite_result = state["query_plan"]
-        retriever = state["retriever_ref"]
         candidate_doc_ids = list(state.get("candidate_doc_ids") or [])
         current_results = list(state.get("retrieval_results") or [])
         flags = list(state.get("validated_flags") or [])
@@ -56,6 +60,7 @@ def make_reflect_supplement_node(processor: Any):
         if gap is None:
             return {}
 
+        retriever = processor._build_retriever()[0] if context else state["retriever_ref"]
         query_sig: Tuple[str, ...] = tuple(gap.supplement_queries)
         seen = list(state.get("adaptive_seen_queries") or [])
         seen.append(query_sig)

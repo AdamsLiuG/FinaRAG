@@ -17,7 +17,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -60,6 +62,7 @@ class QaRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=None, ge=100, le=100000)
     max_latency_ms: Optional[float] = Field(default=None, ge=500.0, le=120000.0)
     use_cache: bool = True
+    thread_id: str | None = None
 
     @field_validator("question")
     @classmethod
@@ -68,6 +71,14 @@ class QaRequest(BaseModel):
         if not cleaned:
             raise ValueError("question must not be blank")
         return cleaned
+
+
+class ResumeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    checkpoint_id: str
+    interrupt_id: str
+    decision: Literal["approve", "reject"]
 
 
 class _ProcessorHolder:
@@ -198,6 +209,7 @@ def create_fastapi_app(
     mcp_server_provider=None,
     a2a_store_provider=None,
     protocol_principal_resolver=None,
+    checkpoint_db_path: str | Path | None = None,
 ) -> FastAPI:
     holder = _ProcessorHolder(processor)
     semantic_cache = cache or SemanticCache()
@@ -207,7 +219,9 @@ def create_fastapi_app(
     latency_budget_default = (
         default_latency_budget_ms if default_latency_budget_ms is not None else _DEFAULT_LATENCY_BUDGET_MS
     )
-    mcp_holder = a2a_holder = None
+    mcp_holder = a2a_holder = session_holder = None
+    checkpoint_enabled = _protocol_enabled("FINARAG_CHECKPOINT_ENABLED")
+    approval_enabled = checkpoint_enabled and _protocol_enabled("FINARAG_HITL_ENABLED")
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
@@ -215,7 +229,8 @@ def create_fastapi_app(
         app.state.semantic_cache = semantic_cache
         app.state.telemetry = telemetry_mgr
         app.state.llm_client = llm_client or AsyncLLMClient()
-        for binding in (mcp_holder, a2a_holder):
+        app.state.session_supplier = session_holder
+        for binding in (mcp_holder, a2a_holder, session_holder):
             if binding is not None:
                 binding.start()
         try:
@@ -233,12 +248,24 @@ def create_fastapi_app(
                         if store is not None:
                             await store.aclose()
                 finally:
+                    if session_holder is not None:
+                        await asyncio.to_thread(session_holder.take_for_shutdown)
                     if owns_llm_client and getattr(app.state, "llm_client", None) is not None:
                         await app.state.llm_client.aclose()
                     shutdown_cpu_executor()
 
     app = FastAPI(title="FinaRAG Async Service", version="1.0.0", lifespan=_lifespan)
     app.add_middleware(_TraceAndSecurityHeadersMiddleware)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error(request: Request, exc: RequestValidationError):
+        if request.url.path.startswith("/sessions/") or (
+            isinstance(exc.body, dict) and exc.body.get("thread_id") is not None
+        ):
+            return JSONResponse(status_code=422, content={
+                "error": "invalid_session_request", "message": "Invalid session request", "trace_id": current_trace_id(),
+            })
+        return await request_validation_exception_handler(request, exc)
 
     @app.get("/healthz")
     async def healthz():
@@ -278,11 +305,22 @@ def create_fastapi_app(
         }
 
     @app.post("/qa")
-    async def qa_endpoint(req: QaRequest, _auth: None = Depends(_verify_api_key)):
+    async def qa_endpoint(req: QaRequest, request: Request, _auth: None = Depends(_verify_api_key)):
         started = time.perf_counter()
         trace_id = current_trace_id() or ""
         spans: List[Dict[str, Any]] = []
         schema = req.answer_schema
+
+        if req.thread_id is not None:
+            try:
+                principal, key = await session_request(request, write=True)
+                result = await asyncio.to_thread(run_session_turn, req, principal, key)
+            except Exception as exc:
+                return session_error(exc)
+            return JSONResponse(
+                status_code=202 if result["approval_status"] == "pending" else 200,
+                content=session_answer(result, req.question, started),
+            )
 
         if req.use_cache:
             cached = semantic_cache.get(req.question, schema)
@@ -380,6 +418,13 @@ def create_fastapi_app(
             max_tokens=req.max_tokens if req.max_tokens is not None else token_budget_default,
             max_latency_ms=req.max_latency_ms if req.max_latency_ms is not None else latency_budget_default,
         )
+        if req.thread_id is not None:
+            try:
+                principal, key = await session_request(request, write=True)
+                return await start_session_stream(req, request, principal, key)
+            except Exception as exc:
+                return session_error(exc)
+
         proc = holder.get()
 
         async def _sse_generator():
@@ -427,6 +472,193 @@ def create_fastapi_app(
         if not valid_principal(principal):
             raise HTTPException(status_code=403, detail="Access denied")
         return principal
+
+    def session_error(exc):
+        if isinstance(exc, HTTPException):
+            raise exc
+        from src.memory.session_memory import SessionError
+        from src.storage.base import StorageError, StorageSecurityError
+
+        if isinstance(exc, SessionError):
+            status_code, code, message = exc.status, exc.code, str(exc)
+        elif isinstance(exc, (StorageError, StorageSecurityError, OSError)):
+            status_code, code, message = 503, "session_unavailable", "Session storage unavailable"
+        else:
+            status_code, code, message = 500, "session_execution_failed", "Session execution failed"
+        return JSONResponse(status_code=status_code, content={
+            "error": code, "message": message, "trace_id": current_trace_id(),
+        })
+
+    async def session_request(request, *, write=False, reviewer=False):
+        if not checkpoint_enabled:
+            raise HTTPException(status_code=404, detail="Sessions unavailable")
+        from src.memory.session_memory import SessionError, session_identifier
+
+        principal = await protocol_auth(request)
+        if "read" not in principal.roles or (reviewer and "reviewer" not in principal.roles):
+            raise SessionError(403, "access_denied", "Access denied")
+        key = session_identifier(request.headers.get("Idempotency-Key"), code="invalid_idempotency_key") if write else None
+        return principal, key
+
+    def get_session_service():
+        from src.memory.session_memory import SessionError
+
+        try:
+            return session_holder.get()
+        except SessionError:
+            raise
+        except Exception:
+            raise SessionError(503, "session_unavailable", "Session storage unavailable") from None
+
+    def run_session_turn(req, principal, key, on_event=None, on_admitted=None):
+        memory, graph, proc = get_session_service()
+        budget = BudgetContext(
+            max_tokens=req.max_tokens if req.max_tokens is not None else token_budget_default,
+            max_latency_ms=req.max_latency_ms if req.max_latency_ms is not None else latency_budget_default,
+        )
+        return memory.run_turn(
+            proc, graph=graph, thread_id=req.thread_id, subject=principal.subject, key=key,
+            question=req.question, schema=req.answer_schema, budget=budget, approval_enabled=approval_enabled,
+            on_event=on_event, on_admitted=on_admitted,
+        )
+
+    def session_answer(result, question, started):
+        answer = {**result, "trace_id": current_trace_id(),
+                  "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+        if result["approval_status"] != "pending":
+            answer["question"] = question
+        return answer
+
+    async def start_session_stream(req, request, principal, key):
+        loop = asyncio.get_running_loop()
+        events = asyncio.Queue()
+        admission = loop.create_future()
+        disconnected = threading.Event()
+        started = time.perf_counter()
+
+        def on_event(event):
+            if disconnected.is_set() or loop.is_closed():
+                return
+            safe = {name: event[name] for name in ("node", "stage", "ms", "degraded_level") if name in event}
+            if safe.get("stage") == "done":
+                safe["stage"] = "finalize"
+            safe["trace_id"] = current_trace_id()
+            try:
+                loop.call_soon_threadsafe(events.put_nowait, safe)
+            except RuntimeError:
+                if not loop.is_closed():
+                    raise
+
+        def admit():
+            if not admission.done():
+                admission.set_result(None)
+
+        def on_admitted():
+            if not disconnected.is_set() and not loop.is_closed():
+                loop.call_soon_threadsafe(admit)
+
+        async def execute():
+            try:
+                result = await asyncio.to_thread(run_session_turn, req, principal, key, on_event, on_admitted)
+                stage = "approval_pending" if result["approval_status"] == "pending" else "done"
+                await events.put({"stage": stage, **session_answer(result, req.question, started)})
+            except Exception as exc:
+                response = session_error(exc)
+                if not admission.done():
+                    admission.set_result(response)
+                else:
+                    await events.put({"stage": "error", "status": response.status_code, **json.loads(response.body)})
+            finally:
+                await events.put(None)
+
+        worker = asyncio.create_task(execute())
+        try:
+            rejected = await admission
+        except asyncio.CancelledError:
+            disconnected.set()
+            raise
+        if rejected is not None:
+            return rejected
+
+        async def stream():
+            try:
+                while (event := await events.get()) is not None:
+                    if await request.is_disconnected():
+                        break
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                disconnected.set()
+                # Finish the admitted operation under the lock even if delivery is cancelled.
+                await asyncio.shield(worker)
+
+        return StreamingResponse(
+            stream(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    if checkpoint_enabled:
+        from src.graph.builder import build_finarag_graph
+        from src.memory import ContextCompactor, SessionMemory, SqliteCheckpointSaver
+        from src.memory.session_memory import SessionError
+
+        def build_session_service():
+            proc = holder.get()
+            resolved_engine = getattr(proc, "_resolved_graph_engine", None)
+            if (not callable(getattr(proc, "route_question", None)) or
+                (resolved_engine is not None and resolved_engine() != "langgraph")):
+                raise SessionError(503, "session_engine_unavailable", "Session graph engine unavailable")
+            configured = os.getenv("FINARAG_CHECKPOINT_ROOT", "outputs/finarag_sessions").strip()
+            if not configured:
+                raise ValueError("Invalid checkpoint root")
+            root = Path(configured).expanduser()
+            if not root.is_absolute():
+                root = Path(__file__).resolve().parents[2] / root
+            if root != root.resolve():
+                raise ValueError("Invalid checkpoint root")
+            db_path = checkpoint_db_path if checkpoint_db_path is not None else root / "checkpoints.sqlite"
+            saver = SqliteCheckpointSaver(db_path, allowed_base_dir=root)
+            return SessionMemory(saver, ContextCompactor()), build_finarag_graph(proc, saver), proc
+
+        session_holder = _ProtocolHolder(build_session_service)
+
+        async def session_read(request, thread_id, *, history=False, before=None, limit=20):
+            try:
+                principal, _ = await session_request(request)
+                def read():
+                    memory, graph, _ = get_session_service()
+                    if history:
+                        return {"history": memory.history(thread_id, subject=principal.subject, before=before, limit=limit)}
+                    return memory.describe(thread_id, subject=principal.subject, graph=graph)
+                return await asyncio.to_thread(read)
+            except Exception as exc:
+                return session_error(exc)
+
+        @app.get("/sessions/{thread_id}")
+        async def session_status(thread_id: str, request: Request):
+            return await session_read(request, thread_id)
+
+        @app.get("/sessions/{thread_id}/history")
+        async def session_history(
+            thread_id: str, request: Request, before: str | None = None, limit: int = Query(20, ge=1, le=100),
+        ):
+            return await session_read(request, thread_id, history=True, before=before, limit=limit)
+
+        @app.post("/sessions/{thread_id}/resume")
+        async def session_resume(thread_id: str, req: ResumeRequest, request: Request):
+            started = time.perf_counter()
+            try:
+                principal, key = await session_request(request, write=True, reviewer=True)
+                def resume():
+                    memory, graph, proc = get_session_service()
+                    return memory.resume(
+                        proc, graph=graph, thread_id=thread_id, subject=principal.subject,
+                        key=key, **req.model_dump(),
+                    )
+                result = await asyncio.to_thread(resume)
+                return {**result, "trace_id": current_trace_id(),
+                        "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+            except Exception as exc:
+                return session_error(exc)
 
     if _protocol_enabled("FINARAG_MCP_ENABLED"):
         from src.protocols.mcp_server import MCPServer, RESOURCES_ROOT, mount_mcp_routes

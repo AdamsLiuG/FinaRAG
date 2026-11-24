@@ -7,12 +7,16 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
+from langgraph.runtime import Runtime
+
+from src.graph.state import FinaRAGRunContext
 from src.adaptive_retrieval import adaptive_retrieval_enabled
 from src.hyde import HYDE_QUERY_MARKER, should_trigger_hyde
 
 
 def make_retrieve_rerank_node(processor: Any):
-    def retrieve_rerank_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    def retrieve_rerank_node(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> Dict[str, Any]:
+        context = runtime.context if runtime is not None else None
         started = time.perf_counter()
         question = state["question"]
         schema = state["schema"]
@@ -20,7 +24,7 @@ def make_retrieve_rerank_node(processor: Any):
         rewrite_result = state["query_plan"]
         route_info = state.get("route_info")
         candidate_doc_ids = list(state.get("candidate_doc_ids") or [])
-        budget_ctx = state.get("budget_context")
+        budget_ctx = context.budget_context if context else state.get("budget_context")
         if budget_ctx is not None:
             budget_ctx.should_use_fast_path(rewrite_result)
 
@@ -282,7 +286,7 @@ def make_retrieve_rerank_node(processor: Any):
 
         return {
             "retrieval_mode": effective_mode,
-            "retriever_ref": retriever,
+            **({"retriever_ref": retriever} if context is None else {}),
             "retrieval_results": retrieval_results,
             "candidate_pool_size_before_rerank": candidate_pool_size_before_rerank,
             "reranking_debug": reranking_debug,

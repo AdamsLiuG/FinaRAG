@@ -8,13 +8,26 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+from langgraph.runtime import Runtime
+
+from src.graph.state import FinaRAGRunContext
 from src.answer_validation import validate_answer
 from src.citation_formatter import build_citations, compute_confidence
+from src.service.budget_controller import estimate_text_tokens
 from src.structured.pot_sandbox import PotCalculationError, PotSecurityError, extract_and_execute_pot
 
 
+def approval_reasons(answer, *, schema) -> list[str]:
+    flags = answer.get("validation_flags") or []
+    reasons = [flag for flag in ("claim_contradicted", "metric_caliber_conflict_refused") if flag in flags]
+    if answer.get("confidence") == "low" and (schema == "number" or "claim_high_unverified_rate" in flags):
+        reasons.append("critical_low_confidence")
+    return reasons
+
+
 def make_ground_generate_node(processor: Any):
-    def ground_generate_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    def ground_generate_node(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> Dict[str, Any]:
+        context = runtime.context if runtime is not None else None
         started = time.perf_counter()
         question = state["question"]
         schema = state["schema"]
@@ -102,6 +115,7 @@ def make_ground_generate_node(processor: Any):
                 "retrieval_results": current_results,
                 "validated_flags": list(validated_answer.validation_flags or []),
                 "final_answer_dict": validated_answer.answer,
+                **({"approval_reasons": approval_reasons(validated_answer.answer, schema=schema)} if context else {}),
                 "stage_events": [
                     {
                         "stage": "ground_generate",
@@ -114,7 +128,7 @@ def make_ground_generate_node(processor: Any):
             }
 
         local_response_data: Dict[str, Any] = {}
-        budget_ctx = state.get("budget_context")
+        budget_ctx = context.budget_context if context else state.get("budget_context")
         if schema == "number" and grounding_result is not None and processor._grounded_number_value(grounding_result) is not None:
             answer_dict = processor._build_table_grounded_number_answer(grounding_result)
             local_response_data = {}
@@ -136,6 +150,22 @@ def make_ground_generate_node(processor: Any):
                 answer_context_results = current_results[: processor.top_n_retrieval]
                 target_model = processor.answering_model
             rag_context = processor._format_retrieval_results(answer_context_results)
+            if context and (memory := state.get("working_context")):
+                # User text and historical output provide continuity only. Verified facts
+                # travel in a separate field with their original attribution.
+                prompt_memory = memory.get("prompt") or ""
+                if budget_ctx and estimate_text_tokens(prompt_memory) > budget_ctx.remaining_tokens:
+                    refusal = {
+                        "final_answer": "N/A", "confidence": "low",
+                        "validation_flags": ["insufficient_context_budget"],
+                        "references": [], "citations": [],
+                    }
+                    return {
+                        "final_answer_dict": refusal, "validated_flags": refusal["validation_flags"],
+                        "approval_reasons": approval_reasons(refusal, schema=schema),
+                    }
+                if prompt_memory:
+                    rag_context += "\n\n" + prompt_memory
             answer_dict = processor.api_processor.get_answer_from_rag_context(
                 question=question,
                 rag_context=rag_context,
@@ -144,6 +174,10 @@ def make_ground_generate_node(processor: Any):
                 temperature=processor.answer_temperature,
                 metric_caliber_hint=processor._build_metric_caliber_hint(rewrite_result),
             )
+            if context:
+                # Grounding evidence is populated by the server's deterministic grounders.
+                answer_dict.pop("table_grounding_result", None)
+                answer_dict.pop("chart_grounding_result", None)
             local_response_data = dict(getattr(processor.api_processor, "response_data", {}) or {})
             processor.response_data = local_response_data
             if budget_ctx is not None:
@@ -305,6 +339,7 @@ def make_ground_generate_node(processor: Any):
             "retrieval_results": current_results,
             "validated_flags": final_flags,
             "final_answer_dict": final_dict,
+            **({"approval_reasons": approval_reasons(final_dict, schema=schema)} if context else {}),
             "stage_events": [
                 {
                     "stage": "ground_generate",
