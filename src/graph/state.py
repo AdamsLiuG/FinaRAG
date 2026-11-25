@@ -86,6 +86,11 @@ class FinaRAGState(TypedDict, total=False):
     rephrased_questions: Dict[str, str]
     sub_answers: Annotated[List[Tuple[str, Dict[str, Any]]], operator.add]
 
+    # Deep research outputs
+    deep_research_plan: Dict[str, Any]
+    evidence_ledger: Dict[str, Any]
+    deep_research_status: Dict[str, Any]
+
     # Grounding, generation, validation & observability
     validated_flags: List[str]
     final_answer_dict: Dict[str, Any]

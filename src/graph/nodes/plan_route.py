@@ -40,13 +40,14 @@ def structured_sql_enabled(processor: Any) -> bool:
     return explicit or flag in {"1", "true", "yes"}
 
 
-def make_prepare_single_company_node(processor: Any):
+def make_prepare_single_company_node(processor: Any, *, allow_deep_research: bool = False):
     """Node used when entering the single-company subgraph directly."""
 
     def prepare_single_company_node(state: Dict[str, Any]) -> Dict[str, Any]:
         started = time.perf_counter()
         if (
-            not processor.use_vector_dbs
+            not (allow_deep_research and state.get("deep_research_eligible"))
+            and not processor.use_vector_dbs
             and not processor.use_bm25_db
             and not processor.use_sparse_lexical_db
             and not processor.use_tag_db
@@ -145,10 +146,31 @@ def make_prepare_single_company_node(processor: Any):
     return prepare_single_company_node
 
 
-def make_plan_route_node(processor: Any):
+def make_plan_route_node(processor: Any, *, deep_research_enabled: bool = False):
     """Full question routing node executed at the start of process_question."""
 
-    single_prep = make_prepare_single_company_node(processor)
+    single_prep = make_prepare_single_company_node(processor, allow_deep_research=deep_research_enabled)
+
+    def eligible(decision, question, schema):
+        if not deep_research_enabled:
+            return False
+        from src.deep_research.planner import should_route_deep_research
+
+        return should_route_deep_research(
+            decision.get("query_plan"), schema=schema, question=question, route_decision=decision,
+        )
+
+    def research_route(decision, started):
+        return {
+            "route_target": "deep_research",
+            "route_decision": decision,
+            "query_plan": decision["query_plan"],
+            "route_info": decision.get("route_info"),
+            "stage_events": [{
+                "stage": "route", "route_target": "deep_research",
+                "ms": round((time.perf_counter() - started) * 1000, 2),
+            }],
+        }
 
     def plan_route_node(state: Dict[str, Any]) -> Dict[str, Any]:
         started = time.perf_counter()
@@ -244,6 +266,8 @@ def make_plan_route_node(processor: Any):
                         }
                     ],
                 }
+            if eligible(route_decision, question, schema):
+                return research_route(route_decision, started)
             return {
                 "route_target": "comparative_map",
                 "route_decision": route_decision,
@@ -361,6 +385,7 @@ def make_plan_route_node(processor: Any):
                 ],
             }
 
+        deep_research_eligible = eligible(route_decision, question, schema)
         prepared = single_prep(
             {
                 "question": question,
@@ -368,8 +393,11 @@ def make_plan_route_node(processor: Any):
                 "company_name": route_decision.get("company_name") or "",
                 "query_plan": route_decision.get("query_plan"),
                 "route_info": route_decision.get("route_info"),
+                "deep_research_eligible": deep_research_eligible,
             }
         )
+        if deep_research_eligible and prepared["route_target"] == "single_rag":
+            return research_route(route_decision, started)
         prepared["route_decision"] = route_decision
         return prepared
 

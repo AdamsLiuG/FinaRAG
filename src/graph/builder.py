@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -32,6 +33,8 @@ def _route_after_plan(state: Dict[str, Any]) -> str:
         return "comparative_plan"
     if target == "single_rag":
         return "retrieve_rerank"
+    if target == "deep_research":
+        return target
     return "done"
 
 
@@ -53,6 +56,7 @@ def prepare_durable_turn(state: FinaRAGState) -> dict:
         "rephrased_questions": {}, "sub_answers": Overwrite([]), "validated_flags": [],
         "final_answer_dict": {}, "stage_events": Overwrite([]), "approval_reasons": [],
         "approval_status": "not_required", "reviewed_candidate": None, "approval_decision": None,
+        "deep_research_plan": {}, "evidence_ledger": {}, "deep_research_status": {},
     }
 
 
@@ -141,7 +145,8 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
     """Build the full graph with a durable topology when a saver is supplied."""
     builder = StateGraph(FinaRAGState, context_schema=FinaRAGRunContext)
     durable = checkpointer is not None
-    plan = make_plan_route_node(processor)
+    deep_enabled = os.getenv("FINARAG_DEEP_RESEARCH_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+    plan = make_plan_route_node(processor, deep_research_enabled=deep_enabled)
     if durable:
         def durable_plan(state, runtime):
             memory = state.get("working_context") or {}
@@ -180,9 +185,16 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
     builder.add_node("comparative_reduce", make_comparative_reduce_node(processor))
 
     terminal = "prepare_approval" if durable else END
+    plan_targets = {"done": terminal, "retrieve_rerank": "retrieve_rerank", "comparative_plan": "comparative_plan"}
+    if deep_enabled:
+        from src.deep_research.planner import make_deep_research_node
+
+        node = make_deep_research_node(processor)
+        builder.add_node("deep_research", _with_budget_snapshot(node) if durable else node)
+        builder.add_edge("deep_research", terminal)
+        plan_targets["deep_research"] = "deep_research"
     builder.add_conditional_edges(
-        "plan_route", _route_after_plan,
-        {"done": terminal, "retrieve_rerank": "retrieve_rerank", "comparative_plan": "comparative_plan"},
+        "plan_route", _route_after_plan, plan_targets,
     )
     builder.add_edge("retrieve_rerank", "ground_generate")
     builder.add_conditional_edges(
