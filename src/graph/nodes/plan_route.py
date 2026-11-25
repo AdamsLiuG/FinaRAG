@@ -32,6 +32,37 @@ _SINGLE_COMPANY_PLUGINS = PluginRegistry(
 _CROSS_DOC_SQL_HINTS = ("排名前", "前", "最高", "最大", "最低", "最小", "哪些公司", "多少家", "几家")
 
 
+from src.harness.trajectory_store import capture_active, capture_step
+
+
+def _with_plan_observation(node):
+    def run(state):
+        if not capture_active():
+            return node(state)
+        started = time.perf_counter()
+        updates = node(state)
+        answer = updates.get("final_answer_dict") or {}
+        decision = updates.get("route_decision") or {}
+        plan = updates.get("query_plan") or decision.get("query_plan") or answer.get("query_plan")
+        if hasattr(plan, "to_dict"):
+            plan = plan.to_dict()
+        stages = updates.get("stage_events") or []
+        target = next((item["route_target"] for item in stages if "route_target" in item), updates.get("route_target"))
+        capture_step(
+            "plan", operation="route", step_key="plan",
+            inputs={"question": state["question"], "schema": state["schema"]},
+            outputs={
+                "route_target": updates.get("route_target"), "route_mode": target,
+                "query_plan": plan, "rule_route": updates.get("route_target") == "done",
+                **({"answer": answer} if answer else {}),
+            },
+            costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+        )
+        return updates
+
+    return run
+
+
 def structured_sql_enabled(processor: Any) -> bool:
     if getattr(processor, "structured_router", None) is None:
         return False
@@ -40,7 +71,7 @@ def structured_sql_enabled(processor: Any) -> bool:
     return explicit or flag in {"1", "true", "yes"}
 
 
-def make_prepare_single_company_node(processor: Any, *, allow_deep_research: bool = False):
+def make_prepare_single_company_node(processor: Any, *, allow_deep_research: bool = False, observe: bool = True):
     """Node used when entering the single-company subgraph directly."""
 
     def prepare_single_company_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -143,13 +174,13 @@ def make_prepare_single_company_node(processor: Any, *, allow_deep_research: boo
             ],
         }
 
-    return prepare_single_company_node
+    return _with_plan_observation(prepare_single_company_node) if observe else prepare_single_company_node
 
 
 def make_plan_route_node(processor: Any, *, deep_research_enabled: bool = False):
     """Full question routing node executed at the start of process_question."""
 
-    single_prep = make_prepare_single_company_node(processor, allow_deep_research=deep_research_enabled)
+    single_prep = make_prepare_single_company_node(processor, allow_deep_research=deep_research_enabled, observe=False)
 
     def eligible(decision, question, schema):
         if not deep_research_enabled:
@@ -401,4 +432,4 @@ def make_plan_route_node(processor: Any, *, deep_research_enabled: bool = False)
         prepared["route_decision"] = route_decision
         return prepared
 
-    return plan_route_node
+    return _with_plan_observation(plan_route_node)

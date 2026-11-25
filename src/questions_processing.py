@@ -1,17 +1,20 @@
 import concurrent.futures
 from collections import defaultdict
+from contextlib import nullcontext
+from contextvars import copy_context
 from dataclasses import replace
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import os
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 from tqdm import tqdm
 
+from src import grounding_facade, result_formatter
 from src.analysis_playbooks import build_playbook_hint, get_default_playbook_store
 from src.adaptive_retrieval import (
     adaptive_max_rounds,
@@ -21,16 +24,15 @@ from src.adaptive_retrieval import (
 from src.answer_validation import validate_answer
 from src.api_requests import APIProcessor
 from src.chart_grounding import ChartGrounder
-from src.citation_formatter import build_citations, compute_confidence, dedupe_citations, dedupe_references
+from src.citation_formatter import build_citations
 from src.document_manifest import load_document_manifest
 from src.hyde import HYDE_QUERY_MARKER, HyDEGenerator, should_trigger_hyde
 from src.query_plan import QueryPlan
 from src.query_rewrite import QuestionRewriter
 from src.report_catalog import ReportCatalog
 from src.retrieval import BM25Retriever, BGEM3SparseRetriever, HybridRetriever, TagRetriever, VectorRetriever
-from src.retrieval_filters import build_result_metadata
+from src.retrieval_filters import RetrievalFilters, build_result_metadata
 from src.table_grounding import TableGrounder
-from src.text_normalization import normalize_text, parse_numeric_value
 from src.graph.builder import (
     build_comparative_graph,
     build_single_company_graph,
@@ -44,8 +46,23 @@ from src.graph.legacy_runner import (
 from src.graph.plugins import cash_dividend as _cash_dividend_plugin
 from src.graph.plugins import legal_rep as _legal_rep_plugin
 from src.graph.plugins import metadata_agg as _metadata_agg_plugin
+from src.harness.trajectory_store import (
+    capture_active,
+    capture_step,
+    current_observer,
+    current_prefix,
+    record_trajectory,
+    step_scope,
+)
+from src.storage.qdrant_store import UnifiedHybridRetriever
 from src.structured.query_router import StructuredQueryRouter
 from src.structured.sql_store import FinancialSQLStore
+
+
+_COMPOSED_HYBRID_METHODS = (
+    HybridRetriever.retrieve_by_company_name,
+    UnifiedHybridRetriever.retrieve_by_company_name,
+)
 
 
 def _result_score(result: Dict) -> float:
@@ -63,6 +80,84 @@ def _result_merge_key(result: Dict) -> tuple:
     if chunk_id is not None:
         return source_name, result_scope, chunk_id
     return source_name, result_scope, result.get("page"), result.get("text")
+
+
+def _trajectory_key(key: str) -> str:
+    prefix = current_prefix()
+    return f"{prefix}/{key}" if prefix else key
+
+
+def _observe_candidate_retrieval(retrieve, kwargs: Dict, *, step_key: str) -> List[Dict]:
+    if not capture_active():
+        return retrieve(**kwargs)
+    inputs = dict(kwargs)
+    filters = inputs.get("filters")
+    if isinstance(filters, RetrievalFilters):
+        inputs["filters"] = filters.to_dict()
+    started = time.perf_counter()
+    try:
+        results = retrieve(**kwargs)
+    except Exception:
+        capture_step(
+            "retrieval", operation="retrieve_candidates", step_key=step_key,
+            inputs=inputs, outputs={}, status="failed",
+            costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+        )
+        raise
+    capture_step(
+        "retrieval", operation="retrieve_candidates", step_key=step_key,
+        inputs=inputs, outputs={"results": results},
+        costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+    )
+    return results
+
+
+def _observe_candidate_ranking(rerank, kwargs: Dict, *, parents=()) -> List[Dict]:
+    if not capture_active():
+        return rerank(**kwargs)
+    candidates = kwargs["candidate_results"]
+    inputs = {key: value for key, value in kwargs.items() if key != "candidate_results"}
+    # Preserve pre-rank order and scores even when a reranker mutates its inputs.
+    inputs["candidates"] = [
+        {**candidate, "metadata": dict(candidate.get("metadata") or {})}
+        for candidate in candidates
+    ]
+    started = time.perf_counter()
+    try:
+        results = rerank(**kwargs)
+    except Exception:
+        capture_step(
+            "rerank", operation="rank_candidates", step_key="rerank",
+            inputs=inputs, outputs={}, parents=parents, status="failed",
+            costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+        )
+        raise
+    capture_step(
+        "rerank", operation="rank_candidates", step_key="rerank",
+        inputs=inputs, outputs={"results": results}, parents=parents,
+        costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+    )
+    return results
+
+
+class _ObservedHybridRetrieval:
+    """Observe the two calls made by the built-in single-query coordinators."""
+
+    def __init__(self, retriever):
+        self.retriever = retriever
+
+    def __getattr__(self, name):
+        return getattr(self.retriever, name)
+
+    def retrieve_candidates_by_company_name(self, **kwargs):
+        return _observe_candidate_retrieval(
+            self.retriever.retrieve_candidates_by_company_name, kwargs, step_key="retrieval"
+        )
+
+    def rerank_candidates(self, **kwargs):
+        return _observe_candidate_ranking(
+            self.retriever.rerank_candidates, kwargs, parents=(_trajectory_key("retrieval"),)
+        )
 
 
 def _legal_rep_event():
@@ -276,152 +371,17 @@ class QuestionsProcessor:
         return self.companies_df
 
     def _format_retrieval_results(self, retrieval_results: List[Dict]) -> str:
-        if not retrieval_results:
-            return ""
-
-        context_parts = []
-        total_chars = 0
-        for result in retrieval_results:
-            page_number = result['page']
-            text = result['text']
-            metadata = result.get("metadata", {})
-            section_name = metadata.get("section_name") or metadata.get("section_title")
-            chunk_type = metadata.get("chunk_type")
-            node_type = metadata.get("node_type")
-            matched_tags = result.get("matched_tags") or []
-            doc_id = metadata.get("sha1_name") or metadata.get("doc_id")
-            company = metadata.get("company_name")
-            report_year = metadata.get("report_year") or metadata.get("fiscal_year")
-
-            if self.max_doc_chars > 0 and len(text) > self.max_doc_chars:
-                text = text[: self.max_doc_chars].rstrip() + "\n...[truncated]"
-
-            label = f"Text retrieved from page {page_number}"
-            if company:
-                label += f" | company: {company}"
-            if doc_id:
-                label += f" | doc_id: {doc_id}"
-            if report_year:
-                label += f" | report_year: {report_year}"
-            if section_name:
-                label += f" | section: {section_name}"
-            if chunk_type:
-                label += f" | chunk_type: {chunk_type}"
-            if node_type:
-                label += f" | node_type: {node_type}"
-            if matched_tags:
-                label += f" | matched_tags: {', '.join(matched_tags)}"
-
-            part = f'{label}: \n"""\n{text}\n"""'
-
-            if self.max_context_chars > 0 and total_chars + len(part) > self.max_context_chars:
-                remaining = self.max_context_chars - total_chars
-                if remaining <= 0:
-                    break
-                part = part[:remaining].rstrip() + "\n...[truncated]"
-
-            context_parts.append(part)
-            total_chars += len(part)
-
-            if self.max_context_chars > 0 and total_chars >= self.max_context_chars:
-                break
-
-        return "\n\n---\n\n".join(context_parts)
+        return result_formatter.format_retrieval_results(self, retrieval_results)
 
     def _extract_references(self, pages_list: List[int], company_name: str, pdf_sha1: Optional[str] = None) -> List[Dict]:
-        company_sha1 = pdf_sha1 or ""
-        if not company_sha1:
-            if self.report_catalog is not None:
-                report = self.report_catalog.get_report_by_company_name(company_name)
-                if report is not None:
-                    company_sha1 = report.sha1
-            companies_df = self._load_companies_df()
-            if not company_sha1 and "company_name" in companies_df.columns:
-                matching_rows = companies_df[companies_df["company_name"] == company_name]
-                if not matching_rows.empty:
-                    for column in ("sha1", "sha1_name", "doc_id"):
-                        if column in matching_rows.columns:
-                            company_sha1 = matching_rows.iloc[0][column]
-                            if company_sha1:
-                                break
-        return [{"pdf_sha1": company_sha1, "page": page} for page in pages_list]
+        return result_formatter.extract_references(self, pages_list, company_name, pdf_sha1)
 
     @staticmethod
     def _extract_references_from_results(pages_list: List[int], retrieval_results: List[Dict]) -> List[Dict]:
-        pages = set(pages_list or [])
-        references = []
-        seen = set()
-        for result in retrieval_results:
-            page = result.get("page")
-            if page not in pages:
-                continue
-            metadata = result.get("metadata") or {}
-            pdf_sha1 = metadata.get("sha1_name") or metadata.get("doc_id")
-            key = (pdf_sha1, page)
-            if key in seen:
-                continue
-            seen.add(key)
-            references.append(
-                {
-                    "pdf_sha1": pdf_sha1,
-                    "page": page,
-                }
-            )
-        return references
+        return result_formatter.extract_references_from_results(pages_list, retrieval_results)
 
     def _load_document_payload(self, doc_id: Optional[str]) -> Optional[Dict[str, Any]]:
-        doc_id = str(doc_id or "").strip()
-        if not doc_id:
-            return None
-        # 整个 load 持锁（double-checked）：分离的读锁/写锁存在 check-then-act
-        # 竞态——并发 cold miss 时多线程各自加载产生不同 payload 对象
-        # （并发一致性测试抓到）。锁内 IO 串行化冷加载可接受（一次性成本），
-        # 热路径缓存命中快速返回。
-        with self._document_cache_lock:
-            cached = self._document_cache.get(doc_id)
-            if cached is not None:
-                return cached
-
-            try:
-                from src.document_store import get_sqlite_doc_repository
-
-                sqlite_repo = get_sqlite_doc_repository(self.documents_dir)
-                if sqlite_repo is not None:
-                    payload = sqlite_repo.get_document_payload(doc_id)
-                    if payload is not None:
-                        self._document_cache[doc_id] = payload
-                        return payload
-            except Exception:
-                pass
-
-            candidate_paths = []
-            if doc_id.endswith(".json"):
-                candidate_paths.append(self.documents_dir / doc_id)
-            else:
-                candidate_paths.append(self.documents_dir / f"{doc_id}.json")
-                candidate_paths.append(self.documents_dir / doc_id)
-
-            for path in candidate_paths:
-                if not path.exists() or not path.is_file():
-                    continue
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except Exception:
-                    continue
-                self._document_cache[doc_id] = payload
-                return payload
-
-            for path in self.documents_dir.glob("*.json"):
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except Exception:
-                    continue
-                metainfo = payload.get("metainfo") or {}
-                observed_doc_id = metainfo.get("sha1_name") or metainfo.get("doc_id") or path.stem
-                if str(observed_doc_id) == doc_id:
-                    self._document_cache[doc_id] = payload
-                    return payload
-            return None
+        return grounding_facade.load_document_payload(self, doc_id)
 
     def _selected_doc_id(
         self,
@@ -429,49 +389,11 @@ class QuestionsProcessor:
         route_info: Optional[Dict[str, Any]],
         query_plan: Optional[QueryPlan] = None,
     ) -> Optional[str]:
-        selected_report = (route_info or {}).get("selected_report") or {}
-        if isinstance(selected_report, dict):
-            for key in ("sha1", "doc_id"):
-                if selected_report.get(key):
-                    return str(selected_report[key])
-
-        candidate_doc_ids = list((route_info or {}).get("candidate_doc_ids") or [])
-        if not candidate_doc_ids and query_plan is not None:
-            candidate_doc_ids = list(query_plan.filters.candidate_doc_ids or [])
-        if len(candidate_doc_ids) == 1:
-            return str(candidate_doc_ids[0])
-
-        if self.report_catalog is not None and company_name:
-            report = self.report_catalog.get_report_by_company_name(company_name)
-            if report is not None:
-                return report.sha1
-        return None
+        return grounding_facade.selected_doc_id(self, company_name, route_info, query_plan)
 
     @staticmethod
     def _document_pages(document: Dict[str, Any]) -> List[Tuple[int, str]]:
-        content = document.get("content") or {}
-        pages: List[Tuple[int, str]] = []
-        for page in content.get("pages") or []:
-            try:
-                page_number = int(page.get("page"))
-            except (TypeError, ValueError):
-                continue
-            text = str(page.get("text") or "")
-            if text:
-                pages.append((page_number, text))
-        if pages:
-            return pages
-
-        grouped: Dict[int, List[str]] = defaultdict(list)
-        for chunk in content.get("chunks") or []:
-            try:
-                page_number = int(chunk.get("page") or chunk.get("page_start"))
-            except (TypeError, ValueError):
-                continue
-            text = str(chunk.get("text") or chunk.get("search_text") or "")
-            if text:
-                grouped[page_number].append(text)
-        return [(page, "\n".join(texts)) for page, texts in sorted(grouped.items())]
+        return grounding_facade.document_pages(document)
 
     def _document_page_result(
         self,
@@ -483,40 +405,15 @@ class QuestionsProcessor:
         source: str,
         score: float = 1.0,
     ) -> Dict[str, Any]:
-        metainfo = dict(document.get("metainfo") or {})
-        doc_id = str(metainfo.get("sha1_name") or metainfo.get("doc_id") or "")
-        if doc_id:
-            metainfo["sha1_name"] = doc_id
-        chunk = {
-            "chunk_id": f"{doc_id or 'document'}:{chunk_type}:{page}",
-            "chunk_type": chunk_type,
-            "type": chunk_type,
-            "node_type": "page",
-            "page": page,
-            "page_start": page,
-            "page_end": page,
-            "text": text,
-            "search_text": text,
-            "evidence_type": chunk_type,
-        }
-        metadata = build_result_metadata(metainfo, chunk)
-        if doc_id and not metadata.get("sha1_name"):
-            metadata["sha1_name"] = doc_id
-        return {
-            "distance": score,
-            "combined_score": score,
-            "ranking_score": score,
-            "page": page,
-            "text": text,
-            "metadata": metadata,
-            "chunk_id": chunk["chunk_id"],
-            "chunk_type": chunk_type,
-            "section_title": metadata.get("section_title"),
-            "retrieval_sources": [source],
-            "matched_child_chunk_ids": [],
-            "matched_tags": [],
-            "result_scope": "page",
-        }
+        return grounding_facade.document_page_result(
+            document=document,
+            page=page,
+            text=text,
+            chunk_type=chunk_type,
+            source=source,
+            score=score,
+            build_result_metadata=build_result_metadata,
+        )
 
     def _build_rule_answer(
         self,
@@ -642,133 +539,17 @@ class QuestionsProcessor:
         return query_plan
 
     def _serialize_retrieval_result(self, result: Dict) -> Dict:
-        metadata = result.get("metadata", {})
-        return {
-            "page": result.get("page"),
-            "sha1_name": metadata.get("sha1_name"),
-            "chunk_id": metadata.get("chunk_id"),
-            "chunk_type": metadata.get("chunk_type"),
-            "node_type": metadata.get("node_type"),
-            "parent_chunk_id": metadata.get("parent_chunk_id"),
-            "section_title": metadata.get("section_title"),
-            "section_name": metadata.get("section_name"),
-            "report_section": metadata.get("report_section"),
-            "company_name": metadata.get("company_name"),
-            "company_aliases": metadata.get("company_aliases", []),
-            "security_code": metadata.get("security_code"),
-            "stock_code": metadata.get("stock_code"),
-            "broker_name": metadata.get("broker_name"),
-            "currency": metadata.get("currency"),
-            "exchange": metadata.get("exchange"),
-            "board": metadata.get("board"),
-            "market_type": metadata.get("market_type"),
-            "industry_l1": metadata.get("industry_l1"),
-            "industry_l2": metadata.get("industry_l2"),
-            "report_year": metadata.get("report_year"),
-            "report_type": metadata.get("report_type"),
-            "doc_source_type": metadata.get("doc_source_type"),
-            "report_date": metadata.get("report_date"),
-            "fiscal_year": metadata.get("fiscal_year"),
-            "period": metadata.get("period"),
-            "unit_hint": metadata.get("unit_hint"),
-            "language": metadata.get("language"),
-            "topic_flags": metadata.get("topic_flags", []),
-            "business_tags": metadata.get("business_tags", []),
-            "strategy_tags": metadata.get("strategy_tags", []),
-            "factor_tags": metadata.get("factor_tags", []),
-            "chain_position_major": metadata.get("chain_position_major"),
-            "chain_position_minor": metadata.get("chain_position_minor", []),
-            "listing_tags": metadata.get("listing_tags", []),
-            "ownership_tags": metadata.get("ownership_tags", []),
-            "status_tags": metadata.get("status_tags", []),
-            "style_tags": metadata.get("style_tags", []),
-            "table_id": metadata.get("table_id"),
-            "chart_id": metadata.get("chart_id"),
-            "picture_id": metadata.get("picture_id"),
-            "chart_type": metadata.get("chart_type"),
-            "series_name": metadata.get("series_name"),
-            "x_label": metadata.get("x_label"),
-            "chart_confidence": metadata.get("chart_confidence"),
-            "matched_child_chunk_ids": result.get("matched_child_chunk_ids", []),
-            "matched_tags": result.get("matched_tags", []),
-            "matched_queries": result.get("matched_queries", []),
-            "query_hit_count": int(result.get("query_hit_count", len(result.get("matched_queries", [])))),
-            "result_scope": result.get("result_scope"),
-            "retrieval_sources": result.get("retrieval_sources", []),
-            "score": round(_result_score(result), 4),
-            "final_score": round(_result_score(result), 4),
-            "distance_rrf": result.get("distance_rrf"),
-            "colbert_score": result.get("colbert_score"),
-            "final_relevance_score": result.get("final_relevance_score"),
-            "text": result.get("text"),
-            "text_preview": " ".join((result.get("text") or "").split())[:220],
-        }
+        return result_formatter.serialize_retrieval_result(result, result_score=_result_score)
 
     def _aggregate_retrieval_results_by_report(self, retrieval_results: List[Dict]) -> List[Dict]:
-        grouped: Dict[tuple, Dict] = {}
-        for result in retrieval_results:
-            metadata = result.get("metadata") or {}
-            key = (
-                metadata.get("sha1_name"),
-                metadata.get("company_name"),
-                metadata.get("stock_code") or metadata.get("security_code"),
-                metadata.get("report_year"),
-            )
-            existing = grouped.get(key)
-            serialized = self._serialize_retrieval_result(result)
-            if existing is None:
-                grouped[key] = {
-                    "doc_id": metadata.get("sha1_name"),
-                    "company_name": metadata.get("company_name"),
-                    "stock_code": metadata.get("stock_code") or metadata.get("security_code"),
-                    "report_year": metadata.get("report_year"),
-                    "final_score": round(_result_score(result), 4),
-                    "evidence_count": 1,
-                    "matched_tags": list(result.get("matched_tags", [])),
-                    "evidence_chunks": [serialized],
-                }
-                continue
-
-            existing["final_score"] = max(existing["final_score"], round(_result_score(result), 4))
-            existing["evidence_count"] += 1
-            existing["matched_tags"] = sorted(
-                set(existing.get("matched_tags", [])) | set(result.get("matched_tags", []))
-            )
-            if len(existing["evidence_chunks"]) < 3:
-                existing["evidence_chunks"].append(serialized)
-
-        aggregated = list(grouped.values())
-        for item in aggregated:
-            item["aggregation_score"] = round(float(item["final_score"]) + 0.02 * max(0, item["evidence_count"] - 1), 4)
-        aggregated.sort(key=lambda item: item["aggregation_score"], reverse=True)
-        return aggregated
+        return result_formatter.aggregate_retrieval_results_by_report(
+            self,
+            retrieval_results,
+            result_score=_result_score,
+        )
 
     def _validate_page_references(self, claimed_pages: List[int], retrieval_results: List[Dict], min_pages: int = 1, max_pages: int = 8) -> List[int]:
-        if claimed_pages is None:
-            claimed_pages = []
-
-        retrieved_pages = [result['page'] for result in retrieval_results]
-        validated_pages = [page for page in claimed_pages if page in retrieved_pages]
-
-        if len(validated_pages) < len(claimed_pages):
-            removed_pages = set(claimed_pages) - set(validated_pages)
-            print(f"Warning: Removed {len(removed_pages)} hallucinated page references: {removed_pages}")
-
-        if len(validated_pages) < min_pages and retrieval_results:
-            existing_pages = set(validated_pages)
-            for result in retrieval_results:
-                page = result['page']
-                if page not in existing_pages:
-                    validated_pages.append(page)
-                    existing_pages.add(page)
-                if len(validated_pages) >= min_pages:
-                    break
-
-        if len(validated_pages) > max_pages:
-            print(f"Trimming references from {len(validated_pages)} to {max_pages} pages")
-            validated_pages = validated_pages[:max_pages]
-
-        return validated_pages
+        return result_formatter.validate_page_references(claimed_pages, retrieval_results, min_pages, max_pages)
 
     def _build_unified_retriever_bundle(self, storage_backend: str):
         from src.document_store import resolve_doc_sqlite_path
@@ -947,7 +728,8 @@ class QuestionsProcessor:
             return []
         top_n = self.retrieval_debug_top_n
         if mode == "hybrid_rerank":
-            return retriever.retrieve_by_company_name(
+            retrieve = retriever.retrieve_by_company_name
+            kwargs = dict(
                 company_name=company_name,
                 query=query,
                 llm_reranking_sample_size=self.llm_reranking_sample_size,
@@ -958,6 +740,13 @@ class QuestionsProcessor:
                 candidate_doc_ids=candidate_doc_ids,
                 task_type=task_type,
             )
+            if capture_active():
+                method = getattr(retrieve, "__func__", None)
+                # Run only the known coordinators through a per-call delegate.
+                # Their candidate and ranking calls remain bound to the real retriever.
+                if any(method is original for original in _COMPOSED_HYBRID_METHODS) and retrieve.__self__ is retriever:
+                    return method(_ObservedHybridRetrieval(retriever), **kwargs)
+            return retrieve(**kwargs)
         if mode == "hybrid":
             return retriever.retrieve_candidates_by_company_name(
                 company_name=company_name,
@@ -1055,6 +844,18 @@ class QuestionsProcessor:
         prior_queries: List[str] = []
         prior_strategy: Optional[str] = None
         rounds_this_call = 0
+        observer = current_observer()
+        attempt = 0
+        predecessor = ""
+        latest_rank = ""
+        if observer is not None:
+            predecessor = next(
+                (
+                    key for name in ("hyde/rerank", "rerank")
+                    if observer.has_step(key := _trajectory_key(name))
+                ),
+                "",
+            )
 
         while gap is not None:
             if state["rounds_used"] >= adaptive_max_rounds():
@@ -1073,31 +874,48 @@ class QuestionsProcessor:
 
             # ③ 策略选择：上轮有新增维持 dense；无新增切父粒度（低置信第二手段）
             parent_override = "page" if strategy == "parent_recall" else None
-            supplement = self._collect_supplement(
-                retriever, company_name, rewrite_result, gap,
-                candidate_doc_ids=candidate_doc_ids,
-                parent_mode_override=parent_override,
-            )
+            attempt += 1
+            parents = (predecessor,) if predecessor else ()
+            scope = step_scope(f"adaptive-{attempt}", parents=parents) if observer is not None else nullcontext()
+            started = time.perf_counter() if observer is not None else 0.0
+            with scope:
+                supplement = self._collect_supplement(
+                    retriever, company_name, rewrite_result, gap,
+                    candidate_doc_ids=candidate_doc_ids,
+                    parent_mode_override=parent_override,
+                )
+                merged = merge_supplement_results(current_results, supplement)
+                if observer is not None:
+                    predecessor = capture_step(
+                        "retrieval", operation="adaptive_supplement", step_key="retrieval",
+                        inputs={"search_queries": gap.supplement_queries, "trigger": gap.trigger,
+                                "strategy": strategy, "iteration": attempt, "candidate_doc_ids": candidate_doc_ids},
+                        outputs={"results": supplement, "n_results": len(supplement)},
+                        costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+                    )
+                if len(merged) == len(current_results):
+                    # 当前策略无新增：dense 未试过 parent → 切粒度重试一轮
+                    # （child 检索不到的页级证据可能存在于 parent 粒度）；
+                    # 已试过 parent 仍无新增 → 真收敛（条件 2）
+                    if strategy != "parent_recall" and not state.get("parent_tried"):
+                        state["parent_tried"] = True
+                        state["last_evidence_gain"] = False   # 驱动下轮选 parent
+                        continue
+                    break
 
-            merged = merge_supplement_results(current_results, supplement)
-            if len(merged) == len(current_results):
-                # 当前策略无新增：dense 未试过 parent → 切粒度重试一轮
-                # （child 检索不到的页级证据可能存在于 parent 粒度）；
-                # 已试过 parent 仍无新增 → 真收敛（条件 2）
-                if strategy != "parent_recall" and not state.get("parent_tried"):
-                    state["parent_tried"] = True
-                    state["last_evidence_gain"] = False   # 驱动下轮选 parent
-                    continue
-                break
-            current_results = merged
-
-            current_results = retriever.rerank_candidates(
-                query=question,
-                candidate_results=current_results,
-                documents_batch_size=self.final_reranking_batch_size,
-                top_n=self.retrieval_debug_top_n,
-                task_type=getattr(rewrite_result, "task_type", None),
-            )
+                current_results = _observe_candidate_ranking(
+                    retriever.rerank_candidates,
+                    {
+                        "query": question,
+                        "candidate_results": merged,
+                        "documents_batch_size": self.final_reranking_batch_size,
+                        "top_n": self.retrieval_debug_top_n,
+                        "task_type": getattr(rewrite_result, "task_type", None),
+                    },
+                    parents=(predecessor,) if predecessor else (),
+                )
+                if observer is not None:
+                    predecessor = latest_rank = _trajectory_key("rerank")
             state["rounds_used"] += 1
             rounds_this_call += 1
             state["last_evidence_gain"] = True   # 本轮有新增（无新增已 break）
@@ -1114,6 +932,12 @@ class QuestionsProcessor:
 
             gap = detect_gap(rewrite_result, current_results)   # 重判：收敛条件 1
 
+        if latest_rank:
+            capture_step(
+                "retrieval", operation="adaptive_retrieval", step_key="adaptive",
+                inputs={"rounds": rounds_this_call}, outputs={"results": current_results},
+                parents=(latest_rank,),
+            )
         return current_results if rounds_this_call else None
 
     @staticmethod
@@ -1271,22 +1095,48 @@ class QuestionsProcessor:
             candidate_doc_ids=candidate_doc_ids,
             backend_scope=backend_scope,
         )
+        observer = current_observer()
 
         def _run_single_query(search_query: str) -> List[Dict]:
             return retriever.retrieve_candidates_by_company_name(
                 company_name=company_name, query=search_query, **retrieve_kwargs
             )
 
-        parallel = getattr(retriever, "_parallel_backends_enabled", False)
-        if parallel and len(cleaned_queries) > 1:
-            from concurrent.futures import ThreadPoolExecutor
+        def _run_observed_query(index: int, search_query: str) -> List[Dict]:
+            with step_scope(f"query-{index}"):
+                return _observe_candidate_retrieval(
+                    retriever.retrieve_candidates_by_company_name,
+                    {"company_name": company_name, "query": search_query, **retrieve_kwargs},
+                    step_key="retrieval",
+                )
 
-            max_threads = int(os.getenv("RETRIEVAL_MAX_THREADS", "8"))
-            outer_workers = max(1, max_threads // 4)
-            with ThreadPoolExecutor(max_workers=min(len(cleaned_queries), outer_workers)) as pool:
-                mapped = list(pool.map(_run_single_query, cleaned_queries))
-        else:
-            mapped = [_run_single_query(q) for q in cleaned_queries]
+        parallel = getattr(retriever, "_parallel_backends_enabled", False)
+        scope = step_scope("hyde") if observer is not None and backend_scope == "vector_only" else nullcontext()
+        with scope:
+            if parallel and len(cleaned_queries) > 1:
+                max_threads = int(os.getenv("RETRIEVAL_MAX_THREADS", "8"))
+                outer_workers = max(1, max_threads // 4)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(cleaned_queries), outer_workers)) as pool:
+                    if observer is not None:
+                        futures = [
+                            pool.submit(copy_context().run, _run_observed_query, index, query)
+                            for index, query in enumerate(cleaned_queries)
+                        ]
+                        mapped = [future.result() for future in futures]
+                    else:
+                        mapped = list(pool.map(_run_single_query, cleaned_queries))
+            elif observer is not None:
+                mapped = [_run_observed_query(index, query) for index, query in enumerate(cleaned_queries)]
+            else:
+                mapped = [_run_single_query(query) for query in cleaned_queries]
+
+            if observer is not None:
+                capture_step(
+                    "retrieval", operation="collect_candidate_runs", step_key="candidate_runs",
+                    inputs={"search_queries": cleaned_queries, "backend_scope": backend_scope},
+                    outputs={"n_results": sum(len(results or []) for results in mapped)},
+                    parents=tuple(_trajectory_key(f"query-{index}/retrieval") for index in range(len(mapped))),
+                )
 
         retrieval_runs: List[Tuple[str, List[Dict]]] = []
         for search_query, results in zip(cleaned_queries, mapped):
@@ -1302,18 +1152,44 @@ class QuestionsProcessor:
         pool_cap: int,
         task_type: Optional[str] = None,
     ) -> Tuple[List[Dict], List[Dict]]:
+        observer = current_observer()
+        started = time.perf_counter() if observer is not None else 0.0
         merged_candidates = self.merge_multi_query_candidates(retrieval_runs, pool_cap=pool_cap)
-        if not merged_candidates:
-            return [], []
+        rerank = retriever.rerank_candidates if merged_candidates else None
+        if rerank is not None:
+            kwargs = {
+                "query": question,
+                "candidate_results": merged_candidates,
+                "documents_batch_size": self.final_reranking_batch_size,
+                "top_n": self.retrieval_debug_top_n,
+                "task_type": task_type,
+            }
+        if observer is None:
+            if rerank is None:
+                return [], []
+            return rerank(**kwargs), merged_candidates
 
-        reranked_results = retriever.rerank_candidates(
-            query=question,
-            candidate_results=merged_candidates,
-            documents_batch_size=self.final_reranking_batch_size,
-            top_n=self.retrieval_debug_top_n,
-            task_type=task_type,
+        is_hyde = any(query == HYDE_QUERY_MARKER for query, _ in retrieval_runs)
+        candidate_run_keys = (
+            _trajectory_key("candidate_runs"),
+            *([_trajectory_key("hyde/candidate_runs")] if is_hyde else []),
         )
-        return reranked_results, merged_candidates
+        parents = tuple(key for key in candidate_run_keys if observer.has_step(key))
+        with step_scope("hyde") if is_hyde else nullcontext():
+            retrieval_key = capture_step(
+                "retrieval", operation="retrieve_candidates", step_key="retrieval",
+                inputs={"search_queries": [query for query, _ in retrieval_runs], "pool_cap": pool_cap},
+                outputs={"results": merged_candidates}, parents=parents,
+                costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+            )
+            if rerank is None:
+                capture_step(
+                    "rerank", operation="skip_rerank", step_key="rerank",
+                    inputs={"candidates": []}, outputs={"results": []}, parents=(retrieval_key,),
+                )
+                return [], []
+            reranked_results = _observe_candidate_ranking(rerank, kwargs, parents=(retrieval_key,))
+            return reranked_results, merged_candidates
 
     def _candidate_pool_cap(self, num_queries: int) -> int:
         if self.reranking_strategy == "cascade":
@@ -1380,12 +1256,7 @@ class QuestionsProcessor:
         }
 
     def _confidence_from_individual_answers(self, individual_answers: Dict[str, Dict]) -> str:
-        levels = [answer.get("confidence", "low") for answer in individual_answers.values()]
-        if levels and all(level == "high" for level in levels):
-            return "high"
-        if any(level in {"high", "medium"} for level in levels):
-            return "medium"
-        return "low"
+        return result_formatter.confidence_from_individual_answers(individual_answers)
 
     @staticmethod
     def _should_use_multi_document_routing(schema: str, query_plan: QueryPlan) -> bool:
@@ -1768,25 +1639,7 @@ class QuestionsProcessor:
 
     @staticmethod
     def _grounded_number_value(grounding_result: Dict[str, Any]) -> Any:
-        value = grounding_result.get("answer_value")
-        if value is None:
-            value = grounding_result.get("normalized_value")
-        target_unit = grounding_result.get("target_unit")
-        decimal_places = {
-            "元": 2,
-            "万元": 4,
-            "亿元": 6,
-            "百万元": 4,
-        }.get(target_unit)
-        if decimal_places is not None and isinstance(value, (int, float)):
-            try:
-                quant = Decimal("1") if decimal_places == 0 else Decimal("1").scaleb(-decimal_places)
-                value = float(Decimal(str(value)).quantize(quant, rounding=ROUND_HALF_UP))
-            except (InvalidOperation, ValueError):
-                pass
-        if isinstance(value, float) and value.is_integer():
-            return int(value)
-        return value
+        return grounding_facade.grounded_number_value(grounding_result)
 
     def _table_grounding_retrieval_result(
         self,
@@ -1795,114 +1648,30 @@ class QuestionsProcessor:
         chunk_type: str = "serialized_table",
         retrieval_source: str = "table_grounding",
     ) -> Dict[str, Any]:
-        doc_id = str(grounding_result.get("source_doc_id") or "")
-        document = self.table_grounder._load_document(doc_id) if self.table_grounder is not None and doc_id else None
-        metainfo = (document or {}).get("metainfo") or {}
-        metadata = {
-            "sha1_name": doc_id,
-            "company_name": metainfo.get("company_name"),
-            "company_aliases": list(metainfo.get("company_aliases") or []),
-            "security_code": metainfo.get("security_code"),
-            "stock_code": metainfo.get("stock_code") or metainfo.get("security_code"),
-            "currency": metainfo.get("currency"),
-            "major_industry": metainfo.get("major_industry"),
-            "report_year": metainfo.get("report_year") or metainfo.get("fiscal_year"),
-            "report_type": metainfo.get("report_type"),
-            "doc_source_type": metainfo.get("doc_source_type"),
-            "period": grounding_result.get("period"),
-            "unit_hint": grounding_result.get("unit"),
-            "language": metainfo.get("language"),
-            "chunk_id": None,
-            "chunk_type": chunk_type,
-            "section_title": None,
-            "section_name": None,
-            "report_section": None,
-            "table_id": grounding_result.get("table_id"),
-            "logical_table_id": grounding_result.get("logical_table_id"),
-            "logical_role": None,
-            "page_span": list(grounding_result.get("page_span") or []),
-            "merge_confidence": None,
-            "merge_state": "confirmed" if grounding_result.get("logical_table_id") else None,
-            "row_idx": grounding_result.get("row_idx"),
-            "col_idx": grounding_result.get("col_idx"),
-            "matched_row_headers": grounding_result.get("matched_row_headers") or [],
-            "matched_col_headers": grounding_result.get("matched_col_headers") or [],
-            "parent_block_id": None,
-            "parent_chunk_id": None,
-            "child_chunk_ids": [],
-            "node_type": "table",
-            "evidence_type": "table",
-            "has_table_context": True,
-            "page_start": grounding_result.get("page"),
-            "page_end": grounding_result.get("page"),
-            "topic_flags": [],
-        }
-        return {
-            "distance": 1.0,
-            "combined_score": 1.0,
-            "ranking_score": 1.0,
-            "page": grounding_result.get("page"),
-            "text": grounding_result.get("table_snippet") or "",
-            "metadata": metadata,
-            "chunk_id": None,
-            "chunk_type": chunk_type,
-            "section_title": None,
-            "table_id": grounding_result.get("table_id"),
-            "retrieval_sources": [retrieval_source],
-            "matched_child_chunk_ids": [],
-            "matched_tags": [],
-            "result_scope": "table",
-        }
+        return grounding_facade.table_grounding_retrieval_result(
+            self,
+            grounding_result,
+            chunk_type=chunk_type,
+            retrieval_source=retrieval_source,
+        )
 
     def _ensure_table_grounding_retrieval_result(
         self,
         retrieval_results: List[Dict],
         grounding_result: Optional[Dict[str, Any]],
     ) -> List[Dict]:
-        if not grounding_result or grounding_result.get("page") is None:
-            return retrieval_results
-        doc_id = str(grounding_result.get("source_doc_id") or "")
-        page = grounding_result.get("page")
-        for result in retrieval_results:
-            metadata = result.get("metadata") or {}
-            if str(metadata.get("sha1_name") or "") == doc_id and result.get("page") == page:
-                return retrieval_results
-        return [self._table_grounding_retrieval_result(grounding_result)] + list(retrieval_results)
+        return grounding_facade.ensure_table_grounding_retrieval_result(self, retrieval_results, grounding_result)
 
     def _ensure_table_support_retrieval_results(
         self,
         retrieval_results: List[Dict],
         grounding_result: Optional[Dict[str, Any]],
     ) -> List[Dict]:
-        if not grounding_result:
-            return retrieval_results
-        results = list(retrieval_results)
-        seen = {
-            (str((result.get("metadata") or {}).get("sha1_name") or ""), result.get("page"))
-            for result in results
-        }
-        for support_result in self._table_support_results(grounding_result):
-            doc_id = str(support_result.get("source_doc_id") or "")
-            page = support_result.get("page")
-            if not doc_id or page is None or (doc_id, page) in seen:
-                continue
-            results.append(
-                self._table_grounding_retrieval_result(
-                    support_result,
-                    chunk_type="table_support",
-                    retrieval_source="table_support",
-                )
-            )
-            seen.add((doc_id, page))
-        return results
+        return grounding_facade.ensure_table_support_retrieval_results(self, retrieval_results, grounding_result)
 
     @staticmethod
     def _table_support_results(grounding_result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if not grounding_result:
-            return []
-        return list(grounding_result.get("supporting_matches") or []) + list(
-            grounding_result.get("logical_context_matches") or []
-        )
+        return grounding_facade.table_support_results(grounding_result)
 
     def _chart_grounding_retrieval_result(
         self,
@@ -1911,265 +1680,51 @@ class QuestionsProcessor:
         chunk_type: str = "chart_to_table",
         retrieval_source: str = "chart_grounding",
     ) -> Dict[str, Any]:
-        doc_id = str(grounding_result.get("source_doc_id") or "")
-        document = self.chart_grounder._load_document(doc_id) if self.chart_grounder is not None and doc_id else None
-        metainfo = (document or {}).get("metainfo") or {}
-        metadata = {
-            "sha1_name": doc_id,
-            "company_name": metainfo.get("company_name"),
-            "company_aliases": list(metainfo.get("company_aliases") or []),
-            "security_code": metainfo.get("security_code"),
-            "stock_code": metainfo.get("stock_code") or metainfo.get("security_code"),
-            "currency": metainfo.get("currency"),
-            "major_industry": metainfo.get("major_industry"),
-            "report_year": metainfo.get("report_year") or metainfo.get("fiscal_year"),
-            "report_type": metainfo.get("report_type"),
-            "doc_source_type": metainfo.get("doc_source_type"),
-            "period": grounding_result.get("period"),
-            "unit_hint": grounding_result.get("unit"),
-            "language": metainfo.get("language"),
-            "chunk_id": None,
-            "chunk_type": chunk_type,
-            "section_title": None,
-            "section_name": None,
-            "report_section": None,
-            "table_id": None,
-            "chart_id": grounding_result.get("chart_id"),
-            "picture_id": grounding_result.get("picture_id"),
-            "series_name": grounding_result.get("series_name"),
-            "x_label": grounding_result.get("x_label"),
-            "chart_confidence": grounding_result.get("chart_confidence") or grounding_result.get("confidence"),
-            "parent_block_id": None,
-            "parent_chunk_id": None,
-            "child_chunk_ids": [],
-            "node_type": "chart",
-            "evidence_type": "chart",
-            "has_table_context": False,
-            "has_chart_context": True,
-            "page_start": grounding_result.get("page"),
-            "page_end": grounding_result.get("page"),
-            "topic_flags": [],
-        }
-        return {
-            "distance": 1.0,
-            "combined_score": 1.0,
-            "ranking_score": 1.0,
-            "page": grounding_result.get("page"),
-            "text": grounding_result.get("chart_context") or "",
-            "metadata": metadata,
-            "chunk_id": None,
-            "chunk_type": chunk_type,
-            "section_title": None,
-            "chart_id": grounding_result.get("chart_id"),
-            "retrieval_sources": [retrieval_source],
-            "matched_child_chunk_ids": [],
-            "matched_tags": [],
-            "result_scope": "chart",
-        }
+        return grounding_facade.chart_grounding_retrieval_result(
+            self,
+            grounding_result,
+            chunk_type=chunk_type,
+            retrieval_source=retrieval_source,
+        )
 
     def _ensure_chart_grounding_retrieval_result(
         self,
         retrieval_results: List[Dict],
         grounding_result: Optional[Dict[str, Any]],
     ) -> List[Dict]:
-        if not grounding_result or grounding_result.get("page") is None:
-            return retrieval_results
-        doc_id = str(grounding_result.get("source_doc_id") or "")
-        page = grounding_result.get("page")
-        chart_id = grounding_result.get("chart_id")
-        for result in retrieval_results:
-            metadata = result.get("metadata") or {}
-            if (
-                str(metadata.get("sha1_name") or "") == doc_id
-                and result.get("page") == page
-                and metadata.get("chart_id") == chart_id
-            ):
-                return retrieval_results
-        return [self._chart_grounding_retrieval_result(grounding_result)] + list(retrieval_results)
+        return grounding_facade.ensure_chart_grounding_retrieval_result(self, retrieval_results, grounding_result)
 
     def _build_table_grounded_number_answer(self, grounding_result: Dict[str, Any]) -> Dict[str, Any]:
-        grounded_value = self._grounded_number_value(grounding_result)
-        unit_note = f"，并按问题要求换算为{grounding_result['target_unit']}" if grounding_result.get("target_unit") else ""
-        logical_note = ""
-        if grounding_result.get("logical_table_id") and grounding_result.get("logical_table_materialized"):
-            logical_note = f"，并结合跨页逻辑表 {grounding_result.get('logical_table_id')} 的继承表头/单位"
-        page = grounding_result.get("page")
-        pages = [page] if page is not None else []
-        for logical_page in grounding_result.get("member_pages") or []:
-            if logical_page is not None and logical_page not in pages:
-                pages.append(logical_page)
-        for support_result in grounding_result.get("supporting_matches") or []:
-            support_page = support_result.get("page")
-            if support_page is not None and support_page not in pages:
-                pages.append(support_page)
-            if len(pages) >= 3:
-                break
-        pages = sorted(pages)
-        return {
-            "final_answer": grounded_value,
-            "relevant_pages": pages,
-            "references": [],
-            "citations": [],
-            "confidence": "high",
-            "reasoning_summary": (
-                f"答案来自表格 grounding：表 {grounding_result.get('table_id')} 第 {page} 页的单元格"
-                f"{logical_note}{unit_note}。"
-            ),
-            "step_by_step_analysis": (
-                f"匹配行头：{grounding_result.get('matched_row_headers') or []}；"
-                f"匹配列头：{grounding_result.get('matched_col_headers') or []}；"
-                f"原始值：{grounding_result.get('raw_value')}；标准值：{grounding_result.get('normalized_value')}。"
-            ),
-            "table_grounding_result": grounding_result,
-        }
+        return grounding_facade.build_table_grounded_number_answer(self, grounding_result)
 
     def _build_chart_grounded_number_answer(self, grounding_result: Dict[str, Any]) -> Dict[str, Any]:
-        grounded_value = self._grounded_number_value(grounding_result)
-        unit_note = f"，并按问题要求换算为{grounding_result['target_unit']}" if grounding_result.get("target_unit") else ""
-        page = grounding_result.get("page")
-        pages = [page] if page is not None else []
-        return {
-            "final_answer": grounded_value,
-            "relevant_pages": pages,
-            "references": [],
-            "citations": [],
-            "confidence": "medium",
-            "reasoning_summary": (
-                f"答案来自 chart-to-table grounding：图表 {grounding_result.get('chart_id')} "
-                f"第 {page} 页的 {grounding_result.get('series_name')} / {grounding_result.get('x_label')}"
-                f"{unit_note}。"
-            ),
-            "step_by_step_analysis": (
-                f"图表ID：{grounding_result.get('chart_id')}；"
-                f"图片ID：{grounding_result.get('picture_id')}；"
-                f"指标：{grounding_result.get('series_name')}；"
-                f"横轴：{grounding_result.get('x_label')}；"
-                f"原始值：{grounding_result.get('raw_value')}；标准值：{grounding_result.get('normalized_value')}。"
-            ),
-            "chart_grounding_result": grounding_result,
-        }
+        return grounding_facade.build_chart_grounded_number_answer(self, grounding_result)
 
     @staticmethod
     def _is_revenue_metric_question(question: str) -> bool:
-        normalized = normalize_text(question or "")
-        return "营业收入" in normalized or "营收" in normalized
+        return grounding_facade.is_revenue_metric_question(question)
 
     @staticmethod
     def _companies_in_question_order(question: str, companies: List[str]) -> List[str]:
-        normalized_question = normalize_text(question or "").replace(" ", "")
-        indexed = []
-        for index, company in enumerate(companies):
-            normalized_company = normalize_text(company).replace(" ", "")
-            position = normalized_question.find(normalized_company) if normalized_company else -1
-            indexed.append((position if position >= 0 else 10_000 + index, index, company))
-        indexed.sort()
-        return [company for _, _, company in indexed]
+        return grounding_facade.companies_in_question_order(question, companies)
 
     @staticmethod
     def _threshold_value_yuan(question: str) -> Optional[float]:
-        match = re.search(
-            r"(?:超过|高于|大于)\s*([0-9０-９][0-9０-９,，]*(?:\.\d+)?)\s*(百万元|千万元|亿元|万元|元)?",
-            question or "",
-        )
-        if not match:
-            return None
-        raw_number = match.group(1)
-        unit = match.group(2) or "元"
-        return parse_numeric_value(f"{raw_number}{unit}")
+        return grounding_facade.threshold_value_yuan(question)
 
     @staticmethod
     def _target_unit_from_question(question: str) -> Optional[str]:
-        question = question or ""
-        for unit in ("百万元", "千万元", "亿元", "万元"):
-            if unit in question:
-                return unit
-        if "元" in question and not any(currency_unit in question for currency_unit in ("美元", "港元", "欧元", "日元")):
-            return "元"
-        return None
+        return grounding_facade.target_unit_from_question(question)
 
     @staticmethod
     def _convert_yuan_to_target(value: Optional[float], target_unit: Optional[str]) -> Optional[float]:
-        if value is None:
-            return None
-        factors = {
-            "元": 1.0,
-            "万元": 1e4,
-            "亿元": 1e8,
-            "百万元": 1e6,
-            "千万元": 1e7,
-        }
-        factor = factors.get(target_unit or "")
-        return float(value) / factor if factor else value
+        return grounding_facade.convert_yuan_to_target(value, target_unit)
 
     def _apply_target_unit_to_grounding(self, grounding_result: Dict[str, Any], question: str) -> Dict[str, Any]:
-        result = dict(grounding_result)
-        target_unit = self._target_unit_from_question(question)
-        normalized_value = result.get("normalized_value")
-        result["target_unit"] = target_unit
-        result["answer_value"] = self._convert_yuan_to_target(normalized_value, target_unit)
-        if target_unit:
-            result["unit_conversion"] = {
-                "from": result.get("unit"),
-                "to": target_unit,
-                "base_value": normalized_value,
-                "converted_value": result["answer_value"],
-            }
-        return result
+        return grounding_facade.apply_target_unit_to_grounding(self, grounding_result, question)
 
     def _number_query_plan_for_company(self, company_name: str, question: str) -> Tuple[QueryPlan, Dict[str, Any]]:
-        query_plan = self._build_query_plan(
-            question,
-            schema="number",
-            company_name=company_name,
-            mentioned_companies=[company_name],
-            route_mode="explicit_company",
-        )
-        query_plan.filters.company_name = company_name
-        query_plan.filters.question_kind = "number"
-
-        if self.report_catalog is not None:
-            reports = [
-                report
-                for report in self.report_catalog.get_reports()
-                if report.company_name == company_name
-            ]
-            if query_plan.filters.year is not None:
-                reports = [report for report in reports if report.report_year in (None, query_plan.filters.year)]
-            if query_plan.filters.doc_source_type:
-                reports = [
-                    report
-                    for report in reports
-                    if not report.doc_source_type or report.doc_source_type == query_plan.filters.doc_source_type
-                ]
-            if reports:
-                reports.sort(key=lambda report: (report.report_year or -1, report.sha1), reverse=True)
-                report = reports[0]
-                query_plan.filters.candidate_doc_ids = [report.sha1]
-                return query_plan, {
-                    "route_mode": "explicit_company",
-                    "selected_company": report.company_name,
-                    "candidate_companies": [report.company_name],
-                    "candidate_doc_ids": [report.sha1],
-                    "selected_report": report.to_dict(),
-                    "selection_reasons": ["company_name_exact_for_numeric_rule"],
-                }
-            try:
-                _, route_info = self.report_catalog.resolve_single_company(query_plan, limit=self.candidate_doc_top_k)
-                route_info["route_mode"] = "explicit_company"
-                candidate_doc_ids = route_info.get("candidate_doc_ids") or []
-                if candidate_doc_ids:
-                    query_plan.filters.candidate_doc_ids = candidate_doc_ids
-                return query_plan, route_info
-            except Exception:
-                pass
-
-        return query_plan, {
-            "route_mode": "explicit_company",
-            "selected_company": company_name,
-            "candidate_companies": [company_name],
-            "candidate_doc_ids": list(query_plan.filters.candidate_doc_ids or []),
-            "selection_reasons": ["company_argument"],
-        }
+        return grounding_facade.number_query_plan_for_company(self, company_name, question)
 
     def _cached_revenue_grounding(
         self,
@@ -2181,96 +1736,26 @@ class QuestionsProcessor:
         allowed_doc_ids: List[str],
         retrieval_results: Optional[List[Dict]] = None,
     ) -> Optional[Dict[str, Any]]:
-        if self.table_grounder is None:
-            return None
-        doc_id = str((allowed_doc_ids or candidate_doc_ids or [""])[0] or "")
-        if not doc_id:
-            return None
-        cache_key = (doc_id, query_plan.filters.year, "营业收入")
-        with self._revenue_grounding_cache_lock:
-            cached = self._revenue_grounding_cache.get(cache_key)
-        if cached is None and cache_key not in self._revenue_grounding_cache:
-            year_text = f"{query_plan.filters.year}年报" if query_plan.filters.year is not None else ""
-            sub_question = f"{company_name}{year_text}营业收入是多少元？"
-            computed = self.table_grounder.ground_number_query(
-                question=sub_question,
-                retrieval_results=retrieval_results or [],
-                filters=query_plan.filters,
-                candidate_doc_ids=candidate_doc_ids,
-                allowed_doc_ids=allowed_doc_ids,
-            )
-            with self._revenue_grounding_cache_lock:
-                self._revenue_grounding_cache.setdefault(cache_key, computed)
-                cached = self._revenue_grounding_cache.get(cache_key)
-        if cached is None:
-            return None
-        return self._apply_target_unit_to_grounding(cached, question)
-
-    def _ground_revenue_for_company(self, company_name: str, question: str) -> Dict[str, Any]:
-        if self.table_grounder is None:
-            return {"company_name": company_name, "missing_reason": "numeric_grounding_disabled"}
-
-        query_plan, route_info = self._number_query_plan_for_company(company_name, question)
-        selected_doc_id = self._selected_doc_id(company_name, route_info, query_plan)
-        allowed_doc_ids = [selected_doc_id] if selected_doc_id else list(query_plan.filters.candidate_doc_ids or [])
-        if selected_doc_id:
-            query_plan.filters.candidate_doc_ids = [selected_doc_id]
-        grounding_result = self._cached_revenue_grounding(
+        return grounding_facade.cached_revenue_grounding(
+            self,
             company_name=company_name,
             question=question,
             query_plan=query_plan,
-            candidate_doc_ids=allowed_doc_ids,
+            candidate_doc_ids=candidate_doc_ids,
             allowed_doc_ids=allowed_doc_ids,
-            retrieval_results=[],
+            retrieval_results=retrieval_results,
         )
-        if grounding_result is None or grounding_result.get("normalized_value") is None:
-            return {
-                "company_name": company_name,
-                "query_plan": query_plan,
-                "route_info": route_info,
-                "missing_reason": "revenue_grounding_not_found",
-            }
 
-        return {
-            "company_name": company_name,
-            "value_yuan": grounding_result.get("normalized_value"),
-            "grounded_answer": self._grounded_number_value(grounding_result),
-            "grounding_result": grounding_result,
-            "retrieval_result": self._table_grounding_retrieval_result(grounding_result),
-            "retrieval_results": [
-                self._table_grounding_retrieval_result(grounding_result),
-                *[
-                    self._table_grounding_retrieval_result(
-                        support_result,
-                        chunk_type="table_support",
-                        retrieval_source="table_support",
-                    )
-                    for support_result in self._table_support_results(grounding_result)
-                ],
-            ],
-            "query_plan": query_plan,
-            "route_info": route_info,
-        }
+    def _ground_revenue_for_company(self, company_name: str, question: str) -> Dict[str, Any]:
+        return grounding_facade.ground_revenue_for_company(self, company_name, question)
 
     def _numeric_rule_citations(self, grounded_items: List[Dict[str, Any]], pages: List[int]) -> List[Dict[str, Any]]:
-        citations: List[Dict[str, Any]] = []
-        for item in grounded_items:
-            retrieval_results = item.get("retrieval_results") or ([item["retrieval_result"]] if item.get("retrieval_result") else [])
-            grounding_result = item.get("grounding_result")
-            if not retrieval_results or not grounding_result:
-                continue
-            page = grounding_result.get("page")
-            if page not in pages:
-                continue
-            citations.extend(
-                build_citations(
-                    retrieval_results,
-                    pages,
-                    table_grounding_result=grounding_result,
-                    table_support_results=self._table_support_results(grounding_result),
-                )
-            )
-        return dedupe_citations(citations)
+        return grounding_facade.numeric_rule_citations(
+            self,
+            grounded_items,
+            pages,
+            build_citations=build_citations,
+        )
 
     def _build_numeric_rule_answer(
         self,
@@ -2283,52 +1768,16 @@ class QuestionsProcessor:
         rule_name: str,
         reasoning: str,
     ) -> Dict[str, Any]:
-        retrieval_results = []
-        for item in grounded_items:
-            retrieval_results.extend(item.get("retrieval_results") or ([item["retrieval_result"]] if item.get("retrieval_result") else []))
-        pages = [
-            result.get("page")
-            for item in grounded_items
-            for result in (item.get("retrieval_results") or ([item["retrieval_result"]] if item.get("retrieval_result") else []))
-            if result.get("page") is not None
-        ]
-        pages = list(dict.fromkeys(pages))
-        if final_answer in (None, "N/A"):
-            references: List[Dict[str, Any]] = []
-            citations: List[Dict[str, Any]] = []
-            pages = []
-        else:
-            references = self._extract_references_from_results(pages, retrieval_results)
-            citations = self._numeric_rule_citations(grounded_items, pages)
-
-        answer = {
-            "final_answer": final_answer if final_answer is not None else "N/A",
-            "relevant_pages": pages,
-            "references": references,
-            "citations": citations,
-            "confidence": "high" if final_answer not in (None, "N/A") else "low",
-            "confidence_reason": f"{rule_name} 由表格 grounding 的结构化数值直接计算。" if final_answer not in (None, "N/A") else f"{rule_name} 缺少关键数值，返回 N/A。",
-            "reasoning_summary": reasoning,
-            "step_by_step_analysis": reasoning if self.reasoning_debug_enabled else "",
-            "search_queries": [question],
-            "query_plan": query_plan.to_dict(),
-            "route_info": route_info,
-            "candidate_pool_size_before_rerank": None,
-            "reranking_strategy": self.reranking_strategy,
-            "initial_candidate_pool_size": None,
-            "colbert_candidate_pool_size": None,
-            "colbert_top_n": self.colbert_top_n if self.reranking_strategy == "cascade" else None,
-            "final_reranking_backend": self.final_reranking_backend or os.getenv("RERANKING_BACKEND", "llm_prompt").lower(),
-            "hyde": self._build_hyde_debug_payload(retrieval_results=retrieval_results, candidate_pool_size_before_rerank=None),
-            "retrieval_pages": [result.get("page") for result in retrieval_results],
-            "retrieval_results": [self._serialize_retrieval_result(result) for result in retrieval_results],
-            "retrieval_report_groups": self._aggregate_retrieval_results_by_report(retrieval_results),
-            "response_data": {},
-            "validation_flags": [],
-        }
-        if grounded_items and len(grounded_items) == 1 and grounded_items[0].get("grounding_result"):
-            answer["table_grounding_result"] = grounded_items[0]["grounding_result"]
-        return answer
+        return grounding_facade.build_numeric_rule_answer(
+            self,
+            question=question,
+            final_answer=final_answer,
+            query_plan=query_plan,
+            route_info=route_info,
+            grounded_items=grounded_items,
+            rule_name=rule_name,
+            reasoning=reasoning,
+        )
 
     def _answer_structured_revenue_comparison(
         self,
@@ -2336,78 +1785,7 @@ class QuestionsProcessor:
         companies: List[str],
         schema: str,
     ) -> Optional[Dict[str, Any]]:
-        if self.table_grounder is None or len(companies) < 2 or not self._is_revenue_metric_question(question):
-            return None
-        if not any(term in (question or "") for term in ("谁", "更高", "高于", "超过", "大于")):
-            return None
-
-        ordered_companies = self._companies_in_question_order(question, companies)[:2]
-        grounded_items = [self._ground_revenue_for_company(company, question) for company in ordered_companies]
-        missing = [item for item in grounded_items if item.get("value_yuan") is None]
-        query_plan = self._build_query_plan(
-            question,
-            schema="comparative",
-            mentioned_companies=ordered_companies,
-            route_mode="numeric_comparison_rule",
-        )
-        route_info = {
-            "route_mode": "numeric_comparison_rule",
-            "selected_company": None,
-            "candidate_companies": ordered_companies,
-            "selection_reasons": ["structured_revenue_comparison"],
-            "numeric_comparison_rule": {
-                "metric": "营业收入",
-                "company_values": [
-                    {
-                        "company_name": item.get("company_name"),
-                        "value_yuan": item.get("value_yuan"),
-                        "source_doc_id": (item.get("grounding_result") or {}).get("source_doc_id"),
-                        "page": (item.get("grounding_result") or {}).get("page"),
-                        "missing_reason": item.get("missing_reason"),
-                    }
-                    for item in grounded_items
-                ],
-            },
-        }
-
-        if missing:
-            reasoning = "结构化营业收入比较缺少至少一个公司的表格 grounding 数值，因此返回 N/A。"
-            return self._build_numeric_rule_answer(
-                question=question,
-                final_answer="N/A",
-                query_plan=query_plan,
-                route_info=route_info,
-                grounded_items=grounded_items,
-                rule_name="numeric_comparison_rule",
-                reasoning=reasoning,
-            )
-
-        first, second = grounded_items[0], grounded_items[1]
-        if "谁" in question or "哪" in question:
-            winner = first if float(first["value_yuan"]) >= float(second["value_yuan"]) else second
-            final_answer = winner["company_name"]
-            reasoning = (
-                f"结构化比较营业收入：{first['company_name']}={first['value_yuan']} 元，"
-                f"{second['company_name']}={second['value_yuan']} 元，因此答案为 {final_answer}。"
-            )
-        elif "是否" in question and any(term in question for term in ("高于", "超过", "大于")):
-            final_answer = bool(float(first["value_yuan"]) > float(second["value_yuan"]))
-            reasoning = (
-                f"结构化判断营业收入：{first['company_name']}={first['value_yuan']} 元，"
-                f"{second['company_name']}={second['value_yuan']} 元，比较结果为 {final_answer}。"
-            )
-        else:
-            return None
-
-        return self._build_numeric_rule_answer(
-            question=question,
-            final_answer=final_answer,
-            query_plan=query_plan,
-            route_info=route_info,
-            grounded_items=grounded_items,
-            rule_name="numeric_comparison_rule",
-            reasoning=reasoning,
-        )
+        return grounding_facade.answer_structured_revenue_comparison(self, question, companies, schema)
 
     def _answer_structured_revenue_threshold(
         self,
@@ -2416,51 +1794,11 @@ class QuestionsProcessor:
         schema: str,
         route_decision: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        if self.table_grounder is None or (schema or "").lower() != "boolean" or not self._is_revenue_metric_question(question):
-            return None
-        if "是否" not in (question or "") or not any(term in question for term in ("超过", "高于", "大于")):
-            return None
-        threshold_yuan = self._threshold_value_yuan(question)
-        if threshold_yuan is None:
-            return None
-
-        company_name = route_decision.get("company_name") or ""
-        if not company_name:
-            return None
-        grounded_item = self._ground_revenue_for_company(company_name, question)
-        query_plan: QueryPlan = route_decision["query_plan"]
-        route_info = dict(route_decision.get("route_info") or {})
-        route_info.update(
-            {
-                "route_mode": "numeric_threshold_rule",
-                "numeric_threshold_rule": {
-                    "metric": "营业收入",
-                    "threshold_yuan": threshold_yuan,
-                    "company_value_yuan": grounded_item.get("value_yuan"),
-                    "source_doc_id": (grounded_item.get("grounding_result") or {}).get("source_doc_id"),
-                    "page": (grounded_item.get("grounding_result") or {}).get("page"),
-                    "missing_reason": grounded_item.get("missing_reason"),
-                },
-            }
-        )
-        if grounded_item.get("value_yuan") is None:
-            reasoning = "结构化营业收入阈值判断缺少表格 grounding 数值，因此返回 N/A。"
-            final_answer: Any = "N/A"
-        else:
-            final_answer = bool(float(grounded_item["value_yuan"]) > float(threshold_yuan))
-            reasoning = (
-                f"结构化阈值判断营业收入：{company_name}={grounded_item['value_yuan']} 元，"
-                f"阈值={threshold_yuan} 元，比较结果为 {final_answer}。"
-            )
-
-        return self._build_numeric_rule_answer(
+        return grounding_facade.answer_structured_revenue_threshold(
+            self,
             question=question,
-            final_answer=final_answer,
-            query_plan=query_plan,
-            route_info=route_info,
-            grounded_items=[grounded_item],
-            rule_name="numeric_threshold_rule",
-            reasoning=reasoning,
+            schema=schema,
+            route_decision=route_decision,
         )
 
     def get_answer_for_company(
@@ -2471,26 +1809,34 @@ class QuestionsProcessor:
         query_plan: Optional[QueryPlan] = None,
         route_info: Optional[Dict] = None,
     ) -> Dict:
-        if self._resolved_graph_engine() == "legacy":
-            return run_legacy_single_company(
-                self,
-                company_name=company_name,
-                question=question,
-                schema=schema,
-                query_plan=query_plan,
-                route_info=route_info,
-            )
-        graph = build_single_company_graph(self)
-        final_state = graph.invoke(
-            {
-                "company_name": company_name,
-                "question": question,
-                "schema": schema,
-                "query_plan": query_plan,
-                "route_info": route_info,
-            }
-        )
-        return dict(final_state.get("final_answer_dict") or {})
+        with record_trajectory(
+            entry_point="get_answer_for_company",
+            request={"company_name": company_name, "question": question, "schema": schema},
+        ) as observer:
+            if self._resolved_graph_engine() == "legacy":
+                answer = run_legacy_single_company(
+                    self,
+                    company_name=company_name,
+                    question=question,
+                    schema=schema,
+                    query_plan=query_plan,
+                    route_info=route_info,
+                )
+            else:
+                graph = build_single_company_graph(self)
+                final_state = graph.invoke(
+                    {
+                        "company_name": company_name,
+                        "question": question,
+                        "schema": schema,
+                        "query_plan": query_plan,
+                        "route_info": route_info,
+                    }
+                )
+                answer = dict(final_state.get("final_answer_dict") or {})
+            if observer is not None:
+                observer.finish(answer)
+            return answer
 
     def _extract_companies_from_subset(self, question_text: str) -> List[str]:
         if self.report_catalog is not None:
@@ -2988,23 +2334,42 @@ class QuestionsProcessor:
         )
 
     def process_comparative_question(self, question: str, companies: List[str], schema: str) -> Dict:
-        structured_answer = self._answer_structured_revenue_comparison(question, companies, schema)
-        if structured_answer is not None:
-            return structured_answer
+        with record_trajectory(
+            entry_point="process_comparative_question",
+            request={"question": question, "companies": companies, "schema": schema},
+        ) as observer:
+            started = time.perf_counter() if capture_active() else 0.0
+            answer = self._answer_structured_revenue_comparison(question, companies, schema)
+            if answer is not None:
+                if capture_active() and isinstance(answer, dict):
+                    capture_step(
+                        "plan", operation="structured_revenue_comparison", step_key="plan",
+                        inputs={"schema": schema},
+                        outputs={
+                            "rule_route": True,
+                            "route_mode": (answer.get("route_info") or {}).get("route_mode"),
+                            "query_plan": answer.get("query_plan"),
+                        },
+                        costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+                    )
+            elif self._resolved_graph_engine() == "legacy":
+                answer = run_legacy_comparative(
+                    self,
+                    question=question,
+                    companies=companies,
+                    schema=schema,
+                )
+            else:
+                graph = build_comparative_graph(self)
+                final_state = graph.invoke(
+                    {
+                        "question": question,
+                        "companies": companies,
+                        "schema": schema,
+                    }
+                )
+                answer = dict(final_state.get("final_answer_dict") or {})
 
-        if self._resolved_graph_engine() == "legacy":
-            return run_legacy_comparative(
-                self,
-                question=question,
-                companies=companies,
-                schema=schema,
-            )
-        graph = build_comparative_graph(self)
-        final_state = graph.invoke(
-            {
-                "question": question,
-                "companies": companies,
-                "schema": schema,
-            }
-        )
-        return dict(final_state.get("final_answer_dict") or {})
+            if observer is not None:
+                observer.finish(answer)
+            return answer

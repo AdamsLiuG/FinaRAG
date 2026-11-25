@@ -8,6 +8,8 @@ from typing import Any, Dict, List
 from langgraph.types import Send
 
 from src.citation_formatter import dedupe_citations, dedupe_references
+from src.harness.trajectory_store import capture_active, capture_step, step_scope
+from src.service.tracing import token_usage_of
 
 
 def make_comparative_plan_node(processor: Any):
@@ -20,6 +22,13 @@ def make_comparative_plan_node(processor: Any):
             companies=companies,
             model=processor.answering_model,
         )
+        if capture_active():
+            capture_step(
+                "generation", operation="comparative_rephrase", step_key="rephrase",
+                inputs={"question": question, "companies": companies, "model": processor.answering_model},
+                outputs={"search_queries": [rephrased_questions.get(company) for company in companies]},
+                costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+            )
         return {
             "rephrased_questions": rephrased_questions,
             "stage_events": [
@@ -39,7 +48,7 @@ def fanout_companies(state: Dict[str, Any]) -> List[Send]:
     rephrased: Dict[str, str] = state.get("rephrased_questions") or {}
     schema = state["schema"]
     sends: List[Send] = []
-    for company in companies:
+    for index, company in enumerate(companies):
         sub_question = rephrased.get(company)
         if not sub_question:
             raise ValueError(f"Could not generate sub-question for company: {company}")
@@ -48,6 +57,7 @@ def fanout_companies(state: Dict[str, Any]) -> List[Send]:
                 "company_worker",
                 {
                     "company": company,
+                    "branch_index": index,
                     "sub_question": sub_question,
                     "schema": schema,
                 },
@@ -62,11 +72,21 @@ def make_company_worker_node(processor: Any):
         company = branch_state["company"]
         sub_question = branch_state["sub_question"]
         schema = branch_state["schema"]
-        answer_dict = processor.get_answer_for_company(
-            company_name=company,
-            question=sub_question,
-            schema=schema,
-        )
+        observing = capture_active()
+        if observing:
+            parent = capture_step(
+                "plan", operation="comparative_dispatch", step_key="dispatch",
+                inputs={"company": company, "schema": schema}, outputs={"question": sub_question},
+            )
+            with step_scope("company", parents=(parent,)):
+                answer_dict = processor.get_answer_for_company(company_name=company, question=sub_question, schema=schema)
+            capture_step(
+                "generation", operation="comparative_worker", step_key="worker",
+                inputs={"company": company}, outputs={"answer": answer_dict},
+                parents=(parent,), costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+            )
+        else:
+            answer_dict = processor.get_answer_for_company(company_name=company, question=sub_question, schema=schema)
         return {
             "sub_answers": [(company, answer_dict)],
             "stage_events": [
@@ -109,6 +129,18 @@ def make_comparative_reduce_node(processor: Any):
             temperature=processor.answer_temperature,
         )
         processor.response_data = dict(getattr(processor.api_processor, "response_data", {}) or {})
+        observing = capture_active()
+        if observing:
+            generation_key = capture_step(
+                "generation", operation="comparative_reduce", step_key="generation",
+                inputs={"question": question, "schema": final_schema,
+                        "answers": list(individual_answers.values())},
+                outputs={"final_answer": comparative_answer.get("final_answer")},
+                costs={
+                    "elapsed_ms": (time.perf_counter() - started) * 1000,
+                    **token_usage_of({"response_data": processor.response_data}),
+                },
+            )
         comparative_answer["references"] = dedupe_references(aggregated_references)
         comparative_answer["citations"] = dedupe_citations(aggregated_citations)
         comparative_answer["confidence"] = processor._confidence_from_individual_answers(individual_answers)
@@ -133,6 +165,11 @@ def make_comparative_reduce_node(processor: Any):
         comparative_answer["retrieval_results"] = []
         comparative_answer["response_data"] = processor.response_data
 
+        if observing:
+            capture_step(
+                "verification", operation="comparative_aggregate", step_key="verification",
+                inputs={}, outputs={"answer": comparative_answer}, parents=(generation_key,),
+            )
         return {
             "final_answer_dict": comparative_answer,
             "stage_events": [

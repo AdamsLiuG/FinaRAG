@@ -12,7 +12,7 @@ import logging
 import os
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, aclosing, asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.graph.builder import run_finarag_graph
+from src.harness.trajectory_store import capture_step, harness_enabled, record_trajectory
 from src.service.budget_controller import BudgetContext
 from src.service.semantic_cache import SemanticCache
 from src.service.streaming import AsyncLLMClient, async_stream_qa_events, shutdown_cpu_executor
@@ -306,109 +307,127 @@ def create_fastapi_app(
 
     @app.post("/qa")
     async def qa_endpoint(req: QaRequest, request: Request, _auth: None = Depends(_verify_api_key)):
-        started = time.perf_counter()
-        trace_id = current_trace_id() or ""
-        spans: List[Dict[str, Any]] = []
-        schema = req.answer_schema
+        with record_trajectory(
+            entry_point="qa",
+            request={"question": req.question, "schema": req.answer_schema, "thread_id": req.thread_id},
+        ) as observer:
+            started = time.perf_counter()
+            trace_id = current_trace_id() or ""
+            spans: List[Dict[str, Any]] = []
+            schema = req.answer_schema
 
-        if req.thread_id is not None:
-            try:
-                principal, key = await session_request(request, write=True)
-                result = await asyncio.to_thread(run_session_turn, req, principal, key)
-            except Exception as exc:
-                return session_error(exc)
-            return JSONResponse(
-                status_code=202 if result["approval_status"] == "pending" else 200,
-                content=session_answer(result, req.question, started),
-            )
-
-        if req.use_cache:
-            cached = semantic_cache.get(req.question, schema)
-            if cached is not None:
-                latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
-                usage = token_usage_of(cached)
-                await asyncio.to_thread(
-                    telemetry_mgr.record_request,
-                    trace_id=trace_id,
-                    question=req.question,
-                    schema=schema,
-                    answer_dict=cached,
-                    spans=spans,
-                    latency_ms=latency_ms,
-                    cache_hit=True,
-                    degraded_level=0,
+            if req.thread_id is not None:
+                try:
+                    principal, key = await session_request(request, write=True)
+                    result = await asyncio.to_thread(run_session_turn, req, principal, key)
+                except Exception as exc:
+                    if observer is not None:
+                        observer.finish(status="timeout" if isinstance(exc, TimeoutError) else "failed")
+                    return session_error(exc)
+                if observer is not None:
+                    observer.finish(result)
+                return JSONResponse(
+                    status_code=202 if result["approval_status"] == "pending" else 200,
+                    content=session_answer(result, req.question, started),
                 )
-                return {
-                    "trace_id": trace_id,
-                    "question": req.question,
-                    "final_answer": cached.get("final_answer"),
-                    "confidence": cached.get("confidence"),
-                    "references": cached.get("references") or [],
-                    "validation_flags": cached.get("validation_flags") or [],
-                    "token_usage": usage,
-                    "budget_exceeded": False,
-                    "degraded_level": 0,
-                    "cache_hit": True,
-                    "latency_ms": latency_ms,
-                }
 
-        budget_ctx = BudgetContext(
-            max_tokens=req.max_tokens if req.max_tokens is not None else token_budget_default,
-            max_latency_ms=req.max_latency_ms if req.max_latency_ms is not None else latency_budget_default,
-        )
+            if req.use_cache:
+                cached = semantic_cache.get(req.question, schema)
+                if cached is not None:
+                    if observer is not None:
+                        capture_step(
+                            "cache", operation="semantic_cache", step_key="cache", inputs={"schema": schema},
+                            outputs={"cache_hit": True, "coverage": "absent"},
+                        )
+                        observer.finish(cached, status="cache_hit")
+                    latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
+                    usage = token_usage_of(cached)
+                    await asyncio.to_thread(
+                        telemetry_mgr.record_request,
+                        trace_id=trace_id,
+                        question=req.question,
+                        schema=schema,
+                        answer_dict=cached,
+                        spans=spans,
+                        latency_ms=latency_ms,
+                        cache_hit=True,
+                        degraded_level=0,
+                    )
+                    return {
+                        "trace_id": trace_id,
+                        "question": req.question,
+                        "final_answer": cached.get("final_answer"),
+                        "confidence": cached.get("confidence"),
+                        "references": cached.get("references") or [],
+                        "validation_flags": cached.get("validation_flags") or [],
+                        "token_usage": usage,
+                        "budget_exceeded": False,
+                        "degraded_level": 0,
+                        "cache_hit": True,
+                        "latency_ms": latency_ms,
+                    }
 
-        try:
-            proc = holder.get()
-            ctx = contextvars.copy_context()
-            answer_dict = await asyncio.to_thread(
-                ctx.run,
-                _execute_qa_sync,
-                proc,
-                req.question,
-                schema,
-                budget_ctx,
-                spans,
+            budget_ctx = BudgetContext(
+                max_tokens=req.max_tokens if req.max_tokens is not None else token_budget_default,
+                max_latency_ms=req.max_latency_ms if req.max_latency_ms is not None else latency_budget_default,
             )
-        except Exception:
-            _log.exception("POST /qa failed trace_id=%s", trace_id)
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Internal server error", "trace_id": trace_id},
+
+            try:
+                proc = holder.get()
+                ctx = contextvars.copy_context()
+                answer_dict = await asyncio.to_thread(
+                    ctx.run,
+                    _execute_qa_sync,
+                    proc,
+                    req.question,
+                    schema,
+                    budget_ctx,
+                    spans,
+                )
+            except Exception as exc:
+                if observer is not None:
+                    observer.finish(status="timeout" if isinstance(exc, TimeoutError) else "failed")
+                _log.exception("POST /qa failed trace_id=%s", trace_id)
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": "Internal server error", "trace_id": trace_id},
+                )
+
+            usage = token_usage_of(answer_dict)
+            if budget_ctx.spent_tokens == 0 and (usage["prompt_tokens"] or usage["completion_tokens"]):
+                budget_ctx.record_usage(usage["prompt_tokens"], usage["completion_tokens"])
+            degraded_level = budget_ctx.degradation_level
+            latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
+            if req.use_cache and degraded_level < 3:
+                semantic_cache.set(req.question, schema, answer_dict)
+
+            await asyncio.to_thread(
+                telemetry_mgr.record_request,
+                trace_id=trace_id,
+                question=req.question,
+                schema=schema,
+                answer_dict=answer_dict,
+                spans=spans,
+                latency_ms=latency_ms,
+                cache_hit=False,
+                degraded_level=degraded_level,
             )
-
-        usage = token_usage_of(answer_dict)
-        if budget_ctx.spent_tokens == 0 and (usage["prompt_tokens"] or usage["completion_tokens"]):
-            budget_ctx.record_usage(usage["prompt_tokens"], usage["completion_tokens"])
-        degraded_level = budget_ctx.degradation_level
-        latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
-        if req.use_cache and degraded_level < 3:
-            semantic_cache.set(req.question, schema, answer_dict)
-
-        await asyncio.to_thread(
-            telemetry_mgr.record_request,
-            trace_id=trace_id,
-            question=req.question,
-            schema=schema,
-            answer_dict=answer_dict,
-            spans=spans,
-            latency_ms=latency_ms,
-            cache_hit=False,
-            degraded_level=degraded_level,
-        )
-        return {
-            "trace_id": trace_id,
-            "question": req.question,
-            "final_answer": answer_dict.get("final_answer"),
-            "confidence": answer_dict.get("confidence"),
-            "references": answer_dict.get("references") or [],
-            "validation_flags": answer_dict.get("validation_flags") or [],
-            "token_usage": usage,
-            "budget_exceeded": degraded_level >= 3,
-            "degraded_level": degraded_level,
-            "budget_summary": budget_ctx.summary(),
-            "cache_hit": False,
-            "latency_ms": latency_ms,
-        }
+            if observer is not None:
+                observer.finish({**answer_dict, "budget_summary": budget_ctx.summary(), "degraded_level": degraded_level})
+            return {
+                "trace_id": trace_id,
+                "question": req.question,
+                "final_answer": answer_dict.get("final_answer"),
+                "confidence": answer_dict.get("confidence"),
+                "references": answer_dict.get("references") or [],
+                "validation_flags": answer_dict.get("validation_flags") or [],
+                "token_usage": usage,
+                "budget_exceeded": degraded_level >= 3,
+                "degraded_level": degraded_level,
+                "budget_summary": budget_ctx.summary(),
+                "cache_hit": False,
+                "latency_ms": latency_ms,
+            }
 
     @app.post("/qa/stream")
     async def qa_stream_endpoint(req: QaRequest, request: Request, _auth: None = Depends(_verify_api_key)):
@@ -429,7 +448,7 @@ def create_fastapi_app(
 
         async def _sse_generator():
             try:
-                async for event in async_stream_qa_events(
+                async with aclosing(async_stream_qa_events(
                     proc,
                     req.question,
                     schema,
@@ -437,8 +456,9 @@ def create_fastapi_app(
                     is_disconnected=request.is_disconnected,
                     telemetry_manager=telemetry_mgr,
                     cache=semantic_cache if req.use_cache else None,
-                ):
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                )) as events:
+                    async for event in events:
+                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception:
                 _log.exception("POST /qa/stream failed trace_id=%s", trace_id)
                 yield f"data: {json.dumps({'stage': 'error', 'error': 'Internal server error', 'trace_id': trace_id})}\n\n"
@@ -535,6 +555,27 @@ def create_fastapi_app(
         admission = loop.create_future()
         disconnected = threading.Event()
         started = time.perf_counter()
+        observer_ctx = None
+        observer = None
+        result = None
+        operation_status = None
+        if harness_enabled():
+            observer_ctx = contextvars.copy_context()
+            stack = ExitStack()
+            observer = observer_ctx.run(
+                stack.enter_context,
+                record_trajectory(entry_point="qa_session_stream", request={
+                    "question": req.question, "schema": req.answer_schema, "thread_id": req.thread_id,
+                }),
+            )
+
+        def finish_capture():
+            if observer is not None:
+                observer.finish(result, status="disconnected" if delivery_cancelled else operation_status)
+            if observer_ctx is not None:
+                observer_ctx.run(stack.close)
+
+        delivery_cancelled = False
 
         def on_event(event):
             if disconnected.is_set() or loop.is_closed():
@@ -558,12 +599,19 @@ def create_fastapi_app(
                 loop.call_soon_threadsafe(admit)
 
         async def execute():
+            nonlocal result, operation_status
             try:
                 result = await asyncio.to_thread(run_session_turn, req, principal, key, on_event, on_admitted)
                 stage = "approval_pending" if result["approval_status"] == "pending" else "done"
                 await events.put({"stage": stage, **session_answer(result, req.question, started)})
             except Exception as exc:
-                response = session_error(exc)
+                operation_status = "timeout" if isinstance(exc, TimeoutError) else "failed"
+                try:
+                    response = session_error(exc)
+                except HTTPException as error:
+                    if not admission.done():
+                        admission.set_exception(error)
+                    return
                 if not admission.done():
                     admission.set_result(response)
                 else:
@@ -571,24 +619,37 @@ def create_fastapi_app(
             finally:
                 await events.put(None)
 
-        worker = asyncio.create_task(execute())
+        worker = asyncio.create_task(execute(), context=observer_ctx.copy() if observer_ctx is not None else None)
         try:
             rejected = await admission
         except asyncio.CancelledError:
+            delivery_cancelled = True
             disconnected.set()
+            worker.add_done_callback(lambda _: finish_capture())
+            raise
+        except Exception:
+            worker.add_done_callback(lambda _: finish_capture())
             raise
         if rejected is not None:
+            await worker
+            finish_capture()
             return rejected
 
         async def stream():
+            nonlocal delivery_cancelled
             try:
                 while (event := await events.get()) is not None:
                     if await request.is_disconnected():
+                        delivery_cancelled = True
                         break
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except (asyncio.CancelledError, GeneratorExit):
+                delivery_cancelled = True
+                raise
             finally:
                 disconnected.set()
-                # Finish the admitted operation under the lock even if delivery is cancelled.
+                # An admitted operation finishes under the session lock even if delivery stops.
+                worker.add_done_callback(lambda _: finish_capture())
                 await asyncio.shield(worker)
 
         return StreamingResponse(
@@ -645,20 +706,27 @@ def create_fastapi_app(
 
         @app.post("/sessions/{thread_id}/resume")
         async def session_resume(thread_id: str, req: ResumeRequest, request: Request):
-            started = time.perf_counter()
-            try:
-                principal, key = await session_request(request, write=True, reviewer=True)
-                def resume():
-                    memory, graph, proc = get_session_service()
-                    return memory.resume(
-                        proc, graph=graph, thread_id=thread_id, subject=principal.subject,
-                        key=key, **req.model_dump(),
-                    )
-                result = await asyncio.to_thread(resume)
-                return {**result, "trace_id": current_trace_id(),
-                        "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
-            except Exception as exc:
-                return session_error(exc)
+            with record_trajectory(
+                entry_point="resume", request={"thread_id": thread_id, "checkpoint_id": req.checkpoint_id},
+            ) as observer:
+                started = time.perf_counter()
+                try:
+                    principal, key = await session_request(request, write=True, reviewer=True)
+                    def resume():
+                        memory, graph, proc = get_session_service()
+                        return memory.resume(
+                            proc, graph=graph, thread_id=thread_id, subject=principal.subject,
+                            key=key, **req.model_dump(),
+                        )
+                    result = await asyncio.to_thread(resume)
+                    if observer is not None:
+                        observer.finish(result)
+                    return {**result, "trace_id": current_trace_id(),
+                            "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+                except Exception as exc:
+                    if observer is not None:
+                        observer.finish(status="timeout" if isinstance(exc, TimeoutError) else "failed")
+                    return session_error(exc)
 
     if _protocol_enabled("FINARAG_MCP_ENABLED"):
         from src.protocols.mcp_server import MCPServer, RESOURCES_ROOT, mount_mcp_routes

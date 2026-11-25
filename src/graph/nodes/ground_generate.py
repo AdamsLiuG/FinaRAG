@@ -13,8 +13,15 @@ from langgraph.runtime import Runtime
 from src.graph.state import FinaRAGRunContext
 from src.answer_validation import validate_answer
 from src.citation_formatter import build_citations, compute_confidence
+from src.harness.trajectory_store import capture_active, capture_step
 from src.service.budget_controller import estimate_text_tokens
+from src.service.tracing import token_usage_of
 from src.structured.pot_sandbox import PotCalculationError, PotSecurityError, extract_and_execute_pot
+
+
+def _answer_projection(answer):
+    fields = ("final_answer", "relevant_pages", "references", "citations", "confidence", "validation_flags")
+    return {key: answer[key] for key in fields if key in answer}
 
 
 def approval_reasons(answer, *, schema) -> list[str]:
@@ -29,6 +36,10 @@ def make_ground_generate_node(processor: Any):
     def ground_generate_node(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> Dict[str, Any]:
         context = runtime.context if runtime is not None else None
         started = time.perf_counter()
+        observing = capture_active()
+        generation_key = None
+        tool_key = None
+        replay_config = getattr(processor, "offline_replay_config", None)
         question = state["question"]
         schema = state["schema"]
         company_name = state.get("company_name") or ""
@@ -111,6 +122,12 @@ def make_ground_generate_node(processor: Any):
             if not processor.reasoning_debug_enabled:
                 no_context_answer["step_by_step_analysis"] = ""
             validated_answer = validate_answer(no_context_answer, [], rewrite_result)
+            if observing:
+                capture_step(
+                    "verification", operation="no_context", step_key="verification",
+                    inputs={"results": []}, outputs=_answer_projection(validated_answer.answer),
+                    costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+                )
             return {
                 "retrieval_results": current_results,
                 "validated_flags": list(validated_answer.validation_flags or []),
@@ -166,6 +183,7 @@ def make_ground_generate_node(processor: Any):
                     }
                 if prompt_memory:
                     rag_context += "\n\n" + prompt_memory
+            generation_started = time.perf_counter() if observing else None
             answer_dict = processor.api_processor.get_answer_from_rag_context(
                 question=question,
                 rag_context=rag_context,
@@ -180,6 +198,17 @@ def make_ground_generate_node(processor: Any):
                 answer_dict.pop("chart_grounding_result", None)
             local_response_data = dict(getattr(processor.api_processor, "response_data", {}) or {})
             processor.response_data = local_response_data
+            if observing:
+                generation_key = capture_step(
+                    "generation", operation="generate", step_key="generation",
+                    inputs={"question": question, "schema": schema, "model": target_model,
+                            "results": answer_context_results},
+                    outputs=_answer_projection(answer_dict),
+                    costs={
+                        "elapsed_ms": (time.perf_counter() - generation_started) * 1000,
+                        **token_usage_of({"response_data": local_response_data}),
+                    },
+                )
             if budget_ctx is not None:
                 usage = local_response_data.get("usage") or {}
                 budget_ctx.record_usage(
@@ -189,9 +218,11 @@ def make_ground_generate_node(processor: Any):
 
             # Optional PoT deterministic evaluation when LLM emits structured pot_calculation
             if isinstance(answer_dict, dict) and answer_dict.get("pot_calculation"):
+                pot_status = "skipped"
                 try:
                     pot_res = extract_and_execute_pot(answer_dict)
                     if pot_res is not None:
+                        pot_status = "ok"
                         answer_dict["final_answer"] = pot_res.value if schema == "number" else f"{pot_res.value} {pot_res.unit}".strip()
                         answer_dict["pot_result"] = {
                             "expression": pot_res.expression,
@@ -200,7 +231,25 @@ def make_ground_generate_node(processor: Any):
                             "base_unit": pot_res.base_unit,
                         }
                 except (PotSecurityError, PotCalculationError):
-                    pass
+                    pot_status = "rejected"
+                if observing:
+                    tool_key = capture_step(
+                        "tool", operation="pot_calculate", step_key="pot",
+                        inputs={"calculation": answer_dict["pot_calculation"]},
+                        outputs={"pot_result": answer_dict.get("pot_result")}, status=pot_status,
+                        parents=(generation_key,) if generation_key else (),
+                    )
+
+        if observing and generation_key is None:
+            generation_key = capture_step(
+                "generation", operation="grounded_answer", step_key="generation",
+                inputs={"question": question, "schema": schema, "results": current_results},
+                outputs=_answer_projection(answer_dict),
+                costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+            )
+        if observing:
+            verification_started = time.perf_counter()
+            verification_input = _answer_projection(answer_dict)
 
         pages = answer_dict.get("relevant_pages", [])
         validated_pages = processor._validate_page_references(pages, current_results)
@@ -258,7 +307,8 @@ def make_ground_generate_node(processor: Any):
             or (chart_grounding_result is not None and float(chart_grounding_result.get("confidence") or 1.0) < 0.7)
         )
         if (
-            vlm_reader is not None
+            replay_config is None
+            and vlm_reader is not None
             and needs_vlm
             and os.getenv("FINARAG_VLM_VERIFY_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
         ):
@@ -299,7 +349,8 @@ def make_ground_generate_node(processor: Any):
         # Optional P3 Claim-Level Grounding Verifier on long/text answers
         claim_contradicted = 0
         if (
-            os.getenv("FINARAG_CLAIM_VERIFY_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            (os.getenv("FINARAG_CLAIM_VERIFY_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+             if replay_config is None else replay_config.get("claim_verify", False))
             and schema in {"text", "long_text"}
             and isinstance(final_dict.get("final_answer"), str)
             and final_dict["final_answer"].strip() not in {"", "N/A"}
@@ -334,6 +385,16 @@ def make_ground_generate_node(processor: Any):
                     final_dict["confidence"] = _downgrade_confidence(final_dict.get("confidence"))
             except Exception:
                 pass
+
+        if observing:
+            capture_step(
+                "verification", operation="validate_answer", step_key="verification",
+                inputs={"answer": verification_input, "results": current_results},
+                outputs={**_answer_projection(final_dict), "validation_flags": final_flags,
+                         "claim_contradicted": claim_contradicted},
+                parents=tuple(key for key in (generation_key, tool_key) if key),
+                costs={"elapsed_ms": (time.perf_counter() - verification_started) * 1000},
+            )
 
         return {
             "retrieval_results": current_results,

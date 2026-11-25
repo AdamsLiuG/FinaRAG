@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import time
+from contextvars import copy_context
+from copy import copy
+from inspect import signature
 from typing import Any, Dict, Iterator, List, Optional
 
 from langgraph.graph import END, START, StateGraph
@@ -25,6 +29,81 @@ from src.graph.nodes.reflect_supplement import (
 )
 from src.graph.nodes.retrieve_rerank import make_retrieve_rerank_node
 from src.graph.state import FinaRAGRunContext, FinaRAGState
+from src.harness.trajectory_store import (
+    bind_observer, capture_step, current_observer, current_prefix, harness_enabled, observed_run, record_trajectory, step_scope,
+)
+
+
+def observe_node(name, node):
+    """Use the same logical node boundaries in both executors."""
+    takes_runtime = "runtime" in signature(node).parameters
+
+    def run(state: FinaRAGState, runtime: Runtime[FinaRAGRunContext] = None) -> dict:
+        observer = current_observer()
+        if observer is None and runtime is not None:
+            observer = getattr(runtime.context, "_trajectory_observer", None)
+        if observer is None:
+            return node(state, runtime) if takes_runtime else node(state)
+        with bind_observer(observer):
+            return _capture_node(name, node, state, runtime, takes_runtime, observer)
+
+    return run
+
+
+def _capture_node(name, node, state, runtime, takes_runtime, observer):
+    scope = current_prefix()
+    round_index = int(state.get("adaptive_rounds_used") or 0)
+    logical = name
+    if name == "company_worker":
+        logical += f"/branch-{state.get('branch_index', 0)}"
+    if name in {"ground_generate", "reflect_supplement"} and round_index:
+        logical += f"/reflect-{round_index}"
+    ground = f"ground_generate/reflect-{round_index}" if round_index else "ground_generate"
+    candidates = {
+        "plan_route": ("prepare_durable_turn/node",),
+        "retrieve_rerank": ("prepare_single/plan", "plan_route/plan"),
+        "ground_generate": (
+            f"reflect_supplement/reflect-{round_index - 1}/rerank" if round_index > 1
+            else "reflect_supplement/rerank",
+            f"reflect_supplement/reflect-{round_index - 1}/retrieval" if round_index > 1
+            else "reflect_supplement/retrieval",
+            "retrieve_rerank/adaptive",
+            "retrieve_rerank/hyde/rerank",
+            "retrieve_rerank/rerank",
+        ),
+        "reflect_supplement": (f"{ground}/verification",),
+        "finalize_single": (f"{ground}/verification",),
+        "comparative_plan": ("plan_route/plan",),
+        "company_worker": ("comparative_plan/rephrase",),
+        "deep_research": ("plan_route/plan",),
+        "prepare_approval": ("finalize_single/node", "comparative_reduce/node", "deep_research/node", "plan_route/plan"),
+        "approval_gate": ("prepare_approval/node",),
+    }.get(name, ())
+    if name == "comparative_reduce":
+        candidates = tuple(f"company_worker/branch-{index}/worker" for index, _ in enumerate(state.get("companies") or []))
+    absolute = (f"{scope}/{key}" if scope else key for key in candidates)
+    parents = tuple(key for key in absolute if observer.has_step(key))
+    if name == "ground_generate":
+        parents = parents[:1]
+    started = time.perf_counter()
+    with step_scope(logical, parents=parents):
+        try:
+            updates = node(state, runtime) if takes_runtime else node(state)
+        except BaseException as exc:
+            status = "pending" if hasattr(exc, "interrupts") else "failed"
+            capture_step("node", operation=name, step_key="node", inputs={}, outputs={"node": name},
+                         status=status, costs={"elapsed_ms": (time.perf_counter() - started) * 1000})
+            raise
+        capture_step(
+            "node", operation=name, step_key="node", inputs={},
+            outputs={
+                "node": name, "ordinal": int(state.get("branch_index", round_index)) + 1,
+                "stage_events": _node_events(updates),
+                "budget_snapshot": updates.get("budget_snapshot") or {},
+            },
+            costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+        )
+        return updates
 
 
 def _route_after_plan(state: Dict[str, Any]) -> str:
@@ -145,7 +224,10 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
     """Build the full graph with a durable topology when a saver is supplied."""
     builder = StateGraph(FinaRAGState, context_schema=FinaRAGRunContext)
     durable = checkpointer is not None
+    replay_config = getattr(processor, "offline_replay_config", None)
     deep_enabled = os.getenv("FINARAG_DEEP_RESEARCH_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+    if replay_config is not None:
+        deep_enabled = replay_config.get("deep_research", False)
     plan = make_plan_route_node(processor, deep_research_enabled=deep_enabled)
     if durable:
         def durable_plan(state, runtime):
@@ -156,10 +238,10 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
             question = _follow_up_question(processor, state["question"], memory)
             return plan({**state, "question": question})
 
-        builder.add_node("prepare_durable_turn", prepare_durable_turn)
-        builder.add_node("plan_route", _with_budget_snapshot(durable_plan))
-        builder.add_node("prepare_approval", _with_budget_snapshot(prepare_approval))
-        builder.add_node("approval_gate", _with_budget_snapshot(lambda state, runtime: approval_gate(state)))
+        builder.add_node("prepare_durable_turn", observe_node("prepare_durable_turn", prepare_durable_turn))
+        builder.add_node("plan_route", observe_node("plan_route", _with_budget_snapshot(durable_plan)))
+        builder.add_node("prepare_approval", observe_node("prepare_approval", _with_budget_snapshot(prepare_approval)))
+        builder.add_node("approval_gate", observe_node("approval_gate", _with_budget_snapshot(lambda state, runtime: approval_gate(state))))
         builder.add_edge(START, "prepare_durable_turn")
         builder.add_edge("prepare_durable_turn", "plan_route")
         builder.add_conditional_edges(
@@ -168,7 +250,7 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
         )
         builder.add_edge("approval_gate", END)
     else:
-        builder.add_node("plan_route", plan)
+        builder.add_node("plan_route", observe_node("plan_route", plan))
         builder.add_edge(START, "plan_route")
 
     for name, factory in (
@@ -177,12 +259,12 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
         ("reflect_supplement", make_reflect_supplement_node),
     ):
         node = factory(processor)
-        builder.add_node(name, _with_budget_snapshot(node) if durable else node)
+        builder.add_node(name, observe_node(name, _with_budget_snapshot(node) if durable else node))
 
-    builder.add_node("finalize_single", make_finalize_single_node(processor))
-    builder.add_node("comparative_plan", make_comparative_plan_node(processor))
-    builder.add_node("company_worker", make_company_worker_node(processor))
-    builder.add_node("comparative_reduce", make_comparative_reduce_node(processor))
+    builder.add_node("finalize_single", observe_node("finalize_single", make_finalize_single_node(processor)))
+    builder.add_node("comparative_plan", observe_node("comparative_plan", make_comparative_plan_node(processor)))
+    builder.add_node("company_worker", observe_node("company_worker", make_company_worker_node(processor)))
+    builder.add_node("comparative_reduce", observe_node("comparative_reduce", make_comparative_reduce_node(processor)))
 
     terminal = "prepare_approval" if durable else END
     plan_targets = {"done": terminal, "retrieve_rerank": "retrieve_rerank", "comparative_plan": "comparative_plan"}
@@ -190,15 +272,18 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
         from src.deep_research.planner import make_deep_research_node
 
         node = make_deep_research_node(processor)
-        builder.add_node("deep_research", _with_budget_snapshot(node) if durable else node)
+        builder.add_node("deep_research", observe_node("deep_research", _with_budget_snapshot(node) if durable else node))
         builder.add_edge("deep_research", terminal)
         plan_targets["deep_research"] = "deep_research"
     builder.add_conditional_edges(
         "plan_route", _route_after_plan, plan_targets,
     )
+    def reflection_edge(state, runtime: Runtime[FinaRAGRunContext]):
+        return decide_reflection_edge(state, runtime, replay_config=replay_config)
+
     builder.add_edge("retrieve_rerank", "ground_generate")
     builder.add_conditional_edges(
-        "ground_generate", decide_reflection_edge,
+        "ground_generate", reflection_edge,
         {"reflect": "reflect_supplement", "finalize": "finalize_single"},
     )
     builder.add_edge("reflect_supplement", "ground_generate")
@@ -212,11 +297,11 @@ def build_finarag_graph(processor: Any, checkpointer: Optional[Any] = None):
 def build_single_company_graph(processor: Any, checkpointer: Optional[Any] = None):
     """Build single-company subgraph for direct get_answer_for_company calls."""
     builder = StateGraph(FinaRAGState)
-    builder.add_node("prepare_single", make_prepare_single_company_node(processor))
-    builder.add_node("retrieve_rerank", make_retrieve_rerank_node(processor))
-    builder.add_node("ground_generate", make_ground_generate_node(processor))
-    builder.add_node("reflect_supplement", make_reflect_supplement_node(processor))
-    builder.add_node("finalize_single", make_finalize_single_node(processor))
+    builder.add_node("prepare_single", observe_node("prepare_single", make_prepare_single_company_node(processor)))
+    builder.add_node("retrieve_rerank", observe_node("retrieve_rerank", make_retrieve_rerank_node(processor)))
+    builder.add_node("ground_generate", observe_node("ground_generate", make_ground_generate_node(processor)))
+    builder.add_node("reflect_supplement", observe_node("reflect_supplement", make_reflect_supplement_node(processor)))
+    builder.add_node("finalize_single", observe_node("finalize_single", make_finalize_single_node(processor)))
 
     builder.add_edge(START, "prepare_single")
     builder.add_conditional_edges(
@@ -245,9 +330,9 @@ def build_single_company_graph(processor: Any, checkpointer: Optional[Any] = Non
 def build_comparative_graph(processor: Any, checkpointer: Optional[Any] = None):
     """Build comparative Map-Reduce subgraph for process_comparative_question calls."""
     builder = StateGraph(FinaRAGState)
-    builder.add_node("comparative_plan", make_comparative_plan_node(processor))
-    builder.add_node("company_worker", make_company_worker_node(processor))
-    builder.add_node("comparative_reduce", make_comparative_reduce_node(processor))
+    builder.add_node("comparative_plan", observe_node("comparative_plan", make_comparative_plan_node(processor)))
+    builder.add_node("company_worker", observe_node("company_worker", make_company_worker_node(processor)))
+    builder.add_node("comparative_reduce", observe_node("comparative_reduce", make_comparative_reduce_node(processor)))
 
     builder.add_edge(START, "comparative_plan")
     builder.add_conditional_edges("comparative_plan", fanout_companies, ["company_worker"])
@@ -306,6 +391,11 @@ def _node_events(payload):
 
 
 def _durable_invoke(graph, graph_input, config, context):
+    observer = current_observer()
+    if observer is not None:
+        # Runtime dependencies stay outside the durable graph state.
+        context = copy(context)
+        context._trajectory_observer = observer
     if context.on_event is None:
         graph.invoke(graph_input, config=config, context=context, durability="sync")
     else:
@@ -316,6 +406,7 @@ def _durable_invoke(graph, graph_input, config, context):
     return _durable_answer(graph.get_state(config), context)
 
 
+@observed_run("graph", ("question", "schema", "budget_context"))
 def run_finarag_graph(
     processor: Any,
     question: str,
@@ -337,10 +428,22 @@ def run_finarag_graph(
 
 
 def continue_finarag_graph(*, graph, config, context):
-    return _durable_invoke(graph, None, config, context)
+    with record_trajectory(entry_point="continue", request=dict(config["configurable"])) as observer:
+        answer = _durable_invoke(graph, None, config, context)
+        if observer is not None:
+            observer.finish(answer)
+        return answer
 
 
 def resume_finarag_graph(processor, *, graph, config, context, interrupt_id, decision):
+    with record_trajectory(entry_point="resume", request=config["configurable"]) as observer:
+        answer = _resume_graph(graph, config, context, interrupt_id, decision)
+        if observer is not None:
+            observer.finish(answer)
+        return answer
+
+
+def _resume_graph(graph, config, context, interrupt_id, decision):
     fields = config["configurable"]
     latest_config = {"configurable": {"thread_id": fields["thread_id"]}}
     snapshot = graph.get_state(latest_config)
@@ -366,10 +469,43 @@ def stream_finarag_events(
     context: FinaRAGRunContext | None = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield incremental stage events as each LangGraph node completes."""
+    events = _stream_graph_events(
+        processor, question, schema, question_meta, config=config, budget_context=budget_context,
+        graph=graph, context=context,
+    )
+    if current_observer() is not None or not harness_enabled():
+        yield from events
+        return
+    stream_context = copy_context()
+
+    def observed():
+        with record_trajectory(entry_point="graph_stream", request={"question": question, "schema": schema}) as observer:
+            for event in events:
+                if observer is not None:
+                    if event.get("stage") == "result":
+                        observer.finish(event["answer_dict"])
+                    elif event.get("stage") == "approval_pending":
+                        observer.finish(event)
+                yield event
+
+    iterator = observed()
+    try:
+        while True:
+            yield stream_context.run(next, iterator)
+    except StopIteration:
+        return
+    finally:
+        stream_context.run(iterator.close)
+
+
+def _stream_graph_events(processor, question, schema, question_meta, *, config, budget_context, graph, context):
     graph = graph if graph is not None else build_finarag_graph(processor)
     if context is not None and context.budget_context is None:
         context.budget_context = budget_context
     initial = _graph_input(question, schema, question_meta, config, context, budget_context)
+    if context is not None and (observer := current_observer()) is not None:
+        context = copy(context)
+        context._trajectory_observer = observer
     options = {"context": context, "durability": "sync"} if context is not None else {}
     last_answer: Optional[Dict[str, Any]] = None
     for update in graph.stream(initial, config=config, stream_mode="updates", **options):

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 from langgraph.runtime import Runtime
 
 from src.graph.state import FinaRAGRunContext
+from src.harness.trajectory_store import capture_active, capture_step
 from src.adaptive_retrieval import (
     adaptive_max_rounds,
     adaptive_retrieval_enabled,
@@ -16,13 +17,13 @@ from src.adaptive_retrieval import (
 )
 
 
-def decide_reflection_edge(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> str:
+def decide_reflection_edge(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None, *, replay_config=None) -> str:
     """Conditional edge after ground_generate: decide whether to supplement & re-run or finalize."""
     context = runtime.context if runtime is not None else None
     budget_ctx = context.budget_context if context else state.get("budget_context")
     if budget_ctx is not None and not budget_ctx.allow_adaptive_supplement:
         return "finalize"
-    if not adaptive_retrieval_enabled():
+    if not (adaptive_retrieval_enabled() if replay_config is None else replay_config.get("adaptive", False)):
         return "finalize"
     if state.get("retrieval_mode") == "full_context":
         return "finalize"
@@ -84,6 +85,16 @@ def make_reflect_supplement_node(processor: Any):
                 candidate_doc_ids=candidate_doc_ids,
             )
 
+        observing = capture_active()
+        if observing:
+            retrieval_key = capture_step(
+                "retrieval", operation="supplement", step_key="retrieval",
+                inputs={"flags": flags, "candidate_doc_ids": candidate_doc_ids,
+                        "search_queries": list(gap.supplement_queries), "trigger": gap.trigger},
+                outputs={"results": supplement},
+                costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+            )
+
         rounds_used = int(state.get("adaptive_rounds_used") or 0) + 1
         if not supplement:
             return {
@@ -100,6 +111,7 @@ def make_reflect_supplement_node(processor: Any):
             }
 
         merged = merge_supplement_results(current_results, supplement)
+        rerank_started = time.perf_counter() if observing else None
         reranked = retriever.rerank_candidates(
             query=question,
             candidate_results=merged,
@@ -107,6 +119,12 @@ def make_reflect_supplement_node(processor: Any):
             top_n=processor.retrieval_debug_top_n,
             task_type=getattr(rewrite_result, "task_type", None),
         )
+        if observing:
+            capture_step(
+                "rerank", operation="supplement_rank", step_key="rerank", inputs={"results": merged},
+                outputs={"results": reranked}, parents=(retrieval_key,),
+                costs={"elapsed_ms": (time.perf_counter() - rerank_started) * 1000},
+            )
         trace_entry = {
             "question": question,
             "company_name": company_name,

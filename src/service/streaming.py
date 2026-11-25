@@ -9,12 +9,14 @@ import os
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack, aclosing
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
 
 from src.graph.builder import stream_finarag_events
+from src.harness.trajectory_store import capture_active, capture_step, harness_enabled, record_trajectory
 from src.service.telemetry import TelemetrySpan, current_trace_id, inject_trace_headers
 
 _CPU_POOL_LOCK = threading.Lock()
@@ -186,6 +188,50 @@ async def async_stream_qa_events(
     poll_interval: float = 0.05,
 ) -> AsyncIterator[Dict[str, Any]]:
     """Yield real-time QA stage events over SSE with disconnect cascade cancellation."""
+    options = dict(
+        budget_context=budget_context, is_disconnected=is_disconnected,
+        telemetry_manager=telemetry_manager, cache=cache, poll_interval=poll_interval,
+    )
+    if capture_active() or not harness_enabled():
+        async with aclosing(_stream_qa_events(processor, question, schema, **options)) as events:
+            async for event in events:
+                yield event
+        return
+
+    # The iterator can be closed by a different task. Its observer stays in
+    # the producer context and is never installed in the consumer context.
+    ctx = contextvars.copy_context()
+    stack = ExitStack()
+    observer = ctx.run(
+        stack.enter_context,
+        record_trajectory(entry_point="qa_stream", request={"question": question, "schema": schema}),
+    )
+    terminal = {}
+    try:
+        async with aclosing(_stream_qa_events(
+            processor, question, schema, **options, observer_context=ctx, terminal=terminal,
+        )) as events:
+            async for event in events:
+                yield event
+    except (asyncio.CancelledError, GeneratorExit):
+        terminal["status"] = "disconnected"
+        raise
+    except TimeoutError:
+        terminal["status"] = "timeout"
+        raise
+    except Exception:
+        terminal["status"] = "failed"
+        raise
+    finally:
+        if observer is not None:
+            observer.finish(terminal.get("answer"), status=terminal.get("status"))
+        ctx.run(stack.close)
+
+
+async def _stream_qa_events(
+    processor, question, schema, *, budget_context, is_disconnected, telemetry_manager, cache, poll_interval,
+    observer_context=None, terminal=None,
+):
     started = time.perf_counter()
     trace_id = current_trace_id()
     spans: List[Dict[str, Any]] = []
@@ -193,6 +239,12 @@ async def async_stream_qa_events(
     if cache is not None:
         cached = cache.get(question, schema)
         if cached is not None:
+            if terminal is not None:
+                observer_context.run(
+                    capture_step, "cache", operation="semantic_cache", step_key="cache",
+                    inputs={"schema": schema}, outputs={"cache_hit": True, "coverage": "absent"},
+                )
+                terminal.update(answer=cached, status="cache_hit")
             latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
             yield {"stage": "route", "cache_hit": True, "trace_id": trace_id}
             yield {
@@ -278,13 +330,15 @@ async def async_stream_qa_events(
         finally:
             _emit_from_worker("eof", None)
 
-    ctx = contextvars.copy_context()
+    ctx = observer_context.copy() if observer_context is not None else contextvars.copy_context()
     producer_task = asyncio.create_task(asyncio.to_thread(ctx.run, _producer_sync))
     terminal_answer: Optional[Dict[str, Any]] = None
 
     try:
         while True:
             if is_disconnected is not None and await is_disconnected():
+                if terminal is not None:
+                    terminal["status"] = "disconnected"
                 cancel_event.set()
                 producer_task.cancel()
                 return
@@ -306,6 +360,8 @@ async def async_stream_qa_events(
             if event.get("stage") == "result":
                 answer_dict = dict(event.pop("answer_dict", None) or {})
                 terminal_answer = answer_dict
+                if terminal is not None:
+                    terminal["answer"] = answer_dict
                 degraded_level = budget_context.degradation_level if budget_context is not None else int(answer_dict.get("degraded_level") or 0)
                 done_event = {
                     "stage": "done",

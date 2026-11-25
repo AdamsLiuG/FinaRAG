@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from types import MappingProxyType
+from types import FunctionType, MappingProxyType, SimpleNamespace
 from typing import Literal
 
 import networkx as nx
@@ -20,6 +20,7 @@ from langgraph.runtime import Runtime
 
 from src.deep_research.evidence_ledger import EvidenceKey, EvidenceLedger, measurement_basis, metric_basis
 from src.graph.state import FinaRAGRunContext
+from src.harness.trajectory_store import capture_active, capture_step, current_observer, current_prefix, step_scope
 from src.protocols.tool_registry import (
     DOC_ID_PATTERN,
     FinancialFactsInput,
@@ -468,7 +469,34 @@ class ResearchPlanner:
             raise ValueError("Invalid research run")
         outcomes = []
         completed = {}
+        observing = capture_active()
+        prefix = current_prefix() if observing else ""
+        task_paths = {}
+        if observing:
+            task_paths = {
+                task.task_id: f"wave-{index}/task-{ordinal}"
+                for index, wave in enumerate(dag.waves, 1)
+                for ordinal, task in enumerate(wave, 1)
+            }
+
+        def absolute(path):
+            return f"{prefix}/{path}" if prefix else path
+
+        async def execute_task(task, resolutions, wave_key):
+            if observing:
+                parents = (wave_key, *(absolute(task_paths[parent] + "/result") for parent in task.depends_on))
+                with step_scope(task_paths[task.task_id], parents=parents):
+                    return await self._call(task, registry=registry, principal=principal, ledger=ledger,
+                                            deadline=deadline, resolutions=resolutions)
+            return await self._call(task, registry=registry, principal=principal, ledger=ledger,
+                                    deadline=deadline, resolutions=resolutions)
         for index, wave in enumerate(dag.waves, 1):
+            wave_key = None
+            if observing:
+                wave_key = capture_step(
+                    "plan", operation="research_wave", step_key=f"wave-{index}",
+                    inputs={}, outputs={"wave": index, "task_ids": [task.task_id for task in wave]},
+                )
             resolutions = ledger.adjudicate()
             sufficient = self._sufficient(dag, resolutions, completed)
             pending = []
@@ -486,8 +514,7 @@ class ResearchPlanner:
             for start in range(0, len(pending), self.max_parallel):
                 batch = pending[start:start + self.max_parallel]
                 results.extend(zip(batch, await asyncio.gather(*(
-                    self._call(task, registry=registry, principal=principal, ledger=ledger,
-                               deadline=deadline, resolutions=resolutions) for task in batch
+                    execute_task(task, resolutions, wave_key) for task in batch
                 )), strict=True))
             for task, (status, code, ms, result, inputs) in sorted(results, key=lambda item: item[0].task_id):
                 evidence = ledger.ingest(task, result, inputs=inputs) if result else ()
@@ -498,6 +525,18 @@ class ResearchPlanner:
                 wave_outcomes.append(TaskOutcome(task.task_id, index, "empty" if status == "ok" and not evidence else status,
                                                  code, ms, evidence, mode))
             wave_outcomes.sort(key=lambda outcome: outcome.task_id)
+            if observing:
+                for outcome in wave_outcomes:
+                    task_path = task_paths[outcome.task_id]
+                    tool_key = absolute(task_path + "/tool")
+                    observer = current_observer()
+                    capture_step(
+                        "tool", operation="research_task", step_key=task_path + "/result",
+                        inputs={"task_id": outcome.task_id, "wave": index},
+                        outputs={"evidence_ids": list(outcome.evidence_ids), "retrieval_mode": outcome.retrieval_mode},
+                        parents=(tool_key,) if observer.has_step(tool_key) else (wave_key,),
+                        status=outcome.status, error_code=outcome.code or None, costs={"elapsed_ms": outcome.ms},
+                    )
             outcomes.extend(wave_outcomes)
             completed.update((outcome.task_id, outcome.status) for outcome in wave_outcomes)
         if time.monotonic() >= deadline:
@@ -547,12 +586,35 @@ def _run_sync(make_coroutine):
         return worker.submit(copy_context().run, lambda: asyncio.run(make_coroutine())).result()
 
 
+def _replay_synthesis(synthesizer, *, verify_claims):
+    # P6's synthesizer reads a process flag. Use its real implementation with
+    # a local flag lookup so offline runs cannot affect concurrent live requests.
+    method = synthesizer.synthesize
+    implementation = method.__func__
+    flag = "1" if verify_claims else "0"
+
+    def getenv(name, default=None):
+        return flag if name == "FINARAG_CLAIM_VERIFY_ENABLED" else default
+
+    globals_for_replay = {**implementation.__globals__, "os": SimpleNamespace(getenv=getenv)}
+    run = FunctionType(
+        implementation.__code__, globals_for_replay, implementation.__name__,
+        implementation.__defaults__, implementation.__closure__,
+    )
+    return run.__get__(synthesizer, type(synthesizer))
+
+
 def make_deep_research_node(processor, *, registry_provider=None):
     from src.deep_research.synthesizer import ResearchSynthesizer
 
     provider = registry_provider or getattr(processor, "deep_research_registry_provider", None)
     planner = ResearchPlanner()
     synthesizer = ResearchSynthesizer(claim_verifier=getattr(processor, "deep_research_claim_verifier", None))
+    replay_config = getattr(processor, "offline_replay_config", None)
+    synthesize = (
+        synthesizer.synthesize if replay_config is None else
+        _replay_synthesis(synthesizer, verify_claims=replay_config.get("claim_verify", False))
+    )
 
     def research_node(state, runtime: Runtime[FinaRAGRunContext] = None):
         query_plan = state["query_plan"]
@@ -613,8 +675,24 @@ def make_deep_research_node(processor, *, registry_provider=None):
             return ResearchRun(dag.required_keys if dag else (), (), 0, reason, deadline)
 
         def response(execution, ledger):
-            answer = synthesizer.synthesize(question, execution, ledger, query_plan=query_plan, route_info=route_info)
+            observing = capture_active()
+            started = time.perf_counter() if observing else None
+            answer = synthesize(question, execution, ledger, query_plan=query_plan, route_info=route_info)
             status = execution.to_dict()
+            if observing:
+                prefix = current_prefix()
+                task_keys = (
+                    f"wave-{index}/task-{ordinal}/result"
+                    for index, wave in enumerate(dag.waves if dag and execution.outcomes else (), 1)
+                    for ordinal, _ in enumerate(wave, 1)
+                )
+                parents = tuple(f"{prefix}/{key}" if prefix else key for key in task_keys)
+                capture_step(
+                    "verification", operation="research_synthesis", step_key="verification",
+                    inputs={"stop_reason": execution.stop_reason},
+                    outputs={"answer": answer}, parents=parents,
+                    costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+                )
             return {
                 "deep_research_plan": dag.to_dict() if dag else {},
                 "evidence_ledger": ledger.to_dict(),

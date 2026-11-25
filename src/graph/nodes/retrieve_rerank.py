@@ -12,12 +12,15 @@ from langgraph.runtime import Runtime
 from src.graph.state import FinaRAGRunContext
 from src.adaptive_retrieval import adaptive_retrieval_enabled
 from src.hyde import HYDE_QUERY_MARKER, should_trigger_hyde
+from src.harness.trajectory_store import capture_step, current_observer, current_prefix
 
 
 def make_retrieve_rerank_node(processor: Any):
     def retrieve_rerank_node(state: Dict[str, Any], runtime: Runtime[FinaRAGRunContext] = None) -> Dict[str, Any]:
         context = runtime.context if runtime is not None else None
         started = time.perf_counter()
+        observer = current_observer()
+        replay_config = getattr(processor, "offline_replay_config", None)
         question = state["question"]
         schema = state["schema"]
         company_name = state.get("company_name") or ""
@@ -148,11 +151,31 @@ def make_retrieve_rerank_node(processor: Any):
                 candidate_pool_size_before_rerank=candidate_pool_size_before_rerank,
             )
 
+        if observer is not None:
+            prefix = current_prefix()
+            retrieval_key = f"{prefix}/retrieval" if prefix else "retrieval"
+            rerank_key = f"{prefix}/rerank" if prefix else "rerank"
+            if not observer.has_step(retrieval_key):
+                retrieval_key = capture_step(
+                    "retrieval", operation="retrieve", step_key="retrieval",
+                    inputs={"query_plan": rewrite_result.to_dict(), "candidate_doc_ids": candidate_doc_ids},
+                    outputs={"results": retrieval_results, "mode": effective_mode},
+                    costs={"elapsed_ms": (time.perf_counter() - started) * 1000},
+                )
+            if not observer.has_step(rerank_key):
+                capture_step(
+                    "rerank", operation="combined_rank" if effective_mode == "hybrid_rerank" else "skip_rerank",
+                    step_key="rerank", inputs={"results": retrieval_results} if effective_mode != "hybrid_rerank" else {},
+                    outputs={"results": retrieval_results, "mode": effective_mode},
+                    parents=(retrieval_key,),
+                )
+
         adaptive_state: Dict[str, Any] = {"rounds_used": 0, "traces": []}
         tree_nav_hits = 0
         kg_hits = 0
         if (
-            os.getenv("FINARAG_TREE_NAV_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            replay_config is None
+            and os.getenv("FINARAG_TREE_NAV_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
             and effective_mode != "full_context"
         ):
             try:
@@ -212,7 +235,8 @@ def make_retrieve_rerank_node(processor: Any):
                 print(f"Warning: PageIndex tree navigation skipped: {exc}")
 
         if (
-            os.getenv("FINARAG_KG_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+            replay_config is None
+            and os.getenv("FINARAG_KG_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
             and effective_mode != "full_context"
         ):
             try:
@@ -267,7 +291,7 @@ def make_retrieve_rerank_node(processor: Any):
                 print(f"Warning: KG LightRAG retrieval skipped: {exc}")
 
         if (
-            adaptive_retrieval_enabled()
+            (adaptive_retrieval_enabled() if replay_config is None else replay_config.get("adaptive", False))
             and retrieval_results
             and effective_mode != "full_context"
             and (budget_ctx is None or budget_ctx.allow_adaptive_supplement)

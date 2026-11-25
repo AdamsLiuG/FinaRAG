@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -19,6 +19,7 @@ from typing import Annotated, Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.harness.trajectory_store import capture_active, capture_step, harness_enabled, record_trajectory
 from src.storage.base import StorageError, validate_safe_path
 
 MAX_ARGUMENT_BYTES = 64 * 1024
@@ -300,6 +301,34 @@ class MCPToolRegistry:
         ]
 
     async def call(self, name, arguments, *, principal, timeout_s=None) -> ToolResult:
+        if not capture_active() and not harness_enabled():
+            return await self._call(name, arguments, principal=principal, timeout_s=timeout_s)
+        safe_name = name if isinstance(name, str) and name in _TOOLS else "unknown"
+        with record_trajectory(entry_point="tool_registry", request={"tool_name": safe_name}) as observer:
+            if not capture_active():
+                return await self._call(name, arguments, principal=principal, timeout_s=timeout_s)
+            started = time.monotonic()
+            observed = {"tool_name": safe_name}
+            try:
+                result = await self._call(name, arguments, principal=principal, timeout_s=timeout_s, observed=observed)
+            except asyncio.CancelledError:
+                capture_step(
+                    "tool", operation=safe_name, step_key="tool", inputs=observed, outputs={},
+                    status="cancelled", costs={"elapsed_ms": (time.monotonic() - started) * 1000},
+                )
+                raise
+            status = "ok" if result.error_code is None else "timeout" if result.error_code == "timeout" else "failed"
+            capture_step(
+                "tool", operation=safe_name, step_key="tool", inputs=observed,
+                outputs={"data": result.data, "error_code": result.error_code},
+                status=status, error_code=result.error_code,
+                costs={"elapsed_ms": (time.monotonic() - started) * 1000},
+            )
+            if observer is not None:
+                observer.finish(status=status)
+            return result
+
+    async def _call(self, name, arguments, *, principal, timeout_s=None, observed=None) -> ToolResult:
         started = time.monotonic()
         if not valid_principal(principal):
             return ToolResult(error_code="forbidden")
@@ -320,6 +349,8 @@ class MCPToolRegistry:
         payload = normalized.model_dump()
         if not self.allows(principal, name, normalized.model_dump()):
             return ToolResult(error_code="forbidden")
+        if observed is not None:
+            observed["arguments"] = payload
         budget = self._timeout_s if timeout_s is None else min(timeout_s, self._timeout_s)
         deadline = started + budget
         with self._lock:
@@ -330,7 +361,10 @@ class MCPToolRegistry:
             if not self._slots.acquire(blocking=False):
                 return ToolResult(error_code="busy")
             try:
-                future = self._executor.submit(self._invoke, name, payload, principal, deadline)
+                if observed is None:
+                    future = self._executor.submit(self._invoke, name, payload, principal, deadline)
+                else:
+                    future = self._executor.submit(copy_context().run, self._invoke, name, payload, principal, deadline)
             except RuntimeError:
                 self._slots.release()
                 return ToolResult(error_code="unavailable")
